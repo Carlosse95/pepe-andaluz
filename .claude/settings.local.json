@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/carlosseguraflores/Downloads/pepe-andaluz-app/.claude)",
+      "Bash(grep -n \"af-back-row\\\\|^\\\\`;\" /Users/carlosseguraflores/Downloads/pepe-andaluz-app/src/AzafranApp.jsx)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(gh auth *)",
+      "Bash(open -e /Users/carlosseguraflores/Downloads/pepe-andaluz-app/supabase/setup.sql)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Pepe Andaluz v1 — app de pedidos con nube y usuarios *)"
+    ]
+  }
+}
