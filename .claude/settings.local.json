@@ -21,7 +21,8 @@
       "Bash(git commit -m 'Reintentar publicación en Pages *)",
       "Bash(git commit -m 'Extras de paella: catálogo en Ajustes, anclados por platillo con cantidad ajustable *)",
       "Bash(python3 -)",
-      "Bash(git commit -m 'Envío manual, IVA opcional, método de pago, reporte por día, agenda con entregados, aceptar presupuestos, platillos por kg, Hoy sin distracciones *)"
+      "Bash(git commit -m 'Envío manual, IVA opcional, método de pago, reporte por día, agenda con entregados, aceptar presupuestos, platillos por kg, Hoy sin distracciones *)",
+      "Bash(git commit -m 'Paellas en personas \\(1 kg = 2\\) en WhatsApp y PDF; mínimo 1 kg *)"
     ]
   }
 }

@@ -70,6 +70,12 @@ const money = (n) => moneyFmt.format(n || 0);
 
 const fmtKg = (kg) => (Number.isInteger(kg) ? kg : kg.toFixed(1)) + " kg";
 
+// Para el cliente hablamos en personas, no en kilos: 1 kg = 2 personas.
+const fmtPersonas = (kg) => {
+  const n = Math.max(1, Math.round(kg * 2));
+  return `para ${n} persona${n === 1 ? "" : "s"}`;
+};
+
 const fmtHora12 = (hora24) => {
   if (!hora24) return "";
   const [h, m] = hora24.split(":").map(Number);
@@ -148,7 +154,7 @@ const mensajeWhatsApp = (datos, modo) => {
   lineas.push("");
   datos.items.forEach((it) => {
     if (it.tipo === "paella") {
-      lineas.push(`• ${it.paellaNombre} — ${fmtKg(it.kg)} — ${money(it.kg * it.precioKg)}`);
+      lineas.push(`• ${it.paellaNombre} ${fmtPersonas(it.kg)} — ${money(it.kg * it.precioKg)}`);
       (it.extras || []).forEach((e) => {
         lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""} — ${money(e.precio * e.cantidad)}`);
       });
@@ -2011,7 +2017,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                 <div className="af-ink-soft text-sm mb-3">{money(seleccionado.precio)} {seleccionado.unidad === "kg" ? "/ kg" : "c/u"}</div>
                 <div className="af-field">
                   <label>{seleccionado.unidad === "kg" ? "Kilos" : "Cantidad"}</label>
-                  <Stepper value={cantidad} min={seleccionado.unidad === "kg" ? 0.5 : 1} step={1} onChange={setCantidad} />
+                  <Stepper value={cantidad} min={1} step={1} onChange={setCantidad} />
                 </div>
                 <button className="af-btn-ghost" onClick={() => abrirEditar(seleccionado)}>
                   <Pencil size={13} className="inline mr-1" /> Modificar este producto
@@ -2274,8 +2280,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     doc.setFontSize(10);
     form.items.forEach((it) => {
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
-      const cant = it.tipo === "paella" ? fmtKg(it.kg) : it.unidad === "kg" ? fmtKg(it.cantidad) : `x${it.cantidad}`;
-      const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
+      const cant = it.tipo === "paella" ? fmtPersonas(it.kg).replace("para ", "") : it.unidad === "kg" ? fmtKg(it.cantidad) : `x${it.cantidad}`;
+      const unitario = it.tipo === "paella" ? `${money(it.precioKg / 2)}/persona` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
       // Para paellas con extras, la fila muestra solo la base; los extras van
       // en renglones propios para que la suma cuadre a la vista.
       const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
@@ -2516,7 +2522,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 </div>
                 <Stepper
                   value={it.tipo === "paella" ? it.kg : it.cantidad}
-                  min={it.tipo === "paella" || it.unidad === "kg" ? 0.5 : 1}
+                  min={1}
                   step={1}
                   onChange={(v) => (it.tipo === "paella" ? updateKg(it.id, v) : updateCantidad(it.id, v))}
                 />
