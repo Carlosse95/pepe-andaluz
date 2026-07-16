@@ -608,7 +608,8 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
   const [verPaelleras, setVerPaelleras] = useState(false);
 
   const total = pedidosHoy.reduce((a, p) => a + p.total, 0);
-  const porCobrarGlobal = pedidos.reduce((a, p) => a + (p.saldo || 0), 0);
+  // Solo lo que falta cobrar de HOY (lo de otros días se ve en Agenda).
+  const porCobrarHoy = pedidosHoy.reduce((a, p) => a + (p.saldo || 0), 0);
   const h = new Date().getHours();
   const saludo = h < 13 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
 
@@ -645,7 +646,7 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
       <div className="grid grid-cols-3 gap-2 my-4">
         <StatPill label="Pedidos hoy" value={pedidosHoy.length} />
         <StatPill label="Total del día" value={money(total)} />
-        <StatPill label="Por cobrar" value={money(porCobrarGlobal)} warn={porCobrarGlobal > 0} />
+        <StatPill label="Por cobrar hoy" value={money(porCobrarHoy)} warn={porCobrarHoy > 0} />
       </div>
 
       <div className="af-quick-row">
@@ -748,13 +749,15 @@ function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
     grupos[p.fecha].push(p);
   });
 
-  // Por entregar: lo más urgente arriba (atrasados, hoy, luego lo que viene).
-  // Entregados: lo más reciente arriba.
-  const fechas = Object.keys(grupos).sort((a, b) =>
-    tab === "pendientes" ? (a < b ? -1 : 1) : (a < b ? 1 : -1)
-  );
+  // Ambas pestañas en orden de calendario: la fecha más antigua arriba.
+  // En "Por entregar" eso pone lo urgente primero; en "Entregados" deja el
+  // historial del mes en orden, como una libreta.
+  const fechas = Object.keys(grupos).sort((a, b) => (a < b ? -1 : 1));
 
   const hoy = todayISO();
+
+  const totalPendiente = pendientes.reduce((a, p) => a + p.total, 0);
+  const porCobrarPendiente = pendientes.reduce((a, p) => a + (p.saldo || 0), 0);
 
   return (
     <div>
@@ -766,6 +769,13 @@ function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
           Entregados
         </button>
       </div>
+
+      {tab === "pendientes" && pendientes.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <StatPill label="Total por entregar" value={money(totalPendiente)} />
+          <StatPill label="Por cobrar" value={money(porCobrarPendiente)} warn={porCobrarPendiente > 0} />
+        </div>
+      )}
 
       {lista.length === 0 && (
         tab === "pendientes" ? (
