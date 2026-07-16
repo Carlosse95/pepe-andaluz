@@ -100,6 +100,14 @@ const calcExtraSubtotal = (cantidad, precio) => cantidad * precio;
 
 const computeTotal = (items) => items.reduce((acc, it) => acc + it.subtotal, 0);
 
+// Costo de envío: solo aplica cuando el pedido es a domicilio.
+const envioDe = (obj) => (obj.entrega ? parseFloat(obj.envio) || 0 : 0);
+
+// IVA opcional (solo cuando el cliente lo pide, p. ej. facturación de eventos).
+const IVA_TASA = 0.16;
+const ivaDe = (obj) => (obj.iva ? (computeTotal(obj.items) + envioDe(obj)) * IVA_TASA : 0);
+const totalDe = (obj) => computeTotal(obj.items) + envioDe(obj) + ivaDe(obj);
+
 const resumenProductos = (items) => {
   if (!items || items.length === 0) return "Sin productos";
   return items
@@ -145,11 +153,15 @@ const mensajeWhatsApp = (datos, modo) => {
         lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""} — ${money(e.precio * e.cantidad)}`);
       });
     } else {
-      lineas.push(`• ${it.nombre} × ${it.cantidad} — ${money(it.subtotal)}`);
+      lineas.push(`• ${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad} — ${money(it.subtotal)}`);
     }
   });
   lineas.push("");
-  const total = computeTotal(datos.items);
+  const envio = envioDe(datos);
+  if (envio > 0) lineas.push(`Envío a domicilio: ${money(envio)}`);
+  const iva = ivaDe(datos);
+  if (iva > 0) lineas.push(`IVA (16%): ${money(iva)}`);
+  const total = computeTotal(datos.items) + envio + iva;
   lineas.push(`Total: ${money(total)}`);
   if (modo === "pedido") {
     const pagado = parseFloat(datos.pagado) || 0;
@@ -227,7 +239,10 @@ const emptyForm = () => ({
   entrega: false,
   direccion: "",
   ubicacion: "",
+  envio: "0",
+  iva: false,
   pagado: "0",
+  metodoPago: "efectivo",
   estado: "pendiente",
   notas: "",
   terminos: TERMINOS_DEFAULT,
@@ -416,7 +431,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado }) {
 
       <div className="flex items-center gap-2 flex-wrap mb-2">
         {pedido.entrega ? (
-          <span className="af-chip af-chip-neutral">
+          <span className="af-chip af-chip-domicilio">
             <Truck size={12} /> A domicilio
           </span>
         ) : (
@@ -447,9 +462,11 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado }) {
           <li key={it.id}>
             {it.tipo === "paella"
               ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}${it.enPaellera ? " · paellera" : ""}`
-              : `${it.nombre} × ${it.cantidad}`}
+              : `${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
           </li>
         ))}
+        {pedido.envio > 0 && <li>Envío a domicilio — {money(pedido.envio)}</li>}
+        {pedido.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
       <div className="flex items-center justify-between mt-2">
@@ -581,19 +598,29 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
 /* ---------------------------------------------------------------------- */
 
 function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCambiarEstado, onNuevoPedido, onNuevoPresupuesto }) {
+  const [verEntregados, setVerEntregados] = useState(false);
+  const [verPaelleras, setVerPaelleras] = useState(false);
+
   const total = pedidosHoy.reduce((a, p) => a + p.total, 0);
   const porCobrarGlobal = pedidos.reduce((a, p) => a + (p.saldo || 0), 0);
   const h = new Date().getHours();
   const saludo = h < 13 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
 
+  // En "Hoy" solo se trabaja lo que falta: los entregados se guardan colapsados.
+  const activosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") !== "entregado");
+  const entregadosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") === "entregado");
+
   const hoy = todayISO();
   const proximos = pedidos
-    .filter((p) => p.fecha > hoy)
+    .filter((p) => p.fecha > hoy && (p.estado || "pendiente") !== "entregado")
     .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? -1 : 1))
     .slice(0, 4);
 
+  // Paelleras por recoger: solo de pedidos YA ENTREGADOS (antes de eso,
+  // la paellera sigue en la cocina y no hay nada que perseguir).
   const pendientesPaellera = [];
   pedidos.forEach((p) => {
+    if ((p.estado || "pendiente") !== "entregado") return;
     p.items.forEach((it) => {
       if (it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta) {
         pendientesPaellera.push({ pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre });
@@ -635,27 +662,16 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
         </div>
       )}
 
-      {pendientesPaellera.length > 0 && (
-        <div className="mb-5 mt-3">
-          <div className="af-section-title">
-            Paelleras pendientes <span className="af-dot">{pendientesPaellera.length}</span>
-          </div>
-          {pendientesPaellera.map((it) => (
-            <PaelleraRow key={it.pedidoId + it.itemId} item={it} onMarcarDevuelta={onMarcarDevuelta} />
-          ))}
-        </div>
-      )}
-
-      <div className="af-section-title mt-4">Pedidos de hoy</div>
-      {pedidosHoy.length === 0 ? (
+      <div className="af-section-title mt-4">Por hacer hoy</div>
+      {activosHoy.length === 0 ? (
         <EmptyState
           icon={<ChefHat size={28} />}
-          title="Todavía no hay pedidos hoy"
-          subtitle="Toca el botón + para registrar la primera llamada del día."
+          title={entregadosHoy.length > 0 ? "¡Todo lo de hoy está entregado!" : "Todavía no hay pedidos hoy"}
+          subtitle={entregadosHoy.length > 0 ? "Buen trabajo. Los entregados están aquí abajo." : "Toca el botón + para registrar la primera llamada del día."}
         />
       ) : (
         <div className="af-card-grid">
-          {pedidosHoy
+          {activosHoy
             .slice()
             .sort((a, b) => a.hora.localeCompare(b.hora))
             .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} />)}
@@ -674,6 +690,37 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
           </div>
         </div>
       )}
+
+      {entregadosHoy.length > 0 && (
+        <div className="mt-5">
+          <button className="af-colapsable-btn" onClick={() => setVerEntregados((v) => !v)}>
+            <Check size={15} /> Entregados hoy ({entregadosHoy.length}) {verEntregados ? "▲" : "▼"}
+          </button>
+          {verEntregados && (
+            <div className="af-card-grid mt-3">
+              {entregadosHoy
+                .slice()
+                .sort((a, b) => a.hora.localeCompare(b.hora))
+                .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {pendientesPaellera.length > 0 && (
+        <div className="mt-4 mb-2">
+          <button className="af-colapsable-btn" onClick={() => setVerPaelleras((v) => !v)}>
+            <ChefHat size={15} /> Paelleras por recoger ({pendientesPaellera.length}) {verPaelleras ? "▲" : "▼"}
+          </button>
+          {verPaelleras && (
+            <div className="mt-3">
+              {pendientesPaellera.map((it) => (
+                <PaelleraRow key={it.pedidoId + it.itemId} item={it} onMarcarDevuelta={onMarcarDevuelta} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -683,40 +730,59 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
 /* ---------------------------------------------------------------------- */
 
 function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
-  if (pedidos.length === 0) {
-    return (
-      <EmptyState
-        icon={<CalendarDays size={28} />}
-        title="Aún no hay pedidos registrados"
-        subtitle="Todos los pedidos que crees aparecerán aquí, organizados por fecha."
-      />
-    );
-  }
+  const [tab, setTab] = useState("pendientes");
+
+  const pendientes = pedidos.filter((p) => (p.estado || "pendiente") !== "entregado");
+  const entregados = pedidos.filter((p) => (p.estado || "pendiente") === "entregado");
+  const lista = tab === "pendientes" ? pendientes : entregados;
 
   const grupos = {};
-  pedidos.forEach((p) => {
+  lista.forEach((p) => {
     if (!grupos[p.fecha]) grupos[p.fecha] = [];
     grupos[p.fecha].push(p);
   });
 
-  // Hoy primero, luego los próximos días (del más cercano al más lejano),
-  // y hasta abajo el historial pasado (del más reciente al más viejo).
+  // Por entregar: lo más urgente arriba (atrasados, hoy, luego lo que viene).
+  // Entregados: lo más reciente arriba.
+  const fechas = Object.keys(grupos).sort((a, b) =>
+    tab === "pendientes" ? (a < b ? -1 : 1) : (a < b ? 1 : -1)
+  );
+
   const hoy = todayISO();
-  const rango = (f) => (f === hoy ? 0 : f > hoy ? 1 : 2);
-  const fechas = Object.keys(grupos).sort((a, b) => {
-    const ra = rango(a), rb = rango(b);
-    if (ra !== rb) return ra - rb;
-    if (ra === 1) return a < b ? -1 : 1;
-    if (ra === 2) return a < b ? 1 : -1;
-    return 0;
-  });
 
   return (
     <div>
+      <div className="af-subtabs mb-4">
+        <button className={"af-subtab" + (tab === "pendientes" ? " active" : "")} onClick={() => setTab("pendientes")}>
+          Por entregar {pendientes.length > 0 && <span className="af-dot">{pendientes.length}</span>}
+        </button>
+        <button className={"af-subtab" + (tab === "entregados" ? " active" : "")} onClick={() => setTab("entregados")}>
+          Entregados
+        </button>
+      </div>
+
+      {lista.length === 0 && (
+        tab === "pendientes" ? (
+          <EmptyState
+            icon={<CalendarDays size={28} />}
+            title="Nada pendiente por entregar"
+            subtitle="Los pedidos que registres aparecerán aquí, ordenados por fecha."
+          />
+        ) : (
+          <EmptyState
+            icon={<Check size={28} />}
+            title="Aún no hay pedidos entregados"
+            subtitle="Cuando marques un pedido como Entregado, se guardará aquí."
+          />
+        )
+      )}
+
       {fechas.map((fecha) => (
         <div key={fecha} className="mb-4">
           <div className="af-section-title">
-            {fmtDateHuman(fecha)} {esHoy(fecha) && <span className="af-chip af-chip-gold">Hoy</span>}
+            {fmtDateHuman(fecha)}
+            {esHoy(fecha) && <span className="af-chip af-chip-gold">Hoy</span>}
+            {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong">Atrasado</span>}
           </div>
           <div className="af-card-grid">
             {grupos[fecha]
@@ -736,7 +802,7 @@ function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
 /*  Vista: Presupuestos                                                   */
 /* ---------------------------------------------------------------------- */
 
-function PresupuestoCard({ presupuesto, onClick }) {
+function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
   return (
     <div className="af-card af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
       <div className="flex items-start justify-between gap-2">
@@ -759,7 +825,7 @@ function PresupuestoCard({ presupuesto, onClick }) {
 
       <div className="flex items-center gap-2 flex-wrap mb-2">
         {presupuesto.entrega ? (
-          <span className="af-chip af-chip-neutral"><Truck size={12} /> A domicilio</span>
+          <span className="af-chip af-chip-domicilio"><Truck size={12} /> A domicilio</span>
         ) : (
           <span className="af-chip af-chip-neutral"><Store size={12} /> Recoger</span>
         )}
@@ -768,19 +834,26 @@ function PresupuestoCard({ presupuesto, onClick }) {
       <ul className="af-resumen-lista">
         {presupuesto.items.map((it) => (
           <li key={it.id}>
-            {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}` : `${it.nombre} × ${it.cantidad}`}
+            {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}` : `${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
           </li>
         ))}
+        {presupuesto.envio > 0 && <li>Envío a domicilio — {money(presupuesto.envio)}</li>}
+        {presupuesto.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
       <div className="flex items-center justify-between mt-2">
         <span className="af-total">{money(presupuesto.total)}</span>
+        {!presupuesto.convertido && (
+          <button className="af-btn-chip" onClick={(e) => { e.stopPropagation(); onAceptar(presupuesto); }}>
+            <Check size={14} /> Aceptar → pedido
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function PresupuestosView({ presupuestos, onAbrir }) {
+function PresupuestosView({ presupuestos, onAbrir, onAceptar }) {
   if (presupuestos.length === 0) {
     return (
       <EmptyState
@@ -794,7 +867,7 @@ function PresupuestosView({ presupuestos, onAbrir }) {
   return (
     <div className="af-card-grid">
       {ordenados.map((p) => (
-        <PresupuestoCard key={p.id} presupuesto={p} onClick={() => onAbrir(p)} />
+        <PresupuestoCard key={p.id} presupuesto={p} onClick={() => onAbrir(p)} onAceptar={onAceptar} />
       ))}
     </div>
   );
@@ -928,6 +1001,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
 
     const pendientesCliente = [];
     historial.forEach((p) => {
+      if ((p.estado || "pendiente") !== "entregado") return;
       p.items.forEach((it) => {
         if (it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta) {
           pendientesCliente.push({ pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre });
@@ -1026,7 +1100,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
           {lista.map((c) => {
             const n = pedidos.filter((p) => p.clienteId === c.id).length;
             const tienePendiente = pedidos.some(
-              (p) => p.clienteId === c.id && p.items.some((it) => it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta)
+              (p) => p.clienteId === c.id && (p.estado || "pendiente") === "entregado" && p.items.some((it) => it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta)
             );
             return (
               <div key={c.id} className="af-card p-4 mb-3 cursor-pointer" onClick={() => setDetalleId(c.id)}>
@@ -1069,6 +1143,7 @@ const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 function ReportesView({ pedidos, historico, onGuardarHistorico }) {
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [mesComparar, setMesComparar] = useState(new Date().getMonth());
+  const [diaSel, setDiaSel] = useState(todayISO());
 
   const claveMes = (a, m) => `${a}-${String(m + 1).padStart(2, "0")}`;
 
@@ -1124,8 +1199,40 @@ function ReportesView({ pedidos, historico, onGuardarHistorico }) {
     .map(([nombre, valor]) => ({ nombre, valor }))
     .sort((a, b) => b.valor - a.valor);
 
+  const delDia = pedidos.filter((p) => p.fecha === diaSel);
+  const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
+  const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
+  delDia.forEach((p) => {
+    if (p.pagado > 0) porMetodo[p.metodoPago || "efectivo"] += p.pagado;
+  });
+  const cobradoDia = porMetodo.efectivo + porMetodo.tarjeta + porMetodo.transferencia;
+
   return (
     <div>
+      <div className="af-section-title">¿Cuánto se hizo un día?</div>
+      <div className="af-card p-4 mb-5">
+        <input type="date" className="af-input mb-3" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
+        {delDia.length === 0 ? (
+          <div className="af-hint">Sin pedidos el {fmtDateHuman(diaSel)}.</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <StatPill label={`Pedido${delDia.length === 1 ? "" : "s"}`} value={delDia.length} />
+              <StatPill label="Vendido" value={money(vendidoDia)} />
+              <StatPill label="Cobrado" value={money(cobradoDia)} warn={cobradoDia < vendidoDia} />
+            </div>
+            <div className="af-pago-box">
+              <div className="af-pago-line"><span>💵 Efectivo</span><span>{money(porMetodo.efectivo)}</span></div>
+              <div className="af-pago-line"><span>💳 Tarjeta</span><span>{money(porMetodo.tarjeta)}</span></div>
+              <div className="af-pago-line"><span>🏦 Transferencia</span><span>{money(porMetodo.transferencia)}</span></div>
+            </div>
+            {cobradoDia < vendidoDia && (
+              <div className="af-hint mt-2">Faltan {money(vendidoDia - cobradoDia)} por cobrar de ese día.</div>
+            )}
+          </>
+        )}
+      </div>
+
       <div className="af-year-switch">
         <button className="af-icon-btn" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></button>
         <span className="af-year-label">{anio}</span>
@@ -1533,7 +1640,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 <input
                   className="af-input"
                   value={ex.unidad}
-                  placeholder="unidad (ej. pieza)"
+                  placeholder="unidad: pieza, bolsa, kg..."
                   onChange={(e) => {
                     const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, unidad: e.target.value } : x));
                     setDraft({ ...draft, extras });
@@ -1984,7 +2091,10 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       .join("")
       .toUpperCase();
 
-  const total = computeTotal(form.items);
+  const totalItems = computeTotal(form.items);
+  const envioNum = envioDe(form);
+  const ivaNum = ivaDe(form);
+  const total = totalItems + envioNum + ivaNum;
   const pagadoNum = parseFloat(form.pagado) || 0;
   const saldo = Math.max(total - pagadoNum, 0);
 
@@ -2003,7 +2113,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       ...prev,
       items: [
         ...prev.items,
-        { id: uid(), tipo: "extra", extraId: ex.id, nombre: ex.nombre, cantidad: 1, precio: ex.precio, subtotal: calcExtraSubtotal(1, ex.precio) },
+        { id: uid(), tipo: "extra", extraId: ex.id, nombre: ex.nombre, unidad: ex.unidad || "pieza", cantidad: 1, precio: ex.precio, subtotal: calcExtraSubtotal(1, ex.precio) },
       ],
     }));
   };
@@ -2013,7 +2123,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       addPaella({ id: producto.id, nombre: producto.nombre, precioKg: producto.precio });
       if (cantidad !== 1) updateKgDespuesDeAgregar(cantidad);
     } else {
-      addExtra({ id: producto.id, nombre: producto.nombre, precio: producto.precio });
+      addExtra({ id: producto.id, nombre: producto.nombre, precio: producto.precio, unidad: producto.unidad });
       if (cantidad !== 1) updateCantidadDespuesDeAgregar(cantidad);
     }
   };
@@ -2164,8 +2274,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     doc.setFontSize(10);
     form.items.forEach((it) => {
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
-      const cant = it.tipo === "paella" ? fmtKg(it.kg) : `x${it.cantidad}`;
-      const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : money(it.precio);
+      const cant = it.tipo === "paella" ? fmtKg(it.kg) : it.unidad === "kg" ? fmtKg(it.cantidad) : `x${it.cantidad}`;
+      const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
       // Para paellas con extras, la fila muestra solo la base; los extras van
       // en renglones propios para que la suma cuadre a la vista.
       const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
@@ -2187,6 +2297,19 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         y += 7.5;
       });
     });
+
+    if (envioNum > 0) {
+      doc.setTextColor(43, 32, 21);
+      doc.text("Envío a domicilio", margin + 3, y);
+      doc.text(money(envioNum), pageWidth - margin - 3, y, { align: "right" });
+      y += 7.5;
+    }
+    if (ivaNum > 0) {
+      doc.setTextColor(43, 32, 21);
+      doc.text("IVA (16%)", margin + 3, y);
+      doc.text(money(ivaNum), pageWidth - margin - 3, y, { align: "right" });
+      y += 7.5;
+    }
 
     y += 3;
     doc.setDrawColor(233, 220, 192);
@@ -2355,7 +2478,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 <div className="af-items-col-nombre">
                   <div className="af-item-nombre">{it.tipo === "paella" ? it.paellaNombre : it.nombre}</div>
                   <div className="af-ink-soft text-sm">
-                    {it.tipo === "paella" ? money(it.precioKg) + "/kg" : money(it.precio) + " c/u"}
+                    {it.tipo === "paella" || it.unidad === "kg" ? money(it.tipo === "paella" ? it.precioKg : it.precio) + "/kg" : money(it.precio) + " c/u"}
                   </div>
                   {it.tipo === "paella" && (it.extras || []).map((e) => (
                     <div key={e.id} className="af-extra-line">
@@ -2393,7 +2516,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 </div>
                 <Stepper
                   value={it.tipo === "paella" ? it.kg : it.cantidad}
-                  min={it.tipo === "paella" ? 0.5 : 1}
+                  min={it.tipo === "paella" || it.unidad === "kg" ? 0.5 : 1}
                   step={1}
                   onChange={(v) => (it.tipo === "paella" ? updateKg(it.id, v) : updateCantidad(it.id, v))}
                 />
@@ -2407,11 +2530,35 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           <Plus size={16} /> Agregar ítem
         </button>
         {form.items.length > 0 && (
-          <div className="af-total-row">
-            <span>Total</span>
-            <span className="af-total-big">{money(total)}</span>
-          </div>
+          <>
+            {(envioNum > 0 || ivaNum > 0) && (
+              <div className="af-total-row af-total-row-sub">
+                <span>Platillos</span>
+                <span>{money(totalItems)}</span>
+              </div>
+            )}
+            {envioNum > 0 && (
+              <div className="af-total-row af-total-row-sub">
+                <span>Envío</span>
+                <span>{money(envioNum)}</span>
+              </div>
+            )}
+            {ivaNum > 0 && (
+              <div className="af-total-row af-total-row-sub">
+                <span>IVA (16%)</span>
+                <span>{money(ivaNum)}</span>
+              </div>
+            )}
+            <div className="af-total-row">
+              <span>Total</span>
+              <span className="af-total-big">{money(total)}</span>
+            </div>
+          </>
         )}
+        <label className="af-check-row af-check-row-small mt-2">
+          <input type="checkbox" checked={!!form.iva} onChange={(e) => setForm((p) => ({ ...p, iva: e.target.checked }))} />
+          <span>Agregar IVA (16%) — solo si el cliente lo pide</span>
+        </label>
       </div>
 
       {mostrarPicker && (
@@ -2435,7 +2582,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </div>
         {form.entrega && (
           <div className="mt-2">
-            <div className="af-mini-label">Ubicación</div>
+            <div className="af-envio-row">
+              <span className="af-mini-label" style={{ marginBottom: 0 }}>Costo de envío</span>
+              <NumberField value={parseFloat(form.envio) || 0} min={0} className="af-input af-input-small" onChange={(v) => setForm((p) => ({ ...p, envio: String(v) }))} />
+            </div>
+            <div className="af-mini-label mt-2">Ubicación</div>
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
             <div className="af-mini-label mt-2">Referencias (opcional)</div>
             <input
@@ -2458,6 +2609,20 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <NumberField value={pagadoNum} min={0} className="af-input af-input-small" onChange={(v) => setForm((p) => ({ ...p, pagado: String(v) }))} />
             </div>
             <div className="af-pago-line af-pago-saldo"><span>Saldo pendiente</span><span>{money(saldo)}</span></div>
+            {pagadoNum > 0 && (
+              <div className="af-metodo-row">
+                {[["efectivo", "Efectivo"], ["tarjeta", "Tarjeta"], ["transferencia", "Transferencia"]].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={"af-metodo-pill" + ((form.metodoPago || "efectivo") === id ? " active" : "")}
+                    onClick={() => setForm((p) => ({ ...p, metodoPago: id }))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             {saldo > 0 && total > 0 && (
               <button className="af-btn-chip w-full mt-2" style={{ justifyContent: "center", display: "flex" }} onClick={() => setForm((p) => ({ ...p, pagado: String(total) }))}>
                 <Wallet size={14} /> Marcar pagado completo
@@ -2764,6 +2929,9 @@ export default function App() {
       entrega: pedido.entrega,
       direccion: pedido.direccion,
       ubicacion: pedido.ubicacion || "",
+      envio: String(pedido.envio || 0),
+      iva: !!pedido.iva,
+      metodoPago: pedido.metodoPago || "efectivo",
       pagado: String(pedido.pagado),
       estado: pedido.estado || "pendiente",
       notas: pedido.notas,
@@ -2791,6 +2959,8 @@ export default function App() {
       entrega: presupuesto.entrega,
       direccion: presupuesto.direccion,
       ubicacion: presupuesto.ubicacion || "",
+      envio: String(presupuesto.envio || 0),
+      iva: !!presupuesto.iva,
       pagado: "0",
       estado: "pendiente",
       notas: presupuesto.notas,
@@ -2812,7 +2982,7 @@ export default function App() {
     if (form.items.length === 0) { setError("Añade al menos una paella o un platillo."); return; }
     if (form.entrega && !form.ubicacion.trim() && !form.direccion.trim()) { setError("Agrega la ubicación o una referencia para la entrega."); return; }
 
-    const total = computeTotal(form.items);
+    const total = totalDe(form);
     const pagado = parseFloat(form.pagado) || 0;
     const saldo = Math.max(total - pagado, 0);
 
@@ -2829,9 +2999,12 @@ export default function App() {
       entrega: form.entrega,
       direccion: form.entrega ? form.direccion.trim() : "",
       ubicacion: form.entrega ? form.ubicacion.trim() : "",
+      envio: envioDe(form),
+      iva: !!form.iva,
       pagado,
       saldo,
       estadoPago: estadoPagoDe(pagado, total),
+      metodoPago: form.metodoPago || "efectivo",
       estado: form.estado || "pendiente",
       notas: form.notas,
       terminos: form.terminos,
@@ -2875,7 +3048,7 @@ export default function App() {
     if (!form.clienteId) { setError("Selecciona o crea un cliente para continuar."); return; }
     if (form.items.length === 0) { setError("Añade al menos una paella o un platillo."); return; }
 
-    const total = computeTotal(form.items);
+    const total = totalDe(form);
     const presupuestoObj = {
       id: form.pedidoId || uid(),
       folio: (form.pedidoId && presupuestos.find((p) => p.id === form.pedidoId)?.folio) || siguienteFolio(presupuestos),
@@ -2889,6 +3062,8 @@ export default function App() {
       entrega: form.entrega,
       direccion: form.entrega ? form.direccion.trim() : "",
       ubicacion: form.entrega ? form.ubicacion.trim() : "",
+      envio: envioDe(form),
+      iva: !!form.iva,
       notas: form.notas,
       terminos: form.terminos,
       convertido: false,
@@ -2924,7 +3099,7 @@ export default function App() {
     if (form.items.length === 0) { setError("Añade al menos una paella o un platillo."); return; }
     if (form.entrega && !form.ubicacion.trim() && !form.direccion.trim()) { setError("Agrega la ubicación o una referencia para la entrega."); return; }
 
-    const total = computeTotal(form.items);
+    const total = totalDe(form);
     const nuevoPedido = {
       id: uid(),
       folio: siguienteFolio(pedidos),
@@ -2938,9 +3113,12 @@ export default function App() {
       entrega: form.entrega,
       direccion: form.entrega ? form.direccion.trim() : "",
       ubicacion: form.entrega ? form.ubicacion.trim() : "",
+      envio: envioDe(form),
+      iva: !!form.iva,
       pagado: 0,
       saldo: total,
       estadoPago: "pendiente",
+      metodoPago: "efectivo",
       estado: "pendiente",
       notas: form.notas,
       terminos: form.terminos,
@@ -2957,6 +3135,40 @@ export default function App() {
 
     irAEditar(nuevoPedido);
     showToast(`Convertido en pedido ${fmtFolio(nuevoPedido.folio)}`);
+  };
+
+  // Acepta un presupuesto directo desde su tarjeta: lo convierte en pedido
+  // pendiente (aparece en Agenda) y marca el presupuesto como convertido.
+  const aceptarPresupuesto = (pr) => {
+    const nuevoPedido = {
+      id: uid(),
+      folio: siguienteFolio(pedidos),
+      clienteId: pr.clienteId,
+      clienteNombre: pr.clienteNombre,
+      clienteTelefono: pr.clienteTelefono,
+      items: pr.items,
+      total: pr.total,
+      fecha: pr.fecha,
+      hora: pr.hora,
+      entrega: pr.entrega,
+      direccion: pr.direccion || "",
+      ubicacion: pr.ubicacion || "",
+      envio: pr.envio || 0,
+      iva: !!pr.iva,
+      pagado: 0,
+      saldo: pr.total,
+      estadoPago: "pendiente",
+      metodoPago: "efectivo",
+      estado: "pendiente",
+      notas: pr.notas,
+      terminos: pr.terminos,
+      createdAt: Date.now(),
+    };
+    const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || []), "consumir");
+    guardarConfig({ ...config, desechables });
+    guardarPedidos([nuevoPedido, ...pedidos]);
+    guardarPresupuestos(presupuestos.map((x) => (x.id === pr.id ? { ...x, convertido: true, pedidoId: nuevoPedido.id } : x)));
+    showToast(`Aceptado: ya es el pedido ${fmtFolio(nuevoPedido.folio, "#")}`);
   };
 
   // Restaura un respaldo completo: reemplaza estado y persistencia de todo.
@@ -3095,7 +3307,7 @@ export default function App() {
             />
           )}
           {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} />}
-          {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} />}
+          {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} />}
           {view === "ajustes" && (
             <AjustesView
               config={config}
@@ -3251,6 +3463,17 @@ const AZAFRAN_CSS = `
 .af-chip-neutral { background: var(--azul-soft); color: var(--azul); }
 .af-chip-gold { background: var(--gold-soft); color: #7A5A1E; }
 .af-chip-olive { background: var(--olive-soft); color: var(--olive); }
+.af-chip-domicilio { background: var(--wine-soft); color: var(--wine); }
+.af-chip-wine-strong { background: var(--wine); color: white; }
+
+/* Botón para desplegar/ocultar secciones secundarias (entregados, paelleras) */
+.af-colapsable-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-soft); cursor: pointer; font-family: 'Space Grotesk', sans-serif; }
+.af-colapsable-btn:hover { border-color: var(--gold); }
+
+/* Método de pago */
+.af-metodo-row { display: flex; gap: 6px; margin-top: 10px; }
+.af-metodo-pill { flex: 1; padding: 8px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer; }
+.af-metodo-pill.active { background: var(--olive); border-color: var(--olive); color: white; }
 
 .af-badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
 .af-badge-olive { background: var(--olive-soft); color: var(--olive); }
@@ -3322,6 +3545,8 @@ const AZAFRAN_CSS = `
 .af-stepper-input { width: 42px; text-align: center; border: none; background: none; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
 
 .af-total-row { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; }
+.af-total-row-sub { padding-top: 8px; font-size: 13.5px; color: var(--ink-soft); }
+.af-envio-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
 .af-total-big { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px; color: var(--wine); }
 
 .af-toggle-btn { flex: 1; padding: 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px; color: var(--ink-soft); }
