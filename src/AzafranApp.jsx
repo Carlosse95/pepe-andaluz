@@ -40,6 +40,11 @@ const DEFAULT_CONFIG = {
     { id: "tarta_chica", nombre: "Tarta de Santiago chica", unidad: "pieza", precio: 180, categoria: "postre" },
     { id: "tarta_grande", nombre: "Tarta de Santiago grande", unidad: "pieza", precio: 320, categoria: "postre" },
   ],
+  extrasPaella: [
+    { id: "extra_langosta", nombre: "Langosta", precio: 250 },
+    { id: "extra_chorizo", nombre: "Chorizo", precio: 80 },
+    { id: "extra_camaron", nombre: "Camarón extra", precio: 120 },
+  ],
   desechables: [
     { id: "env_chico", nombre: "Envase chico", kgMin: 0, kgMax: 2, stock: 30, minimo: 10 },
     { id: "env_mediano", nombre: "Envase mediano", kgMin: 2, kgMax: 4, stock: 30, minimo: 10 },
@@ -84,7 +89,13 @@ const fmtDateHuman = (iso) => {
 
 const esHoy = (iso) => iso === todayISO();
 
-const calcPaellaSubtotal = (kg, precioKg) => kg * precioKg;
+// El subtotal de una paella = kilos × precio/kg + sus extras (langosta, chorizo...).
+// Los extras no tocan el precio por kg: se suman aparte.
+const sumaExtras = (extras) => (extras || []).reduce((a, e) => a + e.cantidad * e.precio, 0);
+const calcPaellaSubtotal = (kg, precioKg, extras) => kg * precioKg + sumaExtras(extras);
+// Texto corto de los extras de una paella: " + Langosta ×2 + Chorizo"
+const resumenExtras = (it) =>
+  (it.extras || []).map((e) => ` + ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""}`).join("");
 const calcExtraSubtotal = (cantidad, precio) => cantidad * precio;
 
 const computeTotal = (items) => items.reduce((acc, it) => acc + it.subtotal, 0);
@@ -128,8 +139,14 @@ const mensajeWhatsApp = (datos, modo) => {
   lineas.push(datos.entrega ? "🚚 Entrega a domicilio" : "🏠 Para recoger en el local");
   lineas.push("");
   datos.items.forEach((it) => {
-    if (it.tipo === "paella") lineas.push(`• ${it.paellaNombre} — ${fmtKg(it.kg)} — ${money(it.subtotal)}`);
-    else lineas.push(`• ${it.nombre} × ${it.cantidad} — ${money(it.subtotal)}`);
+    if (it.tipo === "paella") {
+      lineas.push(`• ${it.paellaNombre} — ${fmtKg(it.kg)} — ${money(it.kg * it.precioKg)}`);
+      (it.extras || []).forEach((e) => {
+        lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""} — ${money(e.precio * e.cantidad)}`);
+      });
+    } else {
+      lineas.push(`• ${it.nombre} × ${it.cantidad} — ${money(it.subtotal)}`);
+    }
   });
   lineas.push("");
   const total = computeTotal(datos.items);
@@ -429,7 +446,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado }) {
         {pedido.items.map((it) => (
           <li key={it.id}>
             {it.tipo === "paella"
-              ? `${it.paellaNombre} — ${fmtKg(it.kg)}${it.enPaellera ? " · paellera" : ""}`
+              ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}${it.enPaellera ? " · paellera" : ""}`
               : `${it.nombre} × ${it.cantidad}`}
           </li>
         ))}
@@ -751,7 +768,7 @@ function PresupuestoCard({ presupuesto, onClick }) {
       <ul className="af-resumen-lista">
         {presupuesto.items.map((it) => (
           <li key={it.id}>
-            {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}` : `${it.nombre} × ${it.cantidad}`}
+            {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}` : `${it.nombre} × ${it.cantidad}`}
           </li>
         ))}
       </ul>
@@ -1370,6 +1387,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     const limpio = {
       paellas: draft.paellas.filter((p) => p.nombre.trim().length > 0),
       extras: draft.extras.filter((e) => e.nombre.trim().length > 0),
+      extrasPaella: (draft.extrasPaella || []).filter((e) => e.nombre.trim().length > 0),
       desechables: (draft.desechables || []).filter((d) => d.nombre.trim().length > 0),
     };
     onGuardarConfig(limpio);
@@ -1553,6 +1571,47 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             >
               <Plus size={20} />
               <span>Añadir platillo</span>
+            </button>
+          </div>
+
+          <div className="af-section-title">Extras de paella <span className="af-ink-soft">(se suman a la paella sin cambiar su precio/kg)</span></div>
+          <div className="af-menu-grid mb-5">
+            {(draft.extrasPaella || []).map((ex, i) => (
+              <div key={ex.id} className="af-menu-card">
+                <div className="af-menu-card-top">
+                  <input
+                    className="af-input af-menu-name"
+                    value={ex.nombre}
+                    placeholder="Ej. Langosta"
+                    onChange={(e) => {
+                      const extrasPaella = draft.extrasPaella.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
+                      setDraft({ ...draft, extrasPaella });
+                    }}
+                  />
+                  <button className="af-icon-btn" onClick={() => setDraft({ ...draft, extrasPaella: draft.extrasPaella.filter((_, xi) => xi !== i) })}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                <div className="af-menu-card-row">
+                  <NumberField
+                    value={ex.precio}
+                    min={0}
+                    className="af-input af-menu-price"
+                    onChange={(v) => {
+                      const extrasPaella = draft.extrasPaella.map((x, xi) => (xi === i ? { ...x, precio: v } : x));
+                      setDraft({ ...draft, extrasPaella });
+                    }}
+                  />
+                  <span className="af-price-suffix">$ por porción</span>
+                </div>
+              </div>
+            ))}
+            <button
+              className="af-add-card"
+              onClick={() => setDraft({ ...draft, extrasPaella: [...(draft.extrasPaella || []), { id: uid(), nombre: "", precio: 0 }] })}
+            >
+              <Plus size={20} />
+              <span>Añadir extra</span>
             </button>
           </div>
         </div>
@@ -1884,6 +1943,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const [confirmarBorrar, setConfirmarBorrar] = useState(false);
   const [mostrarClientes, setMostrarClientes] = useState(false);
   const [mostrarPicker, setMostrarPicker] = useState(false);
+  const [extrasAbierto, setExtrasAbierto] = useState(null); // id del ítem paella con el menú de extras abierto
 
   const term = busqueda.trim().toLowerCase();
   const sugeridos = (
@@ -1933,7 +1993,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       ...prev,
       items: [
         ...prev.items,
-        { id: uid(), tipo: "paella", paellaId: p.id, paellaNombre: p.nombre, kg: 1, precioKg: p.precioKg, subtotal: calcPaellaSubtotal(1, p.precioKg), enPaellera: false, paelleraDevuelta: false },
+        { id: uid(), tipo: "paella", paellaId: p.id, paellaNombre: p.nombre, kg: 1, precioKg: p.precioKg, extras: [], subtotal: calcPaellaSubtotal(1, p.precioKg), enPaellera: false, paelleraDevuelta: false },
       ],
     }));
   };
@@ -1964,7 +2024,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     setForm((prev) => {
       const items = [...prev.items];
       const last = items[items.length - 1];
-      items[items.length - 1] = { ...last, kg, subtotal: calcPaellaSubtotal(kg, last.precioKg) };
+      items[items.length - 1] = { ...last, kg, subtotal: calcPaellaSubtotal(kg, last.precioKg, last.extras) };
       return { ...prev, items };
     });
   };
@@ -1980,7 +2040,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const updateKg = (itemId, kg) => {
     setForm((prev) => ({
       ...prev,
-      items: prev.items.map((it) => (it.id === itemId ? { ...it, kg, subtotal: calcPaellaSubtotal(kg, it.precioKg) } : it)),
+      items: prev.items.map((it) => (it.id === itemId ? { ...it, kg, subtotal: calcPaellaSubtotal(kg, it.precioKg, it.extras) } : it)),
     }));
   };
 
@@ -2000,6 +2060,38 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
   const removeItem = (itemId) => {
     setForm((prev) => ({ ...prev, items: prev.items.filter((it) => it.id !== itemId) }));
+  };
+
+  // Extras de paella: se anclan a una paella específica del pedido.
+  const conExtrasActualizados = (it, extras) => ({ ...it, extras, subtotal: calcPaellaSubtotal(it.kg, it.precioKg, extras) });
+
+  const addExtraAPaella = (itemId, ex) => {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => {
+        if (it.id !== itemId) return it;
+        const actuales = it.extras || [];
+        const ya = actuales.find((e) => e.extraId === ex.id);
+        const extras = ya
+          ? actuales.map((e) => (e.extraId === ex.id ? { ...e, cantidad: e.cantidad + 1 } : e))
+          : [...actuales, { id: uid(), extraId: ex.id, nombre: ex.nombre, precio: ex.precio, cantidad: 1 }];
+        return conExtrasActualizados(it, extras);
+      }),
+    }));
+  };
+
+  // Sube o baja la cantidad de un extra (delta ±1); al llegar a 0 se quita.
+  const cambiarCantidadExtra = (itemId, extraLineaId, delta) => {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => {
+        if (it.id !== itemId) return it;
+        const extras = (it.extras || [])
+          .map((e) => (e.id === extraLineaId ? { ...e, cantidad: e.cantidad + delta } : e))
+          .filter((e) => e.cantidad > 0);
+        return conExtrasActualizados(it, extras);
+      }),
+    }));
   };
 
   const descargarPDF = () => {
@@ -2074,14 +2166,26 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
       const cant = it.tipo === "paella" ? fmtKg(it.kg) : `x${it.cantidad}`;
       const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : money(it.precio);
+      // Para paellas con extras, la fila muestra solo la base; los extras van
+      // en renglones propios para que la suma cuadre a la vista.
+      const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
       doc.setTextColor(43, 32, 21);
       doc.text(nombre, margin + 3, y);
       doc.setTextColor(138, 120, 96);
       doc.text(cant, pageWidth - margin - 82, y);
       doc.text(unitario, pageWidth - margin - 38, y, { align: "right" });
       doc.setTextColor(43, 32, 21);
-      doc.text(money(it.subtotal), pageWidth - margin - 3, y, { align: "right" });
+      doc.text(money(subtotalFila), pageWidth - margin - 3, y, { align: "right" });
       y += 7.5;
+      (it.extras || []).forEach((e) => {
+        doc.setTextColor(138, 120, 96);
+        doc.text(`   + Extra ${e.nombre}`, margin + 3, y);
+        doc.text(`x${e.cantidad}`, pageWidth - margin - 82, y);
+        doc.text(money(e.precio), pageWidth - margin - 38, y, { align: "right" });
+        doc.setTextColor(43, 32, 21);
+        doc.text(money(e.precio * e.cantidad), pageWidth - margin - 3, y, { align: "right" });
+        y += 7.5;
+      });
     });
 
     y += 3;
@@ -2253,6 +2357,33 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   <div className="af-ink-soft text-sm">
                     {it.tipo === "paella" ? money(it.precioKg) + "/kg" : money(it.precio) + " c/u"}
                   </div>
+                  {it.tipo === "paella" && (it.extras || []).map((e) => (
+                    <div key={e.id} className="af-extra-line">
+                      <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
+                      <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><Minus size={12} /></button>
+                      <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><Plus size={12} /></button>
+                    </div>
+                  ))}
+                  {it.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
+                    <div className="af-extra-wrap">
+                      <button className="af-btn-ghost af-extra-btn" onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
+                        <Plus size={13} className="inline mr-1" /> Extra
+                      </button>
+                      {extrasAbierto === it.id && (
+                        <>
+                          <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
+                          <div className="af-extra-menu af-combo-wrap">
+                            {(config.extrasPaella || []).map((ex) => (
+                              <div key={ex.id} className="af-extra-menu-item" onClick={() => { addExtraAPaella(it.id, ex); setExtrasAbierto(null); }}>
+                                <span>{ex.nombre}</span>
+                                <span className="af-ink-soft">{money(ex.precio)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   {it.tipo === "paella" && modo === "pedido" && (
                     <label className="af-check-row af-check-row-small">
                       <input type="checkbox" checked={it.enPaellera} onChange={(e) => updateEnPaellera(it.id, e.target.checked)} />
@@ -3273,6 +3404,17 @@ const AZAFRAN_CSS = `
 .af-picker-form { padding: 2px; }
 .af-picker-back-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13px; padding: 0 0 14px; cursor: pointer; }
 .af-add-card-row { flex-direction: row; min-height: unset; padding: 12px; margin-top: 8px; }
+
+/* Extras de paella dentro del pedido */
+.af-extra-line { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--olive); font-weight: 600; background: var(--olive-soft); border-radius: 999px; padding: 2px 6px 2px 10px; margin: 3px 6px 0 0; }
+.af-extra-mini-btn { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(91,112,82,0.35); background: var(--surface); color: var(--olive); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+.af-extra-mini-btn:hover { background: var(--olive); color: white; }
+.af-extra-wrap { position: relative; display: inline-block; }
+.af-extra-btn { font-size: 12.5px; padding: 4px 0; }
+.af-extra-menu { position: absolute; left: 0; top: 100%; min-width: 210px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 24px -8px rgba(36,27,20,0.3); overflow: hidden; }
+.af-extra-menu-item { display: flex; justify-content: space-between; gap: 14px; padding: 9px 13px; font-size: 13.5px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--line); }
+.af-extra-menu-item:last-child { border-bottom: none; }
+.af-extra-menu-item:hover { background: var(--gold-soft); }
 
 /* Panel de usuarios */
 .af-usuario-row { display: flex; align-items: center; gap: 10px; }
