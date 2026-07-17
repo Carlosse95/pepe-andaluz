@@ -27,7 +27,8 @@
       "Bash(git commit -m 'Inventario de ingredientes con receta por kg de paella; datos de pago para anticipos en WhatsApp y PDF *)",
       "Bash(git commit -m 'Inventario v2: presentaciones de compra \\(bolsa 1.5 kg\\) y uso por kg en otra unidad \\(gramos/piezas\\) con conversión automática *)",
       "Bash(node -e \"const normNombre = \\(s\\) => \\(s || ''\\).toLowerCase\\(\\).normalize\\('NFD'\\).replace\\(/[̀-ͯ]/g, ''\\).replace\\(/\\\\s+/g, ' '\\).trim\\(\\); console.log\\(normNombre\\('  María  LÓPEZ '\\)\\)\")",
-      "Bash(git commit -m 'Piezas por orden en mensajes, anticipo 50% con concepto, sincronizar cliente en pedidos, agenda por mes, contador y anti-duplicados de clientes, empaques por platillo *)"
+      "Bash(git commit -m 'Piezas por orden en mensajes, anticipo 50% con concepto, sincronizar cliente en pedidos, agenda por mes, contador y anti-duplicados de clientes, empaques por platillo *)",
+      "Bash(git commit -m 'Envases desechables con unidad \\(kg/piezas/litros\\) y rango: platillos con empaque '\\\\''rango'\\\\'' eligen el envase según piezas pedidas *)"
     ]
   }
 }

@@ -286,25 +286,45 @@ const emptyForm = () => ({
   presupuestoPedidoId: null,
 });
 
-// Calcula cuántos envases de cada tipo consumen las paellas de un pedido
-// que NO llevan paellera (solo esas necesitan desechable).
+// Unidades disponibles para definir los rangos de un envase desechable.
+const UNIDADES_ENVASE = [
+  { id: "kg", label: "kilos", sufijo: "kg" },
+  { id: "piezas", label: "piezas", sufijo: "pzas" },
+  { id: "litros", label: "litros", sufijo: "L" },
+];
+
+// Migra envases guardados antes de que tuvieran "unidad" (usaban solo kgMin/kgMax).
+const normalizarDesechable = (d) => ({
+  ...d,
+  unidad: d.unidad || "kg",
+  rangoMin: d.rangoMin != null ? d.rangoMin : d.kgMin || 0,
+  rangoMax: d.rangoMax != null ? d.rangoMax : d.kgMax != null ? d.kgMax : 999,
+});
+
+// Calcula cuántos envases de cada tipo consume un pedido:
+// - Paellas sin paellera: el envase cuyo rango en KILOS incluya los kilos de la paella.
+// - Platillos con empaque "pieza": un envase por cada unidad pedida.
+// - Platillos con empaque "rango": el envase cuyo rango en PIEZAS incluya el total pedido
+//   (ej. 6 piezas → contenedor chico, 7 a 24 → contenedor grande).
 const calcularConsumo = (items, desechables, extrasCatalogo) => {
   const consumo = {};
+  const envases = (desechables || []).map(normalizarDesechable);
   (items || []).forEach((it) => {
     if (it.tipo === "paella" && !it.enPaellera) {
-      const tier = (desechables || []).find((d) => it.kg > d.kgMin && it.kg <= d.kgMax);
+      const tier = envases.find((d) => d.unidad === "kg" && it.kg > d.rangoMin && it.kg <= d.rangoMax);
       if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
     }
     // Platillos con empaque vinculado (ej. alioli en su envase, croquetas
-    // en contenedor chico si es 1 orden o grande si son varias).
+    // en el contenedor que corresponda según cuántas piezas se pidieron).
     if (it.tipo === "extra") {
       const cat = (extrasCatalogo || []).find((e) => e.id === it.extraId);
       if (!cat || !cat.empaqueTipo || cat.empaqueTipo === "ninguno") return;
       if (cat.empaqueTipo === "pieza" && cat.empaqueEnvaseId) {
         consumo[cat.empaqueEnvaseId] = (consumo[cat.empaqueEnvaseId] || 0) + Math.ceil(it.cantidad);
-      } else if (cat.empaqueTipo === "orden") {
-        const envaseId = it.cantidad >= 2 ? (cat.empaqueEnvaseGrandeId || cat.empaqueEnvaseId) : cat.empaqueEnvaseId;
-        if (envaseId) consumo[envaseId] = (consumo[envaseId] || 0) + 1;
+      } else if (cat.empaqueTipo === "rango") {
+        const totalPiezas = it.piezasPorUnidad > 0 ? it.cantidad * it.piezasPorUnidad : it.cantidad;
+        const tier = envases.find((d) => d.unidad === "piezas" && totalPiezas > d.rangoMin && totalPiezas <= d.rangoMax);
+        if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
       }
     }
   });
@@ -1652,7 +1672,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       paellas: draft.paellas.filter((p) => p.nombre.trim().length > 0),
       extras: draft.extras.filter((e) => e.nombre.trim().length > 0),
       extrasPaella: (draft.extrasPaella || []).filter((e) => e.nombre.trim().length > 0),
-      desechables: (draft.desechables || []).filter((d) => d.nombre.trim().length > 0),
+      desechables: (draft.desechables || []).filter((d) => d.nombre.trim().length > 0).map(normalizarDesechable),
       ingredientes: (draft.ingredientes || []).filter((i) => i.nombre.trim().length > 0),
       pago: draft.pago || { banco: "", titular: "", clabe: "" },
     };
@@ -1875,9 +1895,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 >
                   <option value="ninguno">Sin envase</option>
                   <option value="pieza">Un envase por cada unidad</option>
-                  <option value="orden">Uno por pedido (y otro si llevan 2 o más)</option>
+                  <option value="rango">Según el total de piezas (rangos en Envases desechables)</option>
                 </select>
-                {(ex.empaqueTipo === "pieza" || ex.empaqueTipo === "orden") && (
+                {ex.empaqueTipo === "pieza" && (
                   <select
                     className="af-input"
                     value={ex.empaqueEnvaseId || ""}
@@ -1886,22 +1906,17 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       setDraft({ ...draft, extras });
                     }}
                   >
-                    <option value="">{ex.empaqueTipo === "orden" ? "Envase si pide 1..." : "Elige el envase..."}</option>
+                    <option value="">Elige el envase...</option>
                     {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
                   </select>
                 )}
-                {ex.empaqueTipo === "orden" && (
-                  <select
-                    className="af-input"
-                    value={ex.empaqueEnvaseGrandeId || ""}
-                    onChange={(e) => {
-                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueEnvaseGrandeId: e.target.value } : x));
-                      setDraft({ ...draft, extras });
-                    }}
-                  >
-                    <option value="">Envase si pide 2 o más...</option>
-                    {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
-                  </select>
+                {ex.empaqueTipo === "rango" && (
+                  <div className="af-hint">
+                    Se usará el envase (medido en piezas) cuyo rango incluya el total de piezas del pedido
+                    ({ex.piezasPorUnidad > 0 ? `${ex.piezasPorUnidad} por orden` : "define las piezas por orden arriba"}).
+                    Configura esos envases en <strong>Inventario → Envases desechables</strong>.
+                  </div>
+                )}
                 )}
               </div>
             ))}
@@ -2075,83 +2090,81 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
           <div className="af-section-title">Envases desechables</div>
           <div className="af-hint mb-3">
-            Al guardar un pedido, cada paella que NO lleve paellera descuenta un envase del tamaño que le corresponda según sus kilos.
+            Cada envase cubre un rango. Los envases en <strong>kilos</strong> se usan para las paellas
+            que no llevan paellera; los envases en <strong>piezas</strong> se vinculan a un platillo
+            (Menú → ese platillo → Empaque) y la app elige el que corresponda según cuántas piezas se pidan.
           </div>
           <div className="af-menu-grid">
-            {(draft.desechables || []).map((d, i) => (
-              <div key={d.id} className="af-menu-card">
-                <div className="af-menu-card-top">
-                  <input
-                    className="af-input af-menu-name"
-                    value={d.nombre}
-                    placeholder="Nombre del envase"
-                    onChange={(e) => {
-                      const desechables = draft.desechables.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
-                      setDraft({ ...draft, desechables });
-                    }}
-                  />
-                  <button className="af-icon-btn" onClick={() => setDraft({ ...draft, desechables: draft.desechables.filter((_, xi) => xi !== i) })}>
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-                <div className="af-menu-card-row">
-                  <span className="af-ink-soft text-sm">De</span>
-                  <NumberField
-                    value={d.kgMin}
-                    min={0}
-                    className="af-input af-menu-kgrange"
-                    onChange={(v) => {
-                      const desechables = draft.desechables.map((x, xi) => (xi === i ? { ...x, kgMin: v } : x));
-                      setDraft({ ...draft, desechables });
-                    }}
-                  />
-                  <span className="af-ink-soft text-sm">a</span>
-                  <NumberField
-                    value={d.kgMax}
-                    min={0}
-                    className="af-input af-menu-kgrange"
-                    onChange={(v) => {
-                      const desechables = draft.desechables.map((x, xi) => (xi === i ? { ...x, kgMax: v } : x));
-                      setDraft({ ...draft, desechables });
-                    }}
-                  />
-                  <span className="af-ink-soft text-sm">kg</span>
-                </div>
-                <div className="af-menu-card-row">
-                  <div className="flex-1">
-                    <div className="af-mini-label">Stock actual</div>
-                    <NumberField
-                      value={d.stock}
-                      min={0}
-                      className={"af-input" + (d.stock <= d.minimo ? " af-input-warn" : "")}
-                      onChange={(v) => {
-                        const desechables = draft.desechables.map((x, xi) => (xi === i ? { ...x, stock: v } : x));
-                        setDraft({ ...draft, desechables });
-                      }}
+            {(draft.desechables || []).map(normalizarDesechable).map((d, i) => {
+              const uInfo = UNIDADES_ENVASE.find((u) => u.id === d.unidad) || UNIDADES_ENVASE[0];
+              const setD = (cambios) => {
+                const desechables = draft.desechables.map((x, xi) => (xi === i ? { ...normalizarDesechable(x), ...cambios } : x));
+                setDraft({ ...draft, desechables });
+              };
+              return (
+                <div key={d.id} className="af-menu-card">
+                  <div className="af-menu-card-top">
+                    <input
+                      className="af-input af-menu-name"
+                      value={d.nombre}
+                      placeholder="Nombre del envase"
+                      onChange={(e) => setD({ nombre: e.target.value })}
                     />
+                    <button className="af-icon-btn" onClick={() => setDraft({ ...draft, desechables: draft.desechables.filter((_, xi) => xi !== i) })}>
+                      <Trash2 size={15} />
+                    </button>
                   </div>
-                  <div className="flex-1">
-                    <div className="af-mini-label">Aviso mínimo</div>
+                  <div className="af-mini-label">Se usa para</div>
+                  <select className="af-input mb-2" value={d.unidad} onChange={(e) => setD({ unidad: e.target.value })}>
+                    {UNIDADES_ENVASE.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
+                  </select>
+                  <div className="af-menu-card-row">
+                    <span className="af-ink-soft text-sm">De</span>
                     <NumberField
-                      value={d.minimo}
+                      value={d.rangoMin}
                       min={0}
-                      className="af-input"
-                      onChange={(v) => {
-                        const desechables = draft.desechables.map((x, xi) => (xi === i ? { ...x, minimo: v } : x));
-                        setDraft({ ...draft, desechables });
-                      }}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => setD({ rangoMin: v })}
                     />
+                    <span className="af-ink-soft text-sm">a</span>
+                    <NumberField
+                      value={d.rangoMax}
+                      min={0}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => setD({ rangoMax: v })}
+                    />
+                    <span className="af-ink-soft text-sm">{uInfo.sufijo}</span>
                   </div>
+                  <div className="af-menu-card-row">
+                    <div className="flex-1">
+                      <div className="af-mini-label">Stock actual</div>
+                      <NumberField
+                        value={d.stock}
+                        min={0}
+                        className={"af-input" + (d.stock <= d.minimo ? " af-input-warn" : "")}
+                        onChange={(v) => setD({ stock: v })}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="af-mini-label">Aviso mínimo</div>
+                      <NumberField
+                        value={d.minimo}
+                        min={0}
+                        className="af-input"
+                        onChange={(v) => setD({ minimo: v })}
+                      />
+                    </div>
+                  </div>
+                  {d.stock <= d.minimo && <div className="af-stock-alert">¡Hay que comprar más!</div>}
                 </div>
-                {d.stock <= d.minimo && <div className="af-stock-alert">¡Hay que comprar más!</div>}
-              </div>
-            ))}
+              );
+            })}
             <button
               className="af-add-card"
               onClick={() =>
                 setDraft({
                   ...draft,
-                  desechables: [...(draft.desechables || []), { id: uid(), nombre: "", kgMin: 0, kgMax: 2, stock: 0, minimo: 5 }],
+                  desechables: [...(draft.desechables || []), { id: uid(), nombre: "", unidad: "kg", rangoMin: 0, rangoMax: 2, stock: 0, minimo: 5 }],
                 })
               }
             >
