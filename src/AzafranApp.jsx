@@ -3,7 +3,7 @@ import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
-  MoreHorizontal, PackageSearch, Pencil, MessageCircle, Copy, Wallet, CalendarClock,
+  MoreHorizontal, PackageSearch, MessageCircle, Copy, Wallet, CalendarClock,
   Upload, CheckCircle2, AlertTriangle,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
@@ -2221,8 +2221,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   const [query, setQuery] = useState("");
   const [categoria, setCategoria] = useState("todos");
-  const [selectedId, setSelectedId] = useState(null);
-  const [cantidad, setCantidad] = useState(1);
+  const [carrito, setCarrito] = useState({}); // productoId -> { producto, cantidad }
+  const [verResumen, setVerResumen] = useState(false);
   const [editando, setEditando] = useState(null); // null | "nuevo" | id del producto
   const [draftProducto, setDraftProducto] = useState({ nombre: "", categoria: "platillo", precio: 0, unidad: "pieza" });
 
@@ -2237,28 +2237,34 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
     (g) => g.items.length > 0
   );
 
-  const seleccionado = productos.find((p) => p.id === selectedId) || null;
-  const mostrarDetalle = !!(editando || seleccionado);
+  const itemsCarrito = Object.values(carrito);
+  const subtotalDe = (p, cant) => (p.unidad === "kg" ? calcPaellaSubtotal(cant, p.precio) : calcExtraSubtotal(cant, p.precio));
+  const totalCarrito = itemsCarrito.reduce((a, { producto, cantidad }) => a + subtotalDe(producto, cantidad), 0);
+  const mostrarDetalle = !!editando || verResumen;
 
-  const elegir = (p) => {
-    setEditando(null);
-    setSelectedId(p.id);
-    setCantidad(1);
+  const setCantidadCarrito = (p, cantidad) => {
+    setCarrito((prev) => {
+      if (cantidad <= 0) {
+        const { [p.id]: _quitado, ...resto } = prev;
+        return resto;
+      }
+      return { ...prev, [p.id]: { producto: p, cantidad } };
+    });
   };
+  const agregarAlCarrito = (p) => setCantidadCarrito(p, (carrito[p.id]?.cantidad || 0) + 1);
+  const quitarDelCarrito = (id) => setCarrito((prev) => { const { [id]: _quitado, ...resto } = prev; return resto; });
 
   const abrirNuevo = () => {
-    setSelectedId(null);
     setDraftProducto({ nombre: "", categoria: categoria !== "todos" ? categoria : "platillo", precio: 0, unidad: "pieza" });
     setEditando("nuevo");
   };
 
   const abrirEditar = (p) => {
-    setSelectedId(null);
     setDraftProducto({ nombre: p.nombre, categoria: p.categoria, precio: p.precio, unidad: p.unidad });
     setEditando(p.id);
   };
 
-  const volver = () => { setEditando(null); setSelectedId(null); };
+  const volver = () => { setEditando(null); setVerResumen(false); };
 
   const guardarProducto = () => {
     if (!draftProducto.nombre.trim()) return;
@@ -2267,8 +2273,6 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
       const obj = { id: esNuevo ? uid() : editando, nombre: draftProducto.nombre.trim(), precioKg: draftProducto.precio };
       const paellas = esNuevo ? [...config.paellas, obj] : config.paellas.map((x) => (x.id === editando ? obj : x));
       onGuardarConfig({ ...config, paellas });
-      setEditando(null);
-      setSelectedId(obj.id);
     } else {
       const obj = {
         id: esNuevo ? uid() : editando,
@@ -2279,10 +2283,8 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
       };
       const extras = esNuevo ? [...config.extras, obj] : config.extras.map((x) => (x.id === editando ? obj : x));
       onGuardarConfig({ ...config, extras });
-      setEditando(null);
-      setSelectedId(obj.id);
     }
-    setCantidad(1);
+    volver();
   };
 
   const eliminarProducto = () => {
@@ -2292,12 +2294,12 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
     } else {
       onGuardarConfig({ ...config, extras: config.extras.filter((x) => x.id !== editando) });
     }
+    quitarDelCarrito(editando);
     volver();
   };
 
-  const confirmar = () => {
-    if (!seleccionado) return;
-    onAdd(seleccionado, cantidad);
+  const confirmarTodo = () => {
+    itemsCarrito.forEach(({ producto, cantidad }) => onAdd(producto, cantidad));
     onClose();
   };
 
@@ -2328,25 +2330,43 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                 </button>
               ))}
             </div>
+            {itemsCarrito.length > 0 && (
+              <button className="af-carrito-bar" onClick={() => setVerResumen(true)}>
+                <span>{itemsCarrito.length} {itemsCarrito.length === 1 ? "producto" : "productos"} · {money(totalCarrito)}</span>
+                <span className="af-carrito-bar-link">Ver resumen ›</span>
+              </button>
+            )}
             <div className="af-picker-scroll">
               {agrupados.length === 0 && <div className="af-hint" style={{ padding: "14px 2px" }}>Sin resultados para tu búsqueda.</div>}
               {agrupados.map((g) => (
                 <div key={g.id}>
                   <div className="af-picker-group-title">{g.label}</div>
-                  {g.items.map((p) => (
-                    <div key={p.id} className={"af-picker-item" + (selectedId === p.id ? " active" : "")} onClick={() => elegir(p)}>
-                      <div className="min-w-0">
-                        <div className="af-item-nombre">{p.nombre}</div>
-                        <div className="af-ink-soft text-sm">{p.unidad === "kg" ? "Precio por kg" : p.unidad}</div>
+                  {g.items.map((p) => {
+                    const enCarrito = carrito[p.id];
+                    return (
+                      <div key={p.id} className={"af-picker-item" + (enCarrito ? " active" : "")}>
+                        <div className="min-w-0" style={{ flex: 1, cursor: "pointer" }} onClick={() => agregarAlCarrito(p)}>
+                          <div className="af-item-nombre">{p.nombre}</div>
+                          <div className="af-ink-soft text-sm">
+                            {enCarrito ? money(subtotalDe(p, enCarrito.cantidad)) : (p.unidad === "kg" ? "Precio por kg" : p.unidad)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {enCarrito ? (
+                            <Stepper value={enCarrito.cantidad} min={0} step={1} onChange={(v) => setCantidadCarrito(p, v)} />
+                          ) : (
+                            <span className="af-total">{money(p.precio)}</span>
+                          )}
+                          <button className="af-icon-btn" onClick={() => abrirEditar(p)}>
+                            <MoreHorizontal size={16} />
+                          </button>
+                          {!enCarrito && (
+                            <button className="af-picker-add-btn" onClick={() => agregarAlCarrito(p)}><Plus size={16} /></button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="af-total">{money(p.precio)}</span>
-                        <button className="af-icon-btn" onClick={(e) => { e.stopPropagation(); abrirEditar(p); }}>
-                          <MoreHorizontal size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))}
               <button className="af-add-card af-add-card-row" onClick={abrirNuevo}>
@@ -2390,29 +2410,30 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                   </button>
                 )}
               </div>
-            ) : seleccionado ? (
+            ) : itemsCarrito.length > 0 ? (
               <div className="af-picker-form">
-                <div className="af-section-title">{CATEGORIA_LABEL[seleccionado.categoria]}</div>
-                <div className="af-item-nombre" style={{ fontSize: 17, marginBottom: 4 }}>{seleccionado.nombre}</div>
-                <div className="af-ink-soft text-sm mb-3">{money(seleccionado.precio)} {seleccionado.unidad === "kg" ? "/ kg" : "c/u"}</div>
-                <div className="af-field">
-                  <label>{seleccionado.unidad === "kg" ? "Kilos" : "Cantidad"}</label>
-                  <Stepper value={cantidad} min={1} step={1} onChange={setCantidad} />
+                <div className="af-section-title">Resumen</div>
+                <div className="af-carrito-lista">
+                  {itemsCarrito.map(({ producto, cantidad }) => (
+                    <div key={producto.id} className="af-carrito-row">
+                      <div className="min-w-0" style={{ flex: 1 }}>
+                        <div className="af-item-nombre">{producto.nombre}</div>
+                        <div className="af-ink-soft text-sm">{cantidad} {producto.unidad === "kg" ? "kg" : producto.unidad}</div>
+                      </div>
+                      <span className="af-total">{money(subtotalDe(producto, cantidad))}</span>
+                      <button className="af-icon-btn" onClick={() => quitarDelCarrito(producto.id)}><X size={14} /></button>
+                    </div>
+                  ))}
                 </div>
-                <button className="af-btn-ghost" onClick={() => abrirEditar(seleccionado)}>
-                  <Pencil size={13} className="inline mr-1" /> Modificar este producto
-                </button>
                 <div className="af-total-row">
-                  <span>Subtotal</span>
-                  <span className="af-total-big">
-                    {money(seleccionado.unidad === "kg" ? calcPaellaSubtotal(cantidad, seleccionado.precio) : calcExtraSubtotal(cantidad, seleccionado.precio))}
-                  </span>
+                  <span>Total</span>
+                  <span className="af-total-big">{money(totalCarrito)}</span>
                 </div>
               </div>
             ) : (
               <div className="af-picker-empty">
                 <PackageSearch size={30} />
-                <div>Selecciona un producto para ver su detalle</div>
+                <div>Toca los productos del catálogo para agregarlos aquí</div>
               </div>
             )}
           </div>
@@ -2420,8 +2441,9 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
 
         <div className="af-modal-footer">
           <button className="af-btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="af-btn-primary" disabled={!seleccionado} onClick={confirmar}>
-            <Plus size={16} className="inline mr-1" /> Agregar ítem
+          <button className="af-btn-primary" disabled={itemsCarrito.length === 0} onClick={confirmarTodo}>
+            <Plus size={16} className="inline mr-1" />
+            {itemsCarrito.length > 0 ? `Agregar ${itemsCarrito.length} ${itemsCarrito.length === 1 ? "ítem" : "ítems"}` : "Agregar ítem"}
           </button>
         </div>
       </div>
@@ -4191,6 +4213,12 @@ const AZAFRAN_CSS = `
 .af-picker-form { padding: 2px; }
 .af-picker-back-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13px; padding: 0 0 14px; cursor: pointer; }
 .af-add-card-row { flex-direction: row; min-height: unset; padding: 12px; margin-top: 8px; }
+.af-picker-add-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--wine); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; }
+.af-carrito-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: var(--wine-soft); border: none; border-radius: 12px; padding: 10px 14px; margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--wine); cursor: pointer; text-align: left; }
+.af-carrito-bar-link { flex-shrink: 0; }
+.af-carrito-lista { display: flex; flex-direction: column; }
+.af-carrito-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.af-carrito-row:last-child { border-bottom: none; }
 
 /* Extras de paella dentro del pedido */
 .af-extra-line { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--olive); font-weight: 600; background: var(--olive-soft); border-radius: 999px; padding: 2px 6px 2px 10px; margin: 3px 6px 0 0; }
@@ -4249,6 +4277,7 @@ const AZAFRAN_CSS = `
   .af-modal-list-pane { border-right: 1px solid var(--line); }
   .af-pane-hide-mobile { display: flex; }
   .af-picker-back-btn { display: none; }
+  .af-carrito-bar { display: none; }
 }
 
 .af-paellera-row { display: flex; align-items: center; justify-content: space-between; }
