@@ -40,6 +40,10 @@ const DEFAULT_CONFIG = {
     { id: "tarta_chica", nombre: "Tarta de Santiago chica", unidad: "pieza", precio: 180, categoria: "postre" },
     { id: "tarta_grande", nombre: "Tarta de Santiago grande", unidad: "pieza", precio: 320, categoria: "postre" },
   ],
+  // Datos para que el cliente deposite el anticipo (se anexan al WhatsApp y al PDF).
+  pago: { banco: "", titular: "", clabe: "" },
+  // Ingredientes con stock y consumo por kilo de cada paella (porKg[paellaId] = cantidad).
+  ingredientes: [],
   extrasPaella: [
     { id: "extra_langosta", nombre: "Langosta", precio: 250 },
     { id: "extra_chorizo", nombre: "Chorizo", precio: 80 },
@@ -143,7 +147,8 @@ const telWhatsApp = (tel) => {
 };
 
 // Texto de resumen para mandar por WhatsApp (pedido o presupuesto).
-const mensajeWhatsApp = (datos, modo) => {
+// `pago` son los datos bancarios de Ajustes para ofrecer el anticipo.
+const mensajeWhatsApp = (datos, modo, pago) => {
   const lineas = [];
   const nombre = (datos.clienteNombre || "").split(/\s+/)[0];
   lineas.push(`¡Hola${nombre ? " " + nombre : ""}! Le compartimos el resumen de su ${modo === "presupuesto" ? "presupuesto" : "pedido"} en Pepe Andaluz 🥘`);
@@ -175,6 +180,16 @@ const mensajeWhatsApp = (datos, modo) => {
       lineas.push(`Anticipo recibido: ${money(pagado)}`);
       lineas.push(`Saldo pendiente: ${money(Math.max(total - pagado, 0))}`);
     }
+  }
+  // Datos de pago: solo si están configurados y todavía hay algo por cobrar.
+  const pagadoYa = parseFloat(datos.pagado) || 0;
+  if (pago && (pago.clabe || "").trim() && pagadoYa < total) {
+    lineas.push("");
+    lineas.push("💳 Si gusta adelantar un anticipo, puede hacerlo por transferencia:");
+    if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
+    if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
+    lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
+    lineas.push("También puede pagar al recibir su pedido, sin ningún problema.");
   }
   lineas.push("");
   lineas.push("¡Gracias por su preferencia!");
@@ -276,8 +291,22 @@ const ajustarStock = (desechables, consumo, direccion) =>
     const cantidad = consumo[d.id] || 0;
     if (cantidad === 0) return d;
     const delta = direccion === "consumir" ? -cantidad : cantidad;
-    return { ...d, stock: Math.max(0, d.stock + delta) };
+    return { ...d, stock: Math.max(0, Math.round((d.stock + delta) * 100) / 100) };
   });
+
+// Consumo de ingredientes según la receta: cuánto usa cada kilo de cada paella.
+// ing.porKg = { [paellaId]: cantidad por kg }.
+const calcularConsumoIngredientes = (items, ingredientes) => {
+  const consumo = {};
+  items.forEach((it) => {
+    if (it.tipo !== "paella") return;
+    (ingredientes || []).forEach((ing) => {
+      const porKg = (ing.porKg || {})[it.paellaId] || 0;
+      if (porKg > 0) consumo[ing.id] = (consumo[ing.id] || 0) + porKg * it.kg;
+    });
+  });
+  return consumo;
+};
 
 // Compatibilidad con pedidos guardados antes de que la paellera fuera por platillo:
 // si el pedido viejo tenía paellera a nivel general, se aplica a sus paellas.
@@ -637,6 +666,7 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
   pendientesPaellera.sort((a, b) => (a.fecha + a.hora > b.fecha + b.hora ? 1 : -1));
 
   const bajoStock = (config.desechables || []).filter((d) => d.stock <= d.minimo);
+  const bajoIngredientes = (config.ingredientes || []).filter((i) => i.stock <= i.minimo);
 
   return (
     <div>
@@ -658,9 +688,14 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
         </button>
       </div>
 
-      {bajoStock.length > 0 && (
+      {(bajoStock.length > 0 || bajoIngredientes.length > 0) && (
         <div className="af-alert-box mb-5 mt-3">
-          <div className="af-alert-title">Envases por comprar</div>
+          <div className="af-alert-title">Por comprar</div>
+          {bajoIngredientes.map((i) => (
+            <div key={i.id} className="af-alert-line">
+              {i.nombre}: quedan <strong>{i.stock} {i.unidad || ""}</strong> (aviso en {i.minimo})
+            </div>
+          ))}
           {bajoStock.map((d) => (
             <div key={d.id} className="af-alert-line">
               {d.nombre}: quedan <strong>{d.stock}</strong> (aviso en {d.minimo})
@@ -1512,6 +1547,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       extras: draft.extras.filter((e) => e.nombre.trim().length > 0),
       extrasPaella: (draft.extrasPaella || []).filter((e) => e.nombre.trim().length > 0),
       desechables: (draft.desechables || []).filter((d) => d.nombre.trim().length > 0),
+      ingredientes: (draft.ingredientes || []).filter((i) => i.nombre.trim().length > 0),
+      pago: draft.pago || { banco: "", titular: "", clabe: "" },
     };
     onGuardarConfig(limpio);
     setDraft(limpio);
@@ -1549,6 +1586,29 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </button>
             </div>
           )}
+          <div className="af-section-title">Datos de pago para clientes</div>
+          <div className="af-card p-4 mb-4">
+            <p className="af-ink-soft text-sm mb-3">
+              Estos datos se anexan al mensaje de WhatsApp y al PDF para que el cliente
+              pueda dejar su anticipo por transferencia. Déjalos vacíos si no quieres enviarlos.
+            </p>
+            <div className="af-field">
+              <label>Banco</label>
+              <input className="af-input" placeholder="Ej. BBVA" value={(draft.pago || {}).banco || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), banco: e.target.value } })} />
+            </div>
+            <div className="af-field">
+              <label>A nombre de</label>
+              <input className="af-input" placeholder="Nombre del titular" value={(draft.pago || {}).titular || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), titular: e.target.value } })} />
+            </div>
+            <div className="af-field">
+              <label>CLABE o número de tarjeta</label>
+              <input className="af-input" placeholder="18 dígitos de CLABE o 16 de tarjeta" value={(draft.pago || {}).clabe || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), clabe: e.target.value } })} />
+            </div>
+            <button className="af-btn-primary w-full" onClick={guardar}>
+              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos de pago"}
+            </button>
+          </div>
+
           <div className="af-section-title">Respaldo de información</div>
           <div className="af-card p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
@@ -1742,6 +1802,96 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
       {tab === "inventario" && (
         <div>
+          <div className="af-section-title">Ingredientes</div>
+          <div className="af-hint mb-3">
+            Dale de alta tus ingredientes con su existencia, y dile a la app cuánto usa cada kilo
+            de paella. Al guardar un pedido se descuenta solo, y en "Hoy" te avisa cuando algo
+            esté por acabarse.
+          </div>
+          <div className="af-menu-grid mb-5">
+            {(draft.ingredientes || []).map((ing, i) => (
+              <div key={ing.id} className="af-menu-card">
+                <div className="af-menu-card-top">
+                  <input
+                    className="af-input af-menu-name"
+                    value={ing.nombre}
+                    placeholder="Ej. Arroz"
+                    onChange={(e) => {
+                      const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
+                      setDraft({ ...draft, ingredientes });
+                    }}
+                  />
+                  <button className="af-icon-btn" onClick={() => setDraft({ ...draft, ingredientes: draft.ingredientes.filter((_, xi) => xi !== i) })}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                <div className="af-menu-card-row">
+                  <div className="flex-1">
+                    <div className="af-mini-label">Unidad</div>
+                    <input
+                      className="af-input"
+                      value={ing.unidad || ""}
+                      placeholder="kg, pza, lt..."
+                      onChange={(e) => {
+                        const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, unidad: e.target.value } : x));
+                        setDraft({ ...draft, ingredientes });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div className="af-mini-label">Tengo</div>
+                    <NumberField
+                      value={ing.stock}
+                      min={0}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => {
+                        const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, stock: v } : x));
+                        setDraft({ ...draft, ingredientes });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div className="af-mini-label">Avísame en</div>
+                    <NumberField
+                      value={ing.minimo}
+                      min={0}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => {
+                        const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, minimo: v } : x));
+                        setDraft({ ...draft, ingredientes });
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="af-mini-label mt-1">Se usa por cada kilo de:</div>
+                {draft.paellas.filter((p) => p.nombre.trim()).map((p) => (
+                  <div key={p.id} className="af-receta-row">
+                    <span>{p.nombre}</span>
+                    <NumberField
+                      value={(ing.porKg || {})[p.id] || 0}
+                      min={0}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => {
+                        const ingredientes = draft.ingredientes.map((x, xi) =>
+                          xi === i ? { ...x, porKg: { ...(x.porKg || {}), [p.id]: v } } : x
+                        );
+                        setDraft({ ...draft, ingredientes });
+                      }}
+                    />
+                  </div>
+                ))}
+                {ing.stock <= ing.minimo && <div className="af-stock-alert">¡Hay que comprar más!</div>}
+              </div>
+            ))}
+            <button
+              className="af-add-card"
+              onClick={() => setDraft({ ...draft, ingredientes: [...(draft.ingredientes || []), { id: uid(), nombre: "", unidad: "kg", stock: 0, minimo: 1, porKg: {} }] })}
+            >
+              <Plus size={20} />
+              <span>Añadir ingrediente</span>
+            </button>
+          </div>
+
           <div className="af-section-title">Envases desechables</div>
           <div className="af-hint mb-3">
             Al guardar un pedido, cada paella que NO lleve paellera descuenta un envase del tamaño que le corresponda según sus kilos.
@@ -2352,6 +2502,25 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       y += lineasNotas.length * 4.5;
     }
 
+    if (config.pago && (config.pago.clabe || "").trim()) {
+      y += 9;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(43, 32, 21);
+      doc.text("Datos para anticipo (opcional)", margin, y);
+      y += 5;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(138, 120, 96);
+      const lineasPago = [
+        config.pago.banco ? `Banco: ${config.pago.banco}` : null,
+        config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
+        `CLABE / Tarjeta: ${config.pago.clabe}`,
+        "También puede pagar al recibir su pedido.",
+      ].filter(Boolean);
+      doc.text(lineasPago, margin, y);
+      y += lineasPago.length * 4.5;
+    }
+
     y = Math.max(y + 18, 265);
     doc.setFontSize(8.5);
     doc.setTextColor(138, 120, 96);
@@ -2663,7 +2832,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <button className="af-btn-secondary flex-1" onClick={descargarPDF}>
                 <Download size={16} className="inline mr-1" /> PDF
               </button>
-              <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto"))}>
+              <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago))}>
                 <MessageCircle size={16} className="inline mr-1" /> WhatsApp
               </button>
             </div>
@@ -2705,7 +2874,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       ) : (
         <>
           {form.clienteId && form.items.length > 0 && (
-            <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido"))}>
+            <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago))}>
               <MessageCircle size={16} className="inline mr-1" /> Enviar resumen por WhatsApp
             </button>
           )}
@@ -3034,14 +3203,17 @@ export default function App() {
     // Ajustar inventario de desechables: si se edita un pedido, primero se
     // "devuelve" lo que ese pedido consumía antes, luego se descuenta lo nuevo.
     let desechables = config.desechables || [];
+    let ingredientes = config.ingredientes || [];
     if (form.pedidoId) {
       const anterior = pedidos.find((p) => p.id === form.pedidoId);
       if (anterior) {
         desechables = ajustarStock(desechables, calcularConsumo(anterior.items, desechables), "restaurar");
+        ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(anterior.items, ingredientes), "restaurar");
       }
     }
     desechables = ajustarStock(desechables, calcularConsumo(form.items, desechables), "consumir");
-    guardarConfig({ ...config, desechables });
+    ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(form.items, ingredientes), "consumir");
+    guardarConfig({ ...config, desechables, ingredientes });
 
     guardarPedidos(nuevaLista);
     setView(formOrigen);
@@ -3053,7 +3225,8 @@ export default function App() {
     const pedido = pedidos.find((p) => p.id === form.pedidoId);
     if (pedido) {
       const desechables = ajustarStock(config.desechables || [], calcularConsumo(pedido.items, config.desechables || []), "restaurar");
-      guardarConfig({ ...config, desechables });
+      const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(pedido.items, config.ingredientes || []), "restaurar");
+      guardarConfig({ ...config, desechables, ingredientes });
     }
     guardarPedidos(pedidos.filter((p) => p.id !== form.pedidoId));
     setView(formOrigen);
@@ -3142,7 +3315,8 @@ export default function App() {
     };
 
     let desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || []), "consumir");
-    guardarConfig({ ...config, desechables });
+    let ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
+    guardarConfig({ ...config, desechables, ingredientes });
     guardarPedidos([nuevoPedido, ...pedidos]);
 
     if (form.pedidoId) {
@@ -3181,7 +3355,8 @@ export default function App() {
       createdAt: Date.now(),
     };
     const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || []), "consumir");
-    guardarConfig({ ...config, desechables });
+    const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
+    guardarConfig({ ...config, desechables, ingredientes });
     guardarPedidos([nuevoPedido, ...pedidos]);
     guardarPresupuestos(presupuestos.map((x) => (x.id === pr.id ? { ...x, convertido: true, pedidoId: nuevoPedido.id } : x)));
     showToast(`Aceptado: ya es el pedido ${fmtFolio(nuevoPedido.folio, "#")}`);
@@ -3723,6 +3898,7 @@ const AZAFRAN_CSS = `
 .af-mini-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin-bottom: 3px; }
 .af-input-warn { border-color: var(--wine); color: var(--wine); font-weight: 700; }
 .af-stock-alert { font-size: 12px; font-weight: 700; color: var(--wine); background: var(--wine-soft); border-radius: 8px; padding: 5px 9px; text-align: center; }
+.af-receta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
 
 .af-add-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 96px; border: 2px dashed var(--line); border-radius: 14px; background: none; color: var(--ink-soft); font-weight: 600; font-size: 13px; cursor: pointer; }
 .af-add-card:hover { border-color: var(--wine); color: var(--wine); }
