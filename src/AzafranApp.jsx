@@ -188,14 +188,14 @@ const mensajeWhatsApp = (datos, modo, pago) => {
   const total = computeTotal(datos.items) + envio + iva;
   lineas.push(`Total: ${money(total)}`);
   if (modo === "pedido") {
-    const pagado = parseFloat(datos.pagado) || 0;
+    const pagado = sumaAbonos(datos.abonos);
     if (pagado > 0) {
       lineas.push(`Anticipo recibido: ${money(pagado)}`);
       lineas.push(`Saldo pendiente: ${money(Math.max(total - pagado, 0))}`);
     }
   }
   // Datos de pago: solo si están configurados y todavía hay algo por cobrar.
-  const pagadoYa = parseFloat(datos.pagado) || 0;
+  const pagadoYa = sumaAbonos(datos.abonos);
   if (pago && (pago.clabe || "").trim() && pagadoYa < total) {
     lineas.push("");
     lineas.push("💳 Para confirmar su pedido se requiere el 50% de anticipo; el resto se liquida a la entrega.");
@@ -224,6 +224,8 @@ const ESTADOS_PEDIDO = [
   { id: "entregado", label: "Entregado" },
 ];
 const ESTADO_LABEL = Object.fromEntries(ESTADOS_PEDIDO.map((e) => [e.id, e.label]));
+
+const METODO_PAGO_LABEL = { efectivo: "Efectivo", transferencia: "Transferencia", tarjeta: "Tarjeta" };
 
 // Categorías de productos que se pueden agregar a un pedido/presupuesto.
 const CATEGORIAS_ITEM = [
@@ -276,8 +278,7 @@ const emptyForm = () => ({
   ubicacion: "",
   envio: "0",
   iva: false,
-  pagado: "0",
-  metodoPago: "efectivo",
+  abonos: [],
   estado: "pendiente",
   notas: "",
   terminos: TERMINOS_DEFAULT,
@@ -388,6 +389,25 @@ const calcularConsumoIngredientes = (items, ingredientes) => {
   return consumo;
 };
 
+// Capacidad de cocina: cuántas paellas (líneas, no kilos) hay agendadas el
+// mismo día dentro de ±30 min de una hora, sin contar el pedido que se está
+// guardando (para no contarlo dos veces al editar).
+const MAX_PAELLAS_POR_FRANJA = 5;
+const minutosDeHora = (hora) => {
+  const [h, m] = (hora || "00:00").split(":").map(Number);
+  return h * 60 + m;
+};
+const contarPaellasEnFranja = (pedidos, fecha, hora, excluirId) => {
+  const centro = minutosDeHora(hora);
+  let total = 0;
+  pedidos.forEach((p) => {
+    if (p.id === excluirId || p.fecha !== fecha) return;
+    if (Math.abs(minutosDeHora(p.hora) - centro) > 30) return;
+    total += p.items.filter((it) => it.tipo === "paella").length;
+  });
+  return total;
+};
+
 // Compatibilidad con pedidos guardados antes de que la paellera fuera por platillo:
 // si el pedido viejo tenía paellera a nivel general, se aplica a sus paellas.
 // Asigna folio consecutivo a los registros que aún no lo tengan (datos viejos),
@@ -409,8 +429,13 @@ const migrarPedido = (p) => {
     };
   });
   const { paellera, paelleraDevuelta, ...resto } = p;
-  return { ...resto, items, estado: p.estado || "pendiente" };
+  // Migra el pago viejo (un monto + un método) a la lista de abonos, que
+  // permite mezclar formas de pago (ej. anticipo por transferencia, resto en efectivo).
+  const abonos = p.abonos || (p.pagado > 0 ? [{ id: uid(), monto: p.pagado, metodo: p.metodoPago || "efectivo" }] : []);
+  return { ...resto, items, estado: p.estado || "pendiente", abonos };
 };
+
+const sumaAbonos = (abonos) => (abonos || []).reduce((a, x) => a + (parseFloat(x.monto) || 0), 0);
 
 /* ---------------------------------------------------------------------- */
 /*  Componentes pequeños de presentación                                  */
@@ -1380,7 +1405,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico }) {
   const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
   const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
   delDia.forEach((p) => {
-    if (p.pagado > 0) porMetodo[p.metodoPago || "efectivo"] += p.pagado;
+    (p.abonos || []).forEach((a) => {
+      porMetodo[a.metodo || "efectivo"] = (porMetodo[a.metodo || "efectivo"] || 0) + (parseFloat(a.monto) || 0);
+    });
   });
   const cobradoDia = porMetodo.efectivo + porMetodo.tarjeta + porMetodo.transferencia;
 
@@ -2410,6 +2437,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const [mostrarClientes, setMostrarClientes] = useState(false);
   const [mostrarPicker, setMostrarPicker] = useState(false);
   const [extrasAbierto, setExtrasAbierto] = useState(null); // id del ítem paella con el menú de extras abierto
+  const [mostrarAbono, setMostrarAbono] = useState(false);
+  const [mostrarOtroMetodo, setMostrarOtroMetodo] = useState(false);
+  const [abonoDraft, setAbonoDraft] = useState({ monto: 0, metodo: "efectivo" });
 
   const term = busqueda.trim().toLowerCase();
   const sugeridos = (
@@ -2459,8 +2489,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const envioNum = envioDe(form);
   const ivaNum = ivaDe(form);
   const total = totalItems + envioNum + ivaNum;
-  const pagadoNum = parseFloat(form.pagado) || 0;
-  const saldo = Math.max(total - pagadoNum, 0);
+  const pagadoNum = sumaAbonos(form.abonos);
+  const saldo = Math.max(Math.round((total - pagadoNum) * 100) / 100, 0);
 
   const addPaella = (p) => {
     setForm((prev) => ({
@@ -2534,6 +2564,24 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
   const removeItem = (itemId) => {
     setForm((prev) => ({ ...prev, items: prev.items.filter((it) => it.id !== itemId) }));
+  };
+
+  // Abonos: permiten registrar varios pagos con distinto método
+  // (ej. anticipo por transferencia, resto en efectivo) en vez de un solo monto.
+  const agregarAbono = () => {
+    const monto = parseFloat(abonoDraft.monto) || 0;
+    if (monto <= 0) return;
+    setForm((prev) => ({ ...prev, abonos: [...(prev.abonos || []), { id: uid(), monto, metodo: abonoDraft.metodo }] }));
+    setAbonoDraft({ monto: 0, metodo: "efectivo" });
+    setMostrarOtroMetodo(false);
+    setMostrarAbono(false);
+  };
+  const quitarAbono = (abonoId) => {
+    setForm((prev) => ({ ...prev, abonos: (prev.abonos || []).filter((a) => a.id !== abonoId) }));
+  };
+  const marcarPagadoCompleto = () => {
+    if (saldo <= 0) return;
+    setForm((prev) => ({ ...prev, abonos: [...(prev.abonos || []), { id: uid(), monto: saldo, metodo: "efectivo" }] }));
   };
 
   // Extras de paella: se anclan a una paella específica del pedido.
@@ -2741,7 +2789,15 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 key={e.id}
                 type="button"
                 className={"af-estado-pill af-estado-" + e.id + (form.estado === e.id ? " active" : "")}
-                onClick={() => setForm((p) => ({ ...p, estado: e.id }))}
+                onClick={() => setForm((p) => {
+                  if (e.id !== "entregado") return { ...p, estado: e.id };
+                  // Al entregar, si aún falta saldo, se completa solo en efectivo
+                  // (se puede corregir el método justo abajo si fue de otra forma).
+                  const yaPagado = sumaAbonos(p.abonos);
+                  const faltante = Math.round((total - yaPagado) * 100) / 100;
+                  const abonos = faltante > 0.5 ? [...(p.abonos || []), { id: uid(), monto: faltante, metodo: "efectivo" }] : p.abonos;
+                  return { ...p, estado: e.id, abonos };
+                })}
               >
                 {e.label}
               </button>
@@ -3003,32 +3059,75 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           <label>Pago</label>
           <div className="af-pago-box">
             <div className="af-pago-line"><span>Total</span><span>{money(total)}</span></div>
-            <div className="af-pago-line">
-              <span>Pagado ahora</span>
-              <NumberField value={pagadoNum} min={0} className="af-input af-input-small" onChange={(v) => setForm((p) => ({ ...p, pagado: String(v) }))} />
-            </div>
-            <div className="af-pago-line af-pago-saldo"><span>Saldo pendiente</span><span>{money(saldo)}</span></div>
-            {pagadoNum > 0 && (
-              <div className="af-metodo-row">
-                {[["efectivo", "Efectivo"], ["tarjeta", "Tarjeta"], ["transferencia", "Transferencia"]].map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className={"af-metodo-pill" + ((form.metodoPago || "efectivo") === id ? " active" : "")}
-                    onClick={() => setForm((p) => ({ ...p, metodoPago: id }))}
-                  >
-                    {label}
-                  </button>
+
+            {(form.abonos || []).length > 0 && (
+              <div className="af-abonos-lista">
+                {form.abonos.map((a) => (
+                  <div key={a.id} className="af-abono-row">
+                    <span className={"af-metodo-tag af-metodo-tag-" + a.metodo}>{METODO_PAGO_LABEL[a.metodo] || a.metodo}</span>
+                    <span className="af-abono-monto">{money(a.monto)}</span>
+                    <button className="af-icon-btn" onClick={() => quitarAbono(a.id)}><X size={14} /></button>
+                  </div>
                 ))}
               </div>
             )}
-            {saldo > 0 && total > 0 && (
-              <button className="af-btn-chip w-full mt-2" style={{ justifyContent: "center", display: "flex" }} onClick={() => setForm((p) => ({ ...p, pagado: String(total) }))}>
-                <Wallet size={14} /> Marcar pagado completo
-              </button>
+
+            <div className="af-pago-line"><span>Pagado</span><span>{money(pagadoNum)}</span></div>
+            <div className="af-pago-line af-pago-saldo"><span>Saldo pendiente</span><span>{money(saldo)}</span></div>
+
+            {saldo > 0.5 && (
+              <div className="mt-2">
+                {!mostrarAbono ? (
+                  <div className="flex gap-2">
+                    <button className="af-btn-chip flex-1" style={{ justifyContent: "center", display: "flex" }} onClick={marcarPagadoCompleto}>
+                      <Wallet size={14} /> Todo en efectivo
+                    </button>
+                    <button className="af-btn-secondary flex-1" onClick={() => { setAbonoDraft({ monto: saldo, metodo: "efectivo" }); setMostrarAbono(true); }}>
+                      Registrar cobro
+                    </button>
+                  </div>
+                ) : (
+                  <div className="af-card p-3">
+                    <div className="af-mini-label">Monto</div>
+                    <NumberField value={abonoDraft.monto} min={0} className="af-input mb-2" onChange={(v) => setAbonoDraft((d) => ({ ...d, monto: v }))} />
+                    <div className="af-mini-label">Forma de pago</div>
+                    <div className="af-metodo-row" style={{ marginTop: 0 }}>
+                      {["efectivo", "transferencia"].map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          className={"af-metodo-pill" + (abonoDraft.metodo === id ? " active" : "")}
+                          onClick={() => setAbonoDraft((d) => ({ ...d, metodo: id }))}
+                        >
+                          {METODO_PAGO_LABEL[id]}
+                        </button>
+                      ))}
+                    </div>
+                    {!mostrarOtroMetodo ? (
+                      <button className="af-btn-ghost mt-1" onClick={() => { setMostrarOtroMetodo(true); setAbonoDraft((d) => ({ ...d, metodo: "tarjeta" })); }}>
+                        ¿Fue con tarjeta?
+                      </button>
+                    ) : (
+                      <div className="af-metodo-row" style={{ marginTop: 6 }}>
+                        <button
+                          type="button"
+                          className={"af-metodo-pill" + (abonoDraft.metodo === "tarjeta" ? " active" : "")}
+                          onClick={() => setAbonoDraft((d) => ({ ...d, metodo: "tarjeta" }))}
+                        >
+                          Tarjeta
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      <button className="af-btn-ghost flex-1" onClick={() => { setMostrarAbono(false); setMostrarOtroMetodo(false); }}>Cancelar</button>
+                      <button className="af-btn-primary flex-1" onClick={agregarAbono}>Agregar cobro</button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-          <div className="af-hint">El pago no es obligatorio, puede completarse antes, durante o después de la entrega.</div>
+          <div className="af-hint">El pago no es obligatorio, puede completarse antes, durante o después de la entrega. Si dan parte por transferencia y el resto en efectivo, registra cada cobro por separado.</div>
         </div>
       )}
 
@@ -3291,7 +3390,23 @@ export default function App() {
   };
 
   const cambiarEstadoPedido = (pedidoId, estado) => {
-    guardarPedidos(pedidos.map((p) => (p.id === pedidoId ? { ...p, estado } : p)));
+    guardarPedidos(
+      pedidos.map((p) => {
+        if (p.id !== pedidoId) return p;
+        let nuevo = { ...p, estado };
+        // Al entregar, si aún falta saldo, se completa solo (efectivo por
+        // defecto) — se puede corregir el método después si fue de otra forma.
+        if (estado === "entregado") {
+          const pagadoActual = sumaAbonos(p.abonos);
+          const faltante = Math.round((p.total - pagadoActual) * 100) / 100;
+          if (faltante > 0.5) {
+            const abonos = [...(p.abonos || []), { id: uid(), monto: faltante, metodo: "efectivo" }];
+            nuevo = { ...nuevo, abonos, pagado: sumaAbonos(abonos), saldo: 0, estadoPago: "pagado" };
+          }
+        }
+        return nuevo;
+      })
+    );
   };
 
   const irAVista = (v) => { setError(""); setView(v); };
@@ -3349,8 +3464,7 @@ export default function App() {
       ubicacion: pedido.ubicacion || "",
       envio: String(pedido.envio || 0),
       iva: !!pedido.iva,
-      metodoPago: pedido.metodoPago || "efectivo",
-      pagado: String(pedido.pagado),
+      abonos: pedido.abonos || [],
       estado: pedido.estado || "pendiente",
       notas: pedido.notas,
       terminos: pedido.terminos || TERMINOS_DEFAULT,
@@ -3379,7 +3493,7 @@ export default function App() {
       ubicacion: presupuesto.ubicacion || "",
       envio: String(presupuesto.envio || 0),
       iva: !!presupuesto.iva,
-      pagado: "0",
+      abonos: [],
       estado: "pendiente",
       notas: presupuesto.notas,
       terminos: presupuesto.terminos || TERMINOS_DEFAULT,
@@ -3401,7 +3515,8 @@ export default function App() {
     if (form.entrega && !form.ubicacion.trim() && !form.direccion.trim()) { setError("Agrega la ubicación o una referencia para la entrega."); return; }
 
     const total = totalDe(form);
-    const pagado = parseFloat(form.pagado) || 0;
+    const abonos = form.abonos || [];
+    const pagado = sumaAbonos(abonos);
     const saldo = Math.max(total - pagado, 0);
 
     const pedidoObj = {
@@ -3419,10 +3534,10 @@ export default function App() {
       ubicacion: form.entrega ? form.ubicacion.trim() : "",
       envio: envioDe(form),
       iva: !!form.iva,
+      abonos,
       pagado,
       saldo,
       estadoPago: estadoPagoDe(pagado, total),
-      metodoPago: form.metodoPago || "efectivo",
       estado: form.estado || "pendiente",
       notas: form.notas,
       terminos: form.terminos,
@@ -3451,7 +3566,16 @@ export default function App() {
     guardarPedidos(nuevaLista);
     setView(formOrigen);
     setError("");
-    showToast(form.pedidoId ? "Pedido actualizado" : `Pedido ${fmtFolio(pedidoObj.folio)} guardado`);
+
+    const paellasPropias = form.items.filter((it) => it.tipo === "paella").length;
+    const otrasEnFranja = contarPaellasEnFranja(pedidos, form.fecha, form.hora, form.pedidoId);
+    const totalFranja = otrasEnFranja + paellasPropias;
+    const base = form.pedidoId ? "Pedido actualizado" : `Pedido ${fmtFolio(pedidoObj.folio)} guardado`;
+    if (paellasPropias > 0 && totalFranja > MAX_PAELLAS_POR_FRANJA) {
+      showToast(`${base} — ⚠ ya son ${totalFranja} paellas cerca de las ${fmtHora12(form.hora)}, revisa que alcancen`, "error");
+    } else {
+      showToast(base);
+    }
   };
 
   const eliminarPedido = () => {
@@ -3537,10 +3661,10 @@ export default function App() {
       ubicacion: form.entrega ? form.ubicacion.trim() : "",
       envio: envioDe(form),
       iva: !!form.iva,
+      abonos: [],
       pagado: 0,
       saldo: total,
       estadoPago: "pendiente",
-      metodoPago: "efectivo",
       estado: "pendiente",
       notas: form.notas,
       terminos: form.terminos,
@@ -3578,10 +3702,10 @@ export default function App() {
       ubicacion: pr.ubicacion || "",
       envio: pr.envio || 0,
       iva: !!pr.iva,
+      abonos: [],
       pagado: 0,
       saldo: pr.total,
       estadoPago: "pendiente",
-      metodoPago: "efectivo",
       estado: "pendiente",
       notas: pr.notas,
       terminos: pr.terminos,
@@ -3617,7 +3741,7 @@ export default function App() {
       pedidoId: null,
       folio: null,
       createdAt: null,
-      pagado: "0",
+      abonos: [],
       estado: "pendiente",
       convertido: false,
       presupuestoPedidoId: null,
@@ -3898,6 +4022,14 @@ const AZAFRAN_CSS = `
 .af-metodo-row { display: flex; gap: 6px; margin-top: 10px; }
 .af-metodo-pill { flex: 1; padding: 8px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer; }
 .af-metodo-pill.active { background: var(--olive); border-color: var(--olive); color: white; }
+
+.af-abonos-lista { margin-bottom: 4px; }
+.af-abono-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.af-abono-monto { flex: 1; text-align: right; font-weight: 700; font-family: 'Space Grotesk', sans-serif; font-size: 13.5px; }
+.af-metodo-tag { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.af-metodo-tag-efectivo { background: var(--olive-soft); color: var(--olive); }
+.af-metodo-tag-transferencia { background: var(--azul-soft); color: var(--azul); }
+.af-metodo-tag-tarjeta { background: var(--gold-soft); color: #7A5A1E; }
 
 .af-badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
 .af-badge-olive { background: var(--olive-soft); color: var(--olive); }
