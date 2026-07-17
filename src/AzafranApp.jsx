@@ -389,6 +389,42 @@ const calcularConsumoIngredientes = (items, ingredientes) => {
   return consumo;
 };
 
+// Resumen de producción de un conjunto de pedidos (normalmente los de un
+// mismo día): cuántos kilos de cada paella, cuántas piezas de cada platillo,
+// y cuánto de cada ingrediente con receta (ej. camarón) hay que preparar.
+// A diferencia de calcularConsumoIngredientes (que da "bolsas" a descontar
+// del stock), aquí queremos la cantidad cruda en la unidad de uso del
+// ingrediente (piezas, gramos...), que es lo que se necesita para pelar o
+// sacar del congelador.
+const produccionDelDia = (pedidosDelDia, config) => {
+  const paellasKg = {}; // paellaId -> kg total
+  const platillos = {}; // extraId -> cantidad total (piezas si aplica, si no unidades)
+  const ingredientesUso = {}; // ingredienteId -> cantidad en su usoUnidad
+
+  pedidosDelDia.forEach((p) => {
+    (p.items || []).forEach((it) => {
+      if (it.tipo === "paella") {
+        paellasKg[it.paellaId] = (paellasKg[it.paellaId] || 0) + it.kg;
+      } else if (it.tipo === "extra") {
+        const cant = it.piezasPorUnidad > 0 ? it.cantidad * it.piezasPorUnidad : it.cantidad;
+        platillos[it.extraId] = (platillos[it.extraId] || 0) + cant;
+      }
+    });
+  });
+
+  (config.ingredientes || []).forEach((raw) => {
+    const ing = normalizarIngrediente(raw);
+    let total = 0;
+    Object.entries(paellasKg).forEach(([paellaId, kg]) => {
+      const porKg = (ing.porKg || {})[paellaId] || 0;
+      total += porKg * kg;
+    });
+    if (total > 0) ingredientesUso[ing.id] = total;
+  });
+
+  return { paellasKg, platillos, ingredientesUso };
+};
+
 // Capacidad de cocina: cuántas paellas (líneas, no kilos) hay agendadas el
 // mismo día dentro de ±30 min de una hora, sin contar el pedido que se está
 // guardando (para no contarlo dos veces al editar).
@@ -876,10 +912,18 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
 /*  Vista: Agenda                                                         */
 /* ---------------------------------------------------------------------- */
 
-function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
+function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
   const [tab, setTab] = useState("pendientes");
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
+  const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
+
+  const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
+  const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
+  const unidadExtra = (id) => {
+    const ex = (config.extras || []).find((e) => e.id === id);
+    return ex && ex.piezasPorUnidad > 0 ? "piezas" : (ex?.unidad || "unidad");
+  };
 
   const cambiarMes = (delta) => {
     setMesSel((prev) => {
@@ -952,23 +996,73 @@ function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
         )
       )}
 
-      {fechas.map((fecha) => (
-        <div key={fecha} className="mb-4">
-          <div className="af-section-title">
-            {fmtDateHuman(fecha)}
-            {esHoy(fecha) && <span className="af-chip af-chip-gold">Hoy</span>}
-            {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong">Atrasado</span>}
+      {fechas.map((fecha) => {
+        const pedidosDelDia = grupos[fecha];
+        const { paellasKg, platillos, ingredientesUso } = produccionDelDia(pedidosDelDia, config);
+        const hayProduccion = Object.keys(paellasKg).length > 0 || Object.keys(platillos).length > 0;
+        return (
+          <div key={fecha} className="mb-4">
+            <div className="af-section-title">
+              {fmtDateHuman(fecha)}
+              <span className="af-ink-soft" style={{ fontWeight: 600, textTransform: "none", letterSpacing: 0 }}>
+                {" "}({pedidosDelDia.length} {pedidosDelDia.length === 1 ? "pedido" : "pedidos"})
+              </span>
+              {esHoy(fecha) && <span className="af-chip af-chip-gold">Hoy</span>}
+              {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong">Atrasado</span>}
+            </div>
+
+            {tab === "pendientes" && hayProduccion && (
+              <div className="mb-3">
+                <button className="af-colapsable-btn" onClick={() => setVerProduccion((v) => ({ ...v, [fecha]: !v[fecha] }))}>
+                  <ChefHat size={15} /> Producción del día {verProduccion[fecha] ? "▲" : "▼"}
+                </button>
+                {verProduccion[fecha] && (
+                  <div className="af-produccion-box">
+                    {Object.entries(paellasKg).map(([paellaId, kg]) => (
+                      <div key={paellaId} className="af-produccion-row">
+                        <span>{nombrePaella(paellaId)}</span>
+                        <span className="af-produccion-valor">{fmtKg(kg)}</span>
+                      </div>
+                    ))}
+                    {Object.entries(platillos).map(([extraId, cant]) => (
+                      <div key={extraId} className="af-produccion-row">
+                        <span>{nombreExtra(extraId)}</span>
+                        <span className="af-produccion-valor">{Math.round(cant * 10) / 10} {unidadExtra(extraId)}</span>
+                      </div>
+                    ))}
+                    {Object.keys(ingredientesUso).length > 0 && (
+                      <>
+                        <div className="af-produccion-subtitle">Ingredientes a preparar</div>
+                        {Object.entries(ingredientesUso).map(([ingId, cant]) => {
+                          const ing = (config.ingredientes || []).find((i) => i.id === ingId);
+                          if (!ing) return null;
+                          const info = UNIDAD_INFO[ing.usoUnidad] || { label: ing.usoUnidad, familia: "" };
+                          const valor = info.familia === "piezas" ? Math.round(cant) : Math.round(cant * 10) / 10;
+                          return (
+                            <div key={ingId} className="af-produccion-row">
+                              <span>{ing.nombre}</span>
+                              <span className="af-produccion-valor">{valor} {info.label}</span>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="af-card-grid">
+              {pedidosDelDia
+                .slice()
+                .sort((a, b) => a.hora.localeCompare(b.hora))
+                .map((p) => (
+                  <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} />
+                ))}
+            </div>
           </div>
-          <div className="af-card-grid">
-            {grupos[fecha]
-              .slice()
-              .sort((a, b) => a.hora.localeCompare(b.hora))
-              .map((p) => (
-                <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} />
-              ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -3862,7 +3956,7 @@ export default function App() {
 
         <div className="af-content">
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
-          {view === "agenda" && <AgendaView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
+          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
           {view === "clientes" && (
             <ClientesView
@@ -4039,6 +4133,11 @@ const AZAFRAN_CSS = `
 /* Botón para desplegar/ocultar secciones secundarias (entregados, paelleras) */
 .af-colapsable-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-soft); cursor: pointer; font-family: 'Space Grotesk', sans-serif; }
 .af-colapsable-btn:hover { border-color: var(--gold); }
+
+.af-produccion-box { background: var(--olive-soft); border-radius: 12px; padding: 10px 14px; margin-top: 6px; }
+.af-produccion-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13.5px; color: var(--ink); }
+.af-produccion-valor { font-weight: 700; font-family: 'Space Grotesk', sans-serif; color: var(--olive); }
+.af-produccion-subtitle { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin: 10px 0 2px; padding-top: 8px; border-top: 1px dashed rgba(91,112,82,0.3); }
 
 /* Método de pago */
 .af-metodo-row { display: flex; gap: 6px; margin-top: 10px; }
