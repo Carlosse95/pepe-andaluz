@@ -59,6 +59,19 @@ const DEFAULT_CONFIG = {
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+// Detección de clientes duplicados: compara nombres sin acentos, mayúsculas
+// ni espacios de más. "María López" ≈ "maria lopez" ≈ "Maria  Lopez ".
+const normNombre = (s) =>
+  (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+const clientesParecidos = (nombre, clientes) => {
+  const n = normNombre(nombre);
+  if (n.length < 3) return [];
+  return (clientes || []).filter((c) => {
+    const cn = normNombre(c.nombre);
+    return cn === n || cn.includes(n) || n.includes(cn);
+  });
+};
+
 const todayISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -164,7 +177,7 @@ const mensajeWhatsApp = (datos, modo, pago) => {
         lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""} — ${money(e.precio * e.cantidad)}`);
       });
     } else {
-      lineas.push(`• ${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad} — ${money(it.subtotal)}`);
+      lineas.push(`• ${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${money(it.subtotal)}`);
     }
   });
   lineas.push("");
@@ -185,11 +198,11 @@ const mensajeWhatsApp = (datos, modo, pago) => {
   const pagadoYa = parseFloat(datos.pagado) || 0;
   if (pago && (pago.clabe || "").trim() && pagadoYa < total) {
     lineas.push("");
-    lineas.push("💳 Si gusta adelantar un anticipo, puede hacerlo por transferencia:");
+    lineas.push("💳 Para confirmar su pedido se requiere el 50% de anticipo; el resto se liquida a la entrega.");
     if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
     if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
     lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
-    lineas.push("También puede pagar al recibir su pedido, sin ningún problema.");
+    lineas.push("Por favor, en el concepto de la transferencia ponga únicamente su nombre.");
   }
   lineas.push("");
   lineas.push("¡Gracias por su preferencia!");
@@ -238,6 +251,7 @@ const productosDeConfig = (config) => [
     nombre: e.nombre,
     precio: e.precio,
     unidad: e.unidad || "pieza",
+    piezasPorUnidad: e.piezasPorUnidad || 0,
   })),
 ];
 
@@ -274,12 +288,24 @@ const emptyForm = () => ({
 
 // Calcula cuántos envases de cada tipo consumen las paellas de un pedido
 // que NO llevan paellera (solo esas necesitan desechable).
-const calcularConsumo = (items, desechables) => {
+const calcularConsumo = (items, desechables, extrasCatalogo) => {
   const consumo = {};
   (items || []).forEach((it) => {
     if (it.tipo === "paella" && !it.enPaellera) {
       const tier = (desechables || []).find((d) => it.kg > d.kgMin && it.kg <= d.kgMax);
       if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
+    }
+    // Platillos con empaque vinculado (ej. alioli en su envase, croquetas
+    // en contenedor chico si es 1 orden o grande si son varias).
+    if (it.tipo === "extra") {
+      const cat = (extrasCatalogo || []).find((e) => e.id === it.extraId);
+      if (!cat || !cat.empaqueTipo || cat.empaqueTipo === "ninguno") return;
+      if (cat.empaqueTipo === "pieza" && cat.empaqueEnvaseId) {
+        consumo[cat.empaqueEnvaseId] = (consumo[cat.empaqueEnvaseId] || 0) + Math.ceil(it.cantidad);
+      } else if (cat.empaqueTipo === "orden") {
+        const envaseId = it.cantidad >= 2 ? (cat.empaqueEnvaseGrandeId || cat.empaqueEnvaseId) : cat.empaqueEnvaseId;
+        if (envaseId) consumo[envaseId] = (consumo[envaseId] || 0) + 1;
+      }
     }
   });
   return consumo;
@@ -807,10 +833,21 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
 
 function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
   const [tab, setTab] = useState("pendientes");
+  const ahora = new Date();
+  const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
+
+  const cambiarMes = (delta) => {
+    setMesSel((prev) => {
+      const d = new Date(prev.a, prev.m + delta, 1);
+      return { a: d.getFullYear(), m: d.getMonth() };
+    });
+  };
+  const claveMesSel = `${mesSel.a}-${String(mesSel.m + 1).padStart(2, "0")}`;
 
   const pendientes = pedidos.filter((p) => (p.estado || "pendiente") !== "entregado");
   const entregados = pedidos.filter((p) => (p.estado || "pendiente") === "entregado");
-  const lista = tab === "pendientes" ? pendientes : entregados;
+  const entregadosMes = entregados.filter((p) => (p.fecha || "").startsWith(claveMesSel));
+  const lista = tab === "pendientes" ? pendientes : entregadosMes;
 
   const grupos = {};
   lista.forEach((p) => {
@@ -846,6 +883,14 @@ function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
         </div>
       )}
 
+      {tab === "entregados" && (
+        <div className="af-year-switch" style={{ marginBottom: 10 }}>
+          <button className="af-icon-btn" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></button>
+          <span className="af-year-label" style={{ minWidth: 170 }}>{MESES[mesSel.m]} {mesSel.a}</span>
+          <button className="af-icon-btn" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></button>
+        </div>
+      )}
+
       {lista.length === 0 && (
         tab === "pendientes" ? (
           <EmptyState
@@ -856,8 +901,8 @@ function AgendaView({ pedidos, onAbrir, onCambiarEstado }) {
         ) : (
           <EmptyState
             icon={<Check size={28} />}
-            title="Aún no hay pedidos entregados"
-            subtitle="Cuando marques un pedido como Entregado, se guardará aquí."
+            title={`Sin entregados en ${MESES[mesSel.m].toLowerCase()} ${mesSel.a}`}
+            subtitle="Usa las flechas de arriba para cambiar de mes."
           />
         )
       )}
@@ -1024,6 +1069,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
   const [detalleId, setDetalleId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
   const [form, setForm] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
+  const [confirmDup, setConfirmDup] = useState(false);
 
   const detalle = clientes.find((c) => c.id === detalleId) || null;
 
@@ -1049,7 +1095,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
         <div className="af-section-title">Nuevo cliente</div>
         <div className="af-field">
           <label>Nombre</label>
-          <input className="af-input" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre y apellido" />
+          <input className="af-input" value={form.nombre} onChange={(e) => { setForm({ ...form, nombre: e.target.value }); setConfirmDup(false); }} placeholder="Nombre y apellido" />
         </div>
         <div className="af-field">
           <label>Teléfono</label>
@@ -1063,18 +1109,33 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
           <label>Referencias de dirección</label>
           <input className="af-input" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} placeholder="Opcional" />
         </div>
-        <button
-          className="af-btn-primary w-full mt-2"
-          onClick={() => {
-            if (!form.nombre.trim()) return;
-            const c = onAddCliente(form);
-            setNuevo(false);
-            setForm({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
-            setDetalleId(c.id);
-          }}
-        >
-          Guardar cliente
-        </button>
+        {(() => {
+          const parecidos = clientesParecidos(form.nombre, clientes);
+          return (
+            <>
+              {parecidos.length > 0 && (
+                <div className="af-error">
+                  ⚠ Ya tienes cliente(s) con nombre parecido: <strong>{parecidos.map((c) => c.nombre).join(", ")}</strong>.
+                  Revisa que no lo estés duplicando — puedes buscarlo en la lista.
+                </div>
+              )}
+              <button
+                className="af-btn-primary w-full mt-2"
+                onClick={() => {
+                  if (!form.nombre.trim()) return;
+                  if (parecidos.length > 0 && !confirmDup) { setConfirmDup(true); return; }
+                  const c = onAddCliente(form);
+                  setNuevo(false);
+                  setConfirmDup(false);
+                  setForm({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
+                  setDetalleId(c.id);
+                }}
+              >
+                {parecidos.length > 0 && confirmDup ? "¿Seguro? Crear de todos modos" : "Guardar cliente"}
+              </button>
+            </>
+          );
+        })()}
       </div>
     );
   }
@@ -1174,9 +1235,20 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
         <Search size={18} className="af-search-icon" />
         <input className="af-input af-input-search" placeholder="Buscar cliente..." value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      <button className="af-btn-secondary w-full mb-4" onClick={() => setNuevo(true)}>
+      <button
+        className="af-btn-secondary w-full mb-2"
+        onClick={() => {
+          setForm({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
+          setConfirmDup(false);
+          setNuevo(true);
+        }}
+      >
         <Plus size={16} className="inline mr-1" /> Nuevo cliente
       </button>
+      <div className="af-hint mb-3" style={{ textAlign: "center" }}>
+        {clientes.length} cliente{clientes.length === 1 ? "" : "s"} registrado{clientes.length === 1 ? "" : "s"}
+        {term && ` · mostrando ${lista.length}`}
+      </div>
 
       {lista.length === 0 ? (
         <EmptyState icon={<Users size={28} />} title="Sin clientes todavía" subtitle="Se crean automáticamente al registrar un pedido." />
@@ -1780,6 +1852,57 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   />
                   <span className="af-price-suffix">$</span>
                 </div>
+                <div className="af-menu-card-row">
+                  <span className="af-price-suffix flex-1">Piezas por orden (para el cliente, opcional)</span>
+                  <NumberField
+                    value={ex.piezasPorUnidad || 0}
+                    min={0}
+                    className="af-input af-menu-kgrange"
+                    onChange={(v) => {
+                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, piezasPorUnidad: v } : x));
+                      setDraft({ ...draft, extras });
+                    }}
+                  />
+                </div>
+                <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
+                <select
+                  className="af-input"
+                  value={ex.empaqueTipo || "ninguno"}
+                  onChange={(e) => {
+                    const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueTipo: e.target.value } : x));
+                    setDraft({ ...draft, extras });
+                  }}
+                >
+                  <option value="ninguno">Sin envase</option>
+                  <option value="pieza">Un envase por cada unidad</option>
+                  <option value="orden">Uno por pedido (y otro si llevan 2 o más)</option>
+                </select>
+                {(ex.empaqueTipo === "pieza" || ex.empaqueTipo === "orden") && (
+                  <select
+                    className="af-input"
+                    value={ex.empaqueEnvaseId || ""}
+                    onChange={(e) => {
+                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueEnvaseId: e.target.value } : x));
+                      setDraft({ ...draft, extras });
+                    }}
+                  >
+                    <option value="">{ex.empaqueTipo === "orden" ? "Envase si pide 1..." : "Elige el envase..."}</option>
+                    {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
+                  </select>
+                )}
+                {ex.empaqueTipo === "orden" && (
+                  <select
+                    className="af-input"
+                    value={ex.empaqueEnvaseGrandeId || ""}
+                    onChange={(e) => {
+                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueEnvaseGrandeId: e.target.value } : x));
+                      setDraft({ ...draft, extras });
+                    }}
+                  >
+                    <option value="">Envase si pide 2 o más...</option>
+                    {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
+                  </select>
+                )}
               </div>
             ))}
             <button
@@ -2298,11 +2421,16 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     setMostrarClientes(false);
   };
 
+  const [confirmDupPedido, setConfirmDupPedido] = useState(false);
+  const parecidosNuevo = clientesParecidos(nuevoCliente.nombre, clientes);
+
   const crearCliente = () => {
     if (!nuevoCliente.nombre.trim()) return;
+    if (parecidosNuevo.length > 0 && !confirmDupPedido) { setConfirmDupPedido(true); return; }
     const c = onAddCliente(nuevoCliente);
     seleccionarCliente(c);
     setMostrarNuevo(false);
+    setConfirmDupPedido(false);
     setNuevoCliente({ nombre: "", telefono: "", direccion: "", ubicacion: "" });
   };
 
@@ -2337,7 +2465,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       ...prev,
       items: [
         ...prev.items,
-        { id: uid(), tipo: "extra", extraId: ex.id, nombre: ex.nombre, unidad: ex.unidad || "pieza", cantidad: 1, precio: ex.precio, subtotal: calcExtraSubtotal(1, ex.precio) },
+        { id: uid(), tipo: "extra", extraId: ex.id, nombre: ex.nombre, unidad: ex.unidad || "pieza", piezasPorUnidad: ex.piezasPorUnidad || 0, cantidad: 1, precio: ex.precio, subtotal: calcExtraSubtotal(1, ex.precio) },
       ],
     }));
   };
@@ -2347,7 +2475,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       addPaella({ id: producto.id, nombre: producto.nombre, precioKg: producto.precio });
       if (cantidad !== 1) updateKgDespuesDeAgregar(cantidad);
     } else {
-      addExtra({ id: producto.id, nombre: producto.nombre, precio: producto.precio, unidad: producto.unidad });
+      addExtra({ id: producto.id, nombre: producto.nombre, precio: producto.precio, unidad: producto.unidad, piezasPorUnidad: producto.piezasPorUnidad });
       if (cantidad !== 1) updateCantidadDespuesDeAgregar(cantidad);
     }
   };
@@ -2498,7 +2626,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     doc.setFontSize(10);
     form.items.forEach((it) => {
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
-      const cant = it.tipo === "paella" ? fmtPersonas(it.kg).replace("para ", "") : it.unidad === "kg" ? fmtKg(it.cantidad) : `x${it.cantidad}`;
+      const cant = it.tipo === "paella" ? fmtPersonas(it.kg).replace("para ", "") : it.unidad === "kg" ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
       const unitario = it.tipo === "paella" ? `${money(it.precioKg / 2)}/persona` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
       // Para paellas con extras, la fila muestra solo la base; los extras van
       // en renglones propios para que la suma cuadre a la vista.
@@ -2565,7 +2693,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(43, 32, 21);
-      doc.text("Datos para anticipo (opcional)", margin, y);
+      doc.text("Datos de pago — 50% de anticipo para confirmar; el resto a la entrega", margin, y);
       y += 5;
       doc.setFont("helvetica", "normal");
       doc.setTextColor(138, 120, 96);
@@ -2573,7 +2701,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         config.pago.banco ? `Banco: ${config.pago.banco}` : null,
         config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
         `CLABE / Tarjeta: ${config.pago.clabe}`,
-        "También puede pagar al recibir su pedido.",
+        "En el concepto de la transferencia ponga únicamente su nombre, por favor.",
       ].filter(Boolean);
       doc.text(lineasPago, margin, y);
       y += lineasPago.length * 4.5;
@@ -2678,15 +2806,30 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             )}
             {mostrarNuevo && (
               <div className="af-card p-3 mt-2">
-                <input className="af-input mb-2" placeholder="Nombre" value={nuevoCliente.nombre} onChange={(e) => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })} />
+                <input className="af-input mb-2" placeholder="Nombre" value={nuevoCliente.nombre} onChange={(e) => { setNuevoCliente({ ...nuevoCliente, nombre: e.target.value }); setConfirmDupPedido(false); }} />
                 <input className="af-input mb-2" placeholder="Teléfono" value={nuevoCliente.telefono} onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })} />
                 <div className="mb-2">
                   <UbicacionField value={nuevoCliente.ubicacion} onChange={(v) => setNuevoCliente({ ...nuevoCliente, ubicacion: v })} />
                 </div>
                 <input className="af-input mb-2" placeholder="Referencias de dirección (opcional)" value={nuevoCliente.direccion} onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })} />
+                {parecidosNuevo.length > 0 && (
+                  <div className="af-error">
+                    ⚠ Parecido a: <strong>{parecidosNuevo.map((c) => c.nombre).join(", ")}</strong>.
+                    {" "}Tócalo para usarlo en vez de duplicar:
+                    <div className="mt-1">
+                      {parecidosNuevo.map((c) => (
+                        <button key={c.id} className="af-btn-chip mr-1" onClick={() => { seleccionarCliente(c); setMostrarNuevo(false); setConfirmDupPedido(false); }}>
+                          Usar "{c.nombre}"
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <button className="af-btn-ghost flex-1" onClick={() => setMostrarNuevo(false)}>Cancelar</button>
-                  <button className="af-btn-primary flex-1" onClick={crearCliente}>Guardar</button>
+                  <button className="af-btn-primary flex-1" onClick={crearCliente}>
+                    {parecidosNuevo.length > 0 && confirmDupPedido ? "¿Seguro? Crear igual" : "Guardar"}
+                  </button>
                 </div>
               </div>
             )}
@@ -3102,7 +3245,26 @@ export default function App() {
   };
 
   const updateCliente = (actualizado) => {
+    const anterior = clientes.find((c) => c.id === actualizado.id);
     guardarClientes(clientes.map((c) => (c.id === actualizado.id ? actualizado : c)));
+
+    // Propagar el cambio a todos sus pedidos y presupuestos: nombre y teléfono
+    // siempre; la dirección de entrega solo en los NO entregados que usaban la
+    // dirección anterior del cliente (las direcciones especiales de un evento
+    // no se tocan).
+    const sincronizar = (p) => {
+      if (p.clienteId !== actualizado.id) return p;
+      const nuevo = { ...p, clienteNombre: actualizado.nombre, clienteTelefono: actualizado.telefono || "" };
+      const pendiente = (p.estado || "pendiente") !== "entregado";
+      if (pendiente && anterior) {
+        if ((p.ubicacion || "") === (anterior.ubicacion || "")) nuevo.ubicacion = actualizado.ubicacion || "";
+        if ((p.direccion || "") === (anterior.direccion || "")) nuevo.direccion = actualizado.direccion || "";
+      }
+      return nuevo;
+    };
+    guardarPedidos(pedidos.map(sincronizar));
+    guardarPresupuestos(presupuestos.map(sincronizar));
+    showToast("Cliente actualizado en todos sus pedidos");
   };
 
   const marcarPaelleraDevuelta = (pedidoId, itemId) => {
@@ -3265,11 +3427,11 @@ export default function App() {
     if (form.pedidoId) {
       const anterior = pedidos.find((p) => p.id === form.pedidoId);
       if (anterior) {
-        desechables = ajustarStock(desechables, calcularConsumo(anterior.items, desechables), "restaurar");
+        desechables = ajustarStock(desechables, calcularConsumo(anterior.items, desechables, config.extras), "restaurar");
         ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(anterior.items, ingredientes), "restaurar");
       }
     }
-    desechables = ajustarStock(desechables, calcularConsumo(form.items, desechables), "consumir");
+    desechables = ajustarStock(desechables, calcularConsumo(form.items, desechables, config.extras), "consumir");
     ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(form.items, ingredientes), "consumir");
     guardarConfig({ ...config, desechables, ingredientes });
 
@@ -3282,7 +3444,7 @@ export default function App() {
   const eliminarPedido = () => {
     const pedido = pedidos.find((p) => p.id === form.pedidoId);
     if (pedido) {
-      const desechables = ajustarStock(config.desechables || [], calcularConsumo(pedido.items, config.desechables || []), "restaurar");
+      const desechables = ajustarStock(config.desechables || [], calcularConsumo(pedido.items, config.desechables || [], config.extras), "restaurar");
       const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(pedido.items, config.ingredientes || []), "restaurar");
       guardarConfig({ ...config, desechables, ingredientes });
     }
@@ -3372,7 +3534,7 @@ export default function App() {
       createdAt: Date.now(),
     };
 
-    let desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || []), "consumir");
+    let desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
     let ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
     guardarConfig({ ...config, desechables, ingredientes });
     guardarPedidos([nuevoPedido, ...pedidos]);
@@ -3412,7 +3574,7 @@ export default function App() {
       terminos: pr.terminos,
       createdAt: Date.now(),
     };
-    const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || []), "consumir");
+    const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
     const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
     guardarConfig({ ...config, desechables, ingredientes });
     guardarPedidos([nuevoPedido, ...pedidos]);
