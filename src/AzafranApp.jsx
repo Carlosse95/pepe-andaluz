@@ -4037,13 +4037,17 @@ const AZAFRAN_CSS = `
 .af-modal-panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
 .af-modal-list-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 16px; overflow: hidden; }
 .af-modal-detail-pane { flex: 1; overflow-y: auto; padding: 16px; }
-.af-picker-scroll { flex: 1; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.af-picker-scroll { flex: 1; overflow-y: auto; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; }
+.af-picker-scroll::-webkit-scrollbar { width: 6px; }
+.af-picker-scroll::-webkit-scrollbar-track { background: transparent; }
+.af-picker-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
 .af-pane-hide-mobile { display: none; }
 .af-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--line); background: var(--surface); flex-shrink: 0; }
 .af-modal-footer .af-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 .af-modal-footer .af-btn-primary { display: flex; align-items: center; }
 
-.af-category-pills { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; margin: 10px 0; flex-shrink: 0; }
+.af-category-pills { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; margin: 10px 0 0; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none; }
+.af-category-pills::-webkit-scrollbar { display: none; }
 .af-category-pill { flex-shrink: 0; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
 .af-category-pill.active { background: var(--wine); border-color: var(--wine); color: white; }
 

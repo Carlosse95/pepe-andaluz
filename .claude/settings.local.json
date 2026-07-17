@@ -30,7 +30,8 @@
       "Bash(git commit -m 'Piezas por orden en mensajes, anticipo 50% con concepto, sincronizar cliente en pedidos, agenda por mes, contador y anti-duplicados de clientes, empaques por platillo *)",
       "Bash(git commit -m 'Envases desechables con unidad \\(kg/piezas/litros\\) y rango: platillos con empaque '\\\\''rango'\\\\'' eligen el envase según piezas pedidas *)",
       "Bash(grep -n \"fmtHora12\\\\|fmtDateHuman\\\\|📅 \\\\${fmtDateHuman\" src/AzafranApp.jsx)",
-      "Bash(git commit -m 'Corrige texto suelto '\\\\''\\)}'\\\\'' en Ajustes, modal Agregar ítem que se encogía con pocos resultados, y vista previa de hora en formato 12h para evitar confusiones AM/PM *)"
+      "Bash(git commit -m 'Corrige texto suelto '\\\\''\\)}'\\\\'' en Ajustes, modal Agregar ítem que se encogía con pocos resultados, y vista previa de hora en formato 12h para evitar confusiones AM/PM *)",
+      "Bash(git commit -m 'Ocultar barras de scroll nativas en el modal Agregar ítem \\(categorías y lista\\), se veían apretadas en Mac con scrollbars siempre visibles *)"
     ]
   }
 }
