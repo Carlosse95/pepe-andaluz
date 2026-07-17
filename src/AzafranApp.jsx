@@ -1917,7 +1917,6 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     Configura esos envases en <strong>Inventario → Envases desechables</strong>.
                   </div>
                 )}
-                )}
               </div>
             ))}
             <button
@@ -2759,6 +2758,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         <div className="af-field">
           <label>Hora</label>
           <input type="time" className="af-input" value={form.hora} onChange={(e) => setForm((p) => ({ ...p, hora: e.target.value }))} />
+          {form.hora && <div className="af-hora-preview">Se verá como: <strong>{fmtHora12(form.hora)}</strong></div>}
         </div>
       </div>
 
@@ -3983,6 +3983,8 @@ const AZAFRAN_CSS = `
 .af-pago-line { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 14px; }
 .af-pago-saldo { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 8px; font-weight: 700; color: var(--wine); }
 .af-hint { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+.af-hora-preview { font-size: 12.5px; color: var(--wine); margin-top: 6px; }
+.af-hora-preview strong { font-family: 'Space Grotesk', sans-serif; }
 
 .af-error { background: var(--wine-soft); color: var(--wine); border-radius: 10px; padding: 10px 13px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 
@@ -4030,7 +4032,7 @@ const AZAFRAN_CSS = `
 
 /* Modal "Agregar ítem" */
 .af-modal-overlay { position: fixed; inset: 0; background: rgba(36,27,20,0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
-.af-modal { background: var(--bg); width: 100%; max-height: 92vh; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -8px 30px rgba(36,27,20,0.3); }
+.af-modal { background: var(--bg); width: 100%; height: 92vh; max-height: 92vh; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -8px 30px rgba(36,27,20,0.3); }
 .af-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--line); font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; background: var(--surface); flex-shrink: 0; }
 .af-modal-panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
 .af-modal-list-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 16px; overflow: hidden; }
@@ -4106,7 +4108,7 @@ const AZAFRAN_CSS = `
 
 @media (min-width: 760px) {
   .af-modal-overlay { align-items: center; padding: 24px; }
-  .af-modal { width: 720px; max-width: 100%; border-radius: 18px; max-height: 82vh; }
+  .af-modal { width: 720px; max-width: 100%; border-radius: 18px; height: 82vh; max-height: 82vh; }
   .af-modal-panes { }
   .af-modal-list-pane { border-right: 1px solid var(--line); }
   .af-pane-hide-mobile { display: flex; }
