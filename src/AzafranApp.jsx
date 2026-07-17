@@ -294,15 +294,49 @@ const ajustarStock = (desechables, consumo, direccion) =>
     return { ...d, stock: Math.max(0, Math.round((d.stock + delta) * 100) / 100) };
   });
 
-// Consumo de ingredientes según la receta: cuánto usa cada kilo de cada paella.
-// ing.porKg = { [paellaId]: cantidad por kg }.
+// ---- Unidades de medida para ingredientes ----
+// La app convierte entre unidades de la misma familia (peso: g/kg, volumen: ml/l,
+// piezas: pza) para descontar en "presentaciones" (bolsas, cajas...) aunque el
+// uso por kilo de paella esté en gramos o piezas.
+const UNIDADES_MEDIDA = [
+  { id: "g", label: "gramos", familia: "peso", factor: 1 },
+  { id: "kg", label: "kilos", familia: "peso", factor: 1000 },
+  { id: "ml", label: "mililitros", familia: "volumen", factor: 1 },
+  { id: "l", label: "litros", familia: "volumen", factor: 1000 },
+  { id: "pza", label: "piezas", familia: "piezas", factor: 1 },
+];
+const UNIDAD_INFO = Object.fromEntries(UNIDADES_MEDIDA.map((u) => [u.id, u]));
+const PRESENTACIONES = ["bolsa", "caja", "paquete", "costal", "botella", "lata", "frasco", "pieza"];
+
+// Migra ingredientes del modelo viejo (solo unidad/stock) al nuevo con presentación.
+const normalizarIngrediente = (ing) => {
+  if (ing.presentacionCantidad != null) return ing;
+  const u = UNIDAD_INFO[ing.unidad] ? ing.unidad : "pza";
+  return {
+    ...ing,
+    presentacionNombre: "paquete",
+    presentacionCantidad: 1,
+    presentacionUnidad: u,
+    usoUnidad: u,
+    porKg: ing.porKg || {},
+  };
+};
+
+// Consumo de ingredientes EN PRESENTACIONES (bolsas/cajas) según la receta:
+// (uso por kg × kilos del pedido, convertido a la unidad base) ÷ contenido de la presentación.
 const calcularConsumoIngredientes = (items, ingredientes) => {
   const consumo = {};
   items.forEach((it) => {
     if (it.tipo !== "paella") return;
-    (ingredientes || []).forEach((ing) => {
+    (ingredientes || []).forEach((raw) => {
+      const ing = normalizarIngrediente(raw);
       const porKg = (ing.porKg || {})[it.paellaId] || 0;
-      if (porKg > 0) consumo[ing.id] = (consumo[ing.id] || 0) + porKg * it.kg;
+      if (porKg <= 0) return;
+      const fUso = (UNIDAD_INFO[ing.usoUnidad] || { factor: 1 }).factor;
+      const fPres = (UNIDAD_INFO[ing.presentacionUnidad] || { factor: 1 }).factor;
+      const contenido = (ing.presentacionCantidad || 1) * fPres;
+      if (contenido <= 0) return;
+      consumo[ing.id] = (consumo[ing.id] || 0) + (porKg * it.kg * fUso) / contenido;
     });
   });
   return consumo;
@@ -693,7 +727,7 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
           <div className="af-alert-title">Por comprar</div>
           {bajoIngredientes.map((i) => (
             <div key={i.id} className="af-alert-line">
-              {i.nombre}: quedan <strong>{i.stock} {i.unidad || ""}</strong> (aviso en {i.minimo})
+              {i.nombre}: quedan <strong>{i.stock} {(i.presentacionNombre || i.unidad || "") + (i.stock === 1 ? "" : "s")}</strong> (aviso en {i.minimo})
             </div>
           ))}
           {bajoStock.map((d) => (
@@ -1804,88 +1838,112 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
         <div>
           <div className="af-section-title">Ingredientes</div>
           <div className="af-hint mb-3">
-            Dale de alta tus ingredientes con su existencia, y dile a la app cuánto usa cada kilo
-            de paella. Al guardar un pedido se descuenta solo, y en "Hoy" te avisa cuando algo
-            esté por acabarse.
+            Dile a la app cómo COMPRAS cada ingrediente (ej. bolsa de 1.5 kilos) y cuánto USAS
+            por cada kilo de paella (ej. 150 gramos, o 4 piezas). Ella hace la conversión y
+            descuenta solita al guardar pedidos; en "Hoy" te avisa cuando algo esté por acabarse.
           </div>
           <div className="af-menu-grid mb-5">
-            {(draft.ingredientes || []).map((ing, i) => (
-              <div key={ing.id} className="af-menu-card">
-                <div className="af-menu-card-top">
-                  <input
-                    className="af-input af-menu-name"
-                    value={ing.nombre}
-                    placeholder="Ej. Arroz"
-                    onChange={(e) => {
-                      const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
-                      setDraft({ ...draft, ingredientes });
-                    }}
-                  />
-                  <button className="af-icon-btn" onClick={() => setDraft({ ...draft, ingredientes: draft.ingredientes.filter((_, xi) => xi !== i) })}>
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-                <div className="af-menu-card-row">
-                  <div className="flex-1">
-                    <div className="af-mini-label">Unidad</div>
+            {(draft.ingredientes || []).map(normalizarIngrediente).map((ing, i) => {
+              const setIng = (cambios) => {
+                const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...normalizarIngrediente(x), ...cambios } : x));
+                setDraft({ ...draft, ingredientes });
+              };
+              const familiasOk =
+                (UNIDAD_INFO[ing.usoUnidad] || {}).familia === (UNIDAD_INFO[ing.presentacionUnidad] || {}).familia;
+              return (
+                <div key={ing.id} className="af-menu-card">
+                  <div className="af-menu-card-top">
                     <input
-                      className="af-input"
-                      value={ing.unidad || ""}
-                      placeholder="kg, pza, lt..."
-                      onChange={(e) => {
-                        const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, unidad: e.target.value } : x));
-                        setDraft({ ...draft, ingredientes });
-                      }}
+                      className="af-input af-menu-name"
+                      value={ing.nombre}
+                      placeholder="Ej. Arroz"
+                      onChange={(e) => setIng({ nombre: e.target.value })}
                     />
+                    <button className="af-icon-btn" onClick={() => setDraft({ ...draft, ingredientes: draft.ingredientes.filter((_, xi) => xi !== i) })}>
+                      <Trash2 size={15} />
+                    </button>
                   </div>
-                  <div>
-                    <div className="af-mini-label">Tengo</div>
+
+                  <div className="af-mini-label">¿Cómo lo compras?</div>
+                  <div className="af-menu-card-row">
+                    <select
+                      className="af-input flex-1"
+                      value={PRESENTACIONES.includes(ing.presentacionNombre) ? ing.presentacionNombre : "paquete"}
+                      onChange={(e) => setIng({ presentacionNombre: e.target.value })}
+                    >
+                      {PRESENTACIONES.map((p) => (<option key={p} value={p}>{p}</option>))}
+                    </select>
+                    <span className="af-price-suffix">de</span>
                     <NumberField
-                      value={ing.stock}
+                      value={ing.presentacionCantidad}
                       min={0}
                       className="af-input af-menu-kgrange"
-                      onChange={(v) => {
-                        const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, stock: v } : x));
-                        setDraft({ ...draft, ingredientes });
-                      }}
+                      onChange={(v) => setIng({ presentacionCantidad: v })}
                     />
+                    <select
+                      className="af-input flex-1"
+                      value={ing.presentacionUnidad}
+                      onChange={(e) => setIng({ presentacionUnidad: e.target.value })}
+                    >
+                      {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
+                    </select>
                   </div>
-                  <div>
-                    <div className="af-mini-label">Avísame en</div>
-                    <NumberField
-                      value={ing.minimo}
-                      min={0}
-                      className="af-input af-menu-kgrange"
-                      onChange={(v) => {
-                        const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...x, minimo: v } : x));
-                        setDraft({ ...draft, ingredientes });
-                      }}
-                    />
+
+                  <div className="af-menu-card-row">
+                    <div className="flex-1">
+                      <div className="af-mini-label">Tengo ({ing.presentacionNombre}s)</div>
+                      <NumberField
+                        value={ing.stock}
+                        min={0}
+                        className="af-input w-full"
+                        onChange={(v) => setIng({ stock: v })}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="af-mini-label">Avísame en</div>
+                      <NumberField
+                        value={ing.minimo}
+                        min={0}
+                        className="af-input w-full"
+                        onChange={(v) => setIng({ minimo: v })}
+                      />
+                    </div>
                   </div>
+
+                  <div className="af-menu-card-row">
+                    <span className="af-mini-label" style={{ marginBottom: 0 }}>Por kilo de paella uso</span>
+                    <select
+                      className="af-input flex-1"
+                      value={ing.usoUnidad}
+                      onChange={(e) => setIng({ usoUnidad: e.target.value })}
+                    >
+                      {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
+                    </select>
+                  </div>
+                  {!familiasOk && (
+                    <div className="af-stock-alert">
+                      ⚠ La unidad de uso y la de compra deben ser de la misma familia (peso, volumen o piezas).
+                      Ej.: si usas piezas, pon la {ing.presentacionNombre} también en piezas.
+                    </div>
+                  )}
+                  {draft.paellas.filter((p) => p.nombre.trim()).map((p) => (
+                    <div key={p.id} className="af-receta-row">
+                      <span>{p.nombre}</span>
+                      <NumberField
+                        value={(ing.porKg || {})[p.id] || 0}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setIng({ porKg: { ...(ing.porKg || {}), [p.id]: v } })}
+                      />
+                    </div>
+                  ))}
+                  {ing.stock <= ing.minimo && <div className="af-stock-alert">¡Hay que comprar más!</div>}
                 </div>
-                <div className="af-mini-label mt-1">Se usa por cada kilo de:</div>
-                {draft.paellas.filter((p) => p.nombre.trim()).map((p) => (
-                  <div key={p.id} className="af-receta-row">
-                    <span>{p.nombre}</span>
-                    <NumberField
-                      value={(ing.porKg || {})[p.id] || 0}
-                      min={0}
-                      className="af-input af-menu-kgrange"
-                      onChange={(v) => {
-                        const ingredientes = draft.ingredientes.map((x, xi) =>
-                          xi === i ? { ...x, porKg: { ...(x.porKg || {}), [p.id]: v } } : x
-                        );
-                        setDraft({ ...draft, ingredientes });
-                      }}
-                    />
-                  </div>
-                ))}
-                {ing.stock <= ing.minimo && <div className="af-stock-alert">¡Hay que comprar más!</div>}
-              </div>
-            ))}
+              );
+            })}
             <button
               className="af-add-card"
-              onClick={() => setDraft({ ...draft, ingredientes: [...(draft.ingredientes || []), { id: uid(), nombre: "", unidad: "kg", stock: 0, minimo: 1, porKg: {} }] })}
+              onClick={() => setDraft({ ...draft, ingredientes: [...(draft.ingredientes || []), { id: uid(), nombre: "", presentacionNombre: "bolsa", presentacionCantidad: 1, presentacionUnidad: "kg", usoUnidad: "g", stock: 0, minimo: 1, porKg: {} }] })}
             >
               <Plus size={20} />
               <span>Añadir ingrediente</span>
@@ -2970,7 +3028,7 @@ export default function App() {
       const valor = JSON.parse(raw);
       if (clave === "pedidos") setPedidos(asignarFolios(valor.map(migrarPedido)));
       else if (clave === "clientes") setClientes(valor);
-      else if (clave === "config-productos") setConfig({ ...DEFAULT_CONFIG, ...valor, desechables: valor.desechables || DEFAULT_CONFIG.desechables });
+      else if (clave === "config-productos") setConfig({ ...DEFAULT_CONFIG, ...valor, desechables: valor.desechables || DEFAULT_CONFIG.desechables, ingredientes: (valor.ingredientes || []).map(normalizarIngrediente) });
       else if (clave === "historico-mensual") setHistorico(valor);
       else if (clave === "presupuestos") setPresupuestos(asignarFolios(valor));
     } catch (e) {
@@ -3366,7 +3424,7 @@ export default function App() {
   const importarDatos = (data) => {
     const pedidosImp = asignarFolios((data.pedidos || []).map(migrarPedido));
     const clientesImp = data.clientes || [];
-    const configImp = { ...DEFAULT_CONFIG, ...(data.config || {}), desechables: (data.config && data.config.desechables) || DEFAULT_CONFIG.desechables };
+    const configImp = { ...DEFAULT_CONFIG, ...(data.config || {}), desechables: (data.config && data.config.desechables) || DEFAULT_CONFIG.desechables, ingredientes: ((data.config && data.config.ingredientes) || []).map(normalizarIngrediente) };
     const historicoImp = data.historico || {};
     const presupuestosImp = asignarFolios(data.presupuestos || []);
     guardarPedidos(pedidosImp);

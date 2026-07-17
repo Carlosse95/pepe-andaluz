@@ -24,7 +24,8 @@
       "Bash(git commit -m 'Envío manual, IVA opcional, método de pago, reporte por día, agenda con entregados, aceptar presupuestos, platillos por kg, Hoy sin distracciones *)",
       "Bash(git commit -m 'Paellas en personas \\(1 kg = 2\\) en WhatsApp y PDF; mínimo 1 kg *)",
       "Bash(git commit -m 'Por cobrar de hoy en Hoy; totales y por cobrar en Agenda; entregados en orden de calendario *)",
-      "Bash(git commit -m 'Inventario de ingredientes con receta por kg de paella; datos de pago para anticipos en WhatsApp y PDF *)"
+      "Bash(git commit -m 'Inventario de ingredientes con receta por kg de paella; datos de pago para anticipos en WhatsApp y PDF *)",
+      "Bash(git commit -m 'Inventario v2: presentaciones de compra \\(bolsa 1.5 kg\\) y uso por kg en otra unidad \\(gramos/piezas\\) con conversión automática *)"
     ]
   }
 }
