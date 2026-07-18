@@ -4,7 +4,7 @@ import {
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   MoreHorizontal, PackageSearch, MessageCircle, Copy, Wallet, CalendarClock,
-  Upload, CheckCircle2, AlertTriangle,
+  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
 import jsPDF from "jspdf";
@@ -818,6 +818,89 @@ function NavButton({ active, icon, label, onClick }) {
   );
 }
 
+// Recorta la imagen a un cuadrado y la comprime, para no guardar fotos enormes.
+const leerImagenComoAvatar = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 220;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const min = Math.min(img.width, img.height);
+        const sx = (img.width - min) / 2;
+        const sy = (img.height - min) / 2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+// Foto de perfil de quien tiene la sesión abierta; cada usuario edita la suya.
+// En modo local (sin login) se guarda bajo la llave "local".
+function AvatarButton({ perfil, avatares, onGuardarAvatar, size = 34 }) {
+  const [editando, setEditando] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const key = perfil?.email || "local";
+  const foto = avatares?.[key];
+  const nombre = (perfil?.nombre || perfil?.email || "Yo").trim();
+  const inicial = nombre[0]?.toUpperCase() || "U";
+
+  const onArchivo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSubiendo(true);
+    try {
+      const dataUrl = await leerImagenComoAvatar(file);
+      onGuardarAvatar(key, dataUrl);
+    } catch {
+      // Si la imagen no se pudo leer, simplemente no se guarda nada.
+    } finally {
+      setSubiendo(false);
+      setEditando(false);
+    }
+  };
+
+  return (
+    <div className="af-avatar-wrap">
+      <button className="af-avatar-btn" style={{ width: size, height: size }} onClick={() => setEditando(true)} title="Foto de perfil">
+        {foto ? <img src={foto} alt="" className="af-avatar-img" /> : <span className="af-avatar-fallback">{inicial}</span>}
+      </button>
+      {editando && (
+        <div className="af-modal-overlay" onClick={() => setEditando(false)}>
+          <div className="af-avatar-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="af-modal-header">
+              <span>Foto de perfil</span>
+              <button className="af-icon-btn" onClick={() => setEditando(false)}><X size={18} /></button>
+            </div>
+            <div className="af-avatar-modal-body">
+              <div className="af-avatar-preview">
+                {foto ? <img src={foto} alt="" /> : <span>{inicial}</span>}
+              </div>
+              <label className="af-btn-primary w-full text-center" style={{ display: "block", cursor: "pointer" }}>
+                {subiendo ? "Subiendo..." : "Subir foto"}
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={onArchivo} disabled={subiendo} />
+              </label>
+              {foto && (
+                <button className="af-btn-ghost w-full mt-2" onClick={() => { onGuardarAvatar(key, null); setEditando(false); }}>
+                  Quitar foto
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PaelleraRow({ item, onMarcarDevuelta }) {
   return (
     <div className="af-card af-paellera-row p-3 mb-2">
@@ -836,15 +919,27 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCambiarEstado, onNuevoPedido, onNuevoPresupuesto }) {
+// El saludo animado solo se ve una vez por sesión (al abrir la app), no
+// cada vez que se vuelve a la pestaña Hoy.
+let saludoYaAnimado = false;
+
+function HoyView({ pedidosHoy, pedidos, config, perfil, onAbrir, onMarcarDevuelta, onCambiarEstado, onNuevoPedido, onNuevoPresupuesto }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
+  // Solo se anima una vez por sesión (al abrir la app), no cada vez que se
+  // vuelve a la pestaña Hoy.
+  const [animarSaludo] = useState(() => {
+    if (saludoYaAnimado) return false;
+    saludoYaAnimado = true;
+    return true;
+  });
 
   const total = pedidosHoy.reduce((a, p) => a + p.total, 0);
   // Solo lo que falta cobrar de HOY (lo de otros días se ve en Agenda).
   const porCobrarHoy = pedidosHoy.reduce((a, p) => a + (p.saldo || 0), 0);
   const h = new Date().getHours();
   const saludo = h < 13 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
+  const nombre = (perfil?.nombre || "").trim() || (perfil?.email ? perfil.email.split("@")[0] : "");
 
   // En "Hoy" solo se trabaja lo que falta: los entregados se guardan colapsados.
   const activosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") !== "entregado");
@@ -874,8 +969,10 @@ function HoyView({ pedidosHoy, pedidos, config, onAbrir, onMarcarDevuelta, onCam
 
   return (
     <div>
-      <div className="af-greeting">{saludo}</div>
-      <div className="af-today-date">{fmtDateHuman(todayISO())}</div>
+      <div className={"af-greeting-panel" + (animarSaludo ? " af-greeting-animar" : "")}>
+        <div className="af-greeting">{saludo}{nombre ? `, ${nombre}` : ""}</div>
+        <div className="af-today-date">{fmtDateHuman(todayISO())}</div>
+      </div>
 
       <div className="grid grid-cols-3 gap-2 my-4">
         <StatPill label="Pedidos hoy" value={pedidosHoy.length} />
@@ -1508,19 +1605,25 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
 /* ---------------------------------------------------------------------- */
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Gas/Servicios", "Otros"];
 
-const COLOR_WINE = "#C1421F";
-const COLOR_GOLD = "#D9A62E";
-const COLOR_AZUL = "#4A5F8C";
-const COLOR_LINE_CHART = "#E9DCC0";
-const COLOR_INK_SOFT = "#8A7860";
+const COLOR_WINE = "#2F5FE0";
+const COLOR_GOLD = "#7C6FF0";
+const COLOR_AZUL = "#14B8A6";
+const COLOR_OLIVE = "#1FA971";
+const COLOR_GASTO = "#E0524A";
+const COLOR_LINE_CHART = "#D7E3F5";
+const COLOR_INK_SOFT = "#64758F";
 const chartTooltipStyle = { borderRadius: 10, border: `1px solid ${COLOR_LINE_CHART}`, fontSize: 12, boxShadow: "0 4px 14px rgba(43,32,21,0.12)" };
 const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 
-function ReportesView({ pedidos, historico, onGuardarHistorico }) {
+function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos }) {
+  const [tab, setTab] = useState("ventas");
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [mesComparar, setMesComparar] = useState(new Date().getMonth());
   const [diaSel, setDiaSel] = useState(todayISO());
+  const [filtroCategoria, setFiltroCategoria] = useState("todos");
+  const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
 
   const claveMes = (a, m) => `${a}-${String(m + 1).padStart(2, "0")}`;
 
@@ -1576,6 +1679,43 @@ function ReportesView({ pedidos, historico, onGuardarHistorico }) {
     .map(([nombre, valor]) => ({ nombre, valor }))
     .sort((a, b) => b.valor - a.valor);
 
+  // --- Finanzas: gastos, utilidad y crecimiento de clientes ---
+  const gastosAnio = gastos.filter((g) => Number(g.fecha.split("-")[0]) === anio);
+  const totalGastosAnio = gastosAnio.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
+  const utilidadAnio = totalAnio - totalGastosAnio;
+
+  const gastoPorMes = Array(12).fill(0);
+  gastosAnio.forEach((g) => {
+    const m = Number(g.fecha.split("-")[1]) - 1;
+    if (m >= 0 && m < 12) gastoPorMes[m] += parseFloat(g.monto) || 0;
+  });
+  const datosFinanzasMensual = MESES.map((nombre, i) => ({
+    mes: nombre.slice(0, 3),
+    ingreso: valorMes(anio, i).valor,
+    gasto: gastoPorMes[i],
+  }));
+
+  const clientesConFecha = (clientes || []).filter((c) => c.createdAt);
+  const clientesNuevosAnio = clientesConFecha.filter((c) => new Date(c.createdAt).getFullYear() === anio).length;
+  const nuevosPorMes = Array(12).fill(0);
+  clientesConFecha.forEach((c) => {
+    const d = new Date(c.createdAt);
+    if (d.getFullYear() === anio) nuevosPorMes[d.getMonth()] += 1;
+  });
+  const datosClientesMensual = MESES.map((nombre, i) => ({ mes: nombre.slice(0, 3), nuevos: nuevosPorMes[i] }));
+
+  const gastosFiltrados = gastosAnio
+    .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+
+  const agregarGasto = () => {
+    if (!nuevoGasto.monto || nuevoGasto.monto <= 0) return;
+    const g = { id: uid(), fecha: nuevoGasto.fecha, categoria: nuevoGasto.categoria, descripcion: nuevoGasto.descripcion.trim(), monto: parseFloat(nuevoGasto.monto) };
+    onGuardarGastos([g, ...gastos]);
+    setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
+  };
+  const eliminarGasto = (id) => onGuardarGastos(gastos.filter((g) => g.id !== id));
+
   const delDia = pedidos.filter((p) => p.fecha === diaSel);
   const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
   const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
@@ -1588,6 +1728,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico }) {
 
   return (
     <div>
+      <div className="af-subtabs mb-4">
+        <button className={"af-subtab" + (tab === "ventas" ? " active" : "")} onClick={() => setTab("ventas")}>Ventas</button>
+        <button className={"af-subtab" + (tab === "finanzas" ? " active" : "")} onClick={() => setTab("finanzas")}>Finanzas</button>
+      </div>
+
+      {tab === "ventas" && (
+      <div>
       <div className="af-section-title">¿Cuánto se hizo un día?</div>
       <div className="af-card p-4 mb-5">
         <input type="date" className="af-input mb-3" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
@@ -1630,7 +1777,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico }) {
             <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
             <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
-            <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(193,66,31,0.06)" }} />
+            <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(47,95,224,0.06)" }} />
             <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
               {datosMensuales.map((d, i) => <Cell key={i} fill={d.esAuto ? COLOR_WINE : COLOR_GOLD} />)}
             </Bar>
@@ -1707,7 +1854,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico }) {
             <BarChart data={datosComparar} layout="vertical" margin={{ top: 5, right: 24, left: 4, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} tickFormatter={miles} />
-              <YAxis type="category" dataKey="anio" tick={{ fontSize: 12, fill: "#2B2015", fontWeight: 700 }} axisLine={false} tickLine={false} width={44} />
+              <YAxis type="category" dataKey="anio" tick={{ fontSize: 12, fill: "#16233F", fontWeight: 700 }} axisLine={false} tickLine={false} width={44} />
               <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(74,95,140,0.08)" }} />
               <Bar dataKey="valor" radius={[0, 6, 6, 0]} fill={COLOR_AZUL} />
             </BarChart>
@@ -1722,12 +1869,126 @@ function ReportesView({ pedidos, historico, onGuardarHistorico }) {
             <BarChart data={datosPaella} layout="vertical" margin={{ top: 5, right: 24, left: 4, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} tickFormatter={miles} />
-              <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12, fill: "#2B2015" }} axisLine={false} tickLine={false} width={104} />
-              <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(193,66,31,0.06)" }} />
+              <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12, fill: "#16233F" }} axisLine={false} tickLine={false} width={104} />
+              <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(47,95,224,0.06)" }} />
               <Bar dataKey="valor" radius={[0, 6, 6, 0]} fill={COLOR_WINE} />
             </BarChart>
           </ResponsiveContainer>
         </div>
+      )}
+      </div>
+      )}
+
+      {tab === "finanzas" && (
+      <div>
+        <div className="af-year-switch">
+          <button className="af-icon-btn" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></button>
+          <span className="af-year-label">{anio}</span>
+          <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
+        </div>
+
+        <div className="af-kpi-grid mb-5">
+          <div className="af-kpi-card">
+            <div className="af-kpi-label">Ingresos {anio}</div>
+            <div className="af-kpi-value af-kpi-up">{money(totalAnio)}</div>
+          </div>
+          <div className="af-kpi-card">
+            <div className="af-kpi-label">Gastos {anio}</div>
+            <div className="af-kpi-value af-kpi-down">{money(totalGastosAnio)}</div>
+          </div>
+          <div className="af-kpi-card">
+            <div className="af-kpi-label">Utilidad neta</div>
+            <div className={"af-kpi-value" + (utilidadAnio >= 0 ? " af-kpi-up" : " af-kpi-down")}>{money(utilidadAnio)}</div>
+          </div>
+          <div className="af-kpi-card">
+            <div className="af-kpi-label">Clientes nuevos {anio}</div>
+            <div className="af-kpi-value">{clientesNuevosAnio}</div>
+          </div>
+        </div>
+
+        <div className="af-card p-4 mb-5 af-chart-card">
+          <div className="af-chart-title">Ingresos vs. gastos por mes — {anio}</div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
+              <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(47,95,224,0.06)" }} />
+              <Bar dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
+              <Bar dataKey="gasto" name="Gastos" fill={COLOR_GASTO} radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="af-chart-legend">
+            <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Ingresos</span>
+            <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos</span>
+          </div>
+        </div>
+
+        <div className="af-card p-4 mb-5 af-chart-card">
+          <div className="af-chart-title">Clientes nuevos por mes — {anio}</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={datosClientesMensual} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+              <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(31,169,113,0.08)" }} />
+              <Bar dataKey="nuevos" name="Clientes nuevos" radius={[6, 6, 0, 0]} fill={COLOR_OLIVE} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="af-section-title">Agregar gasto</div>
+        <div className="af-card p-4 mb-5">
+          <div className="af-field">
+            <label>Fecha</label>
+            <input type="date" className="af-input" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
+          </div>
+          <div className="af-field">
+            <label>Categoría</label>
+            <select className="af-input" value={nuevoGasto.categoria} onChange={(e) => setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })}>
+              {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="af-field">
+            <label>Descripción (opcional)</label>
+            <input className="af-input" placeholder="Ej. Camarón, gasolina..." value={nuevoGasto.descripcion} onChange={(e) => setNuevoGasto({ ...nuevoGasto, descripcion: e.target.value })} />
+          </div>
+          <div className="af-field">
+            <label>Monto</label>
+            <NumberField value={nuevoGasto.monto} min={0} className="af-input" onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })} />
+          </div>
+          <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
+        </div>
+
+        <div className="af-section-title">Gastos de {anio}</div>
+        <div className="af-mes-pills mb-3">
+          <button className={"af-mes-pill" + (filtroCategoria === "todos" ? " active" : "")} onClick={() => setFiltroCategoria("todos")}>Todos</button>
+          {CATEGORIAS_GASTO.map((c) => (
+            <button key={c} className={"af-mes-pill" + (filtroCategoria === c ? " active" : "")} onClick={() => setFiltroCategoria(c)}>{c}</button>
+          ))}
+        </div>
+
+        {gastosFiltrados.length === 0 ? (
+          <EmptyState
+            icon={<Receipt size={26} />}
+            title="Sin gastos registrados"
+            subtitle="Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."
+          />
+        ) : (
+          <div className="mb-4">
+            {gastosFiltrados.map((g) => (
+              <div key={g.id} className="af-card p-3 mb-2 af-gasto-row">
+                <div className="flex-1 min-w-0">
+                  <div className="af-cliente-nombre">{g.categoria}{g.descripcion ? ` · ${g.descripcion}` : ""}</div>
+                  <div className="af-ink-soft text-sm">{fmtDateHuman(g.fecha)}</div>
+                </div>
+                <div className="af-gasto-monto">{money(g.monto)}</div>
+                <button className="af-icon-btn" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       )}
     </div>
   );
@@ -3546,6 +3807,8 @@ export default function App() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [historico, setHistorico] = useState({});
   const [presupuestos, setPresupuestos] = useState([]);
+  const [avatares, setAvatares] = useState({}); // email (o "local") -> foto en base64
+  const [gastos, setGastos] = useState([]);
 
   const [view, setView] = useState("hoy");
   const [formOrigen, setFormOrigen] = useState("hoy");
@@ -3599,6 +3862,8 @@ export default function App() {
       else if (clave === "config-productos") setConfig({ ...DEFAULT_CONFIG, ...valor, desechables: valor.desechables || DEFAULT_CONFIG.desechables, ingredientes: (valor.ingredientes || []).map(normalizarIngrediente) });
       else if (clave === "historico-mensual") setHistorico(valor);
       else if (clave === "presupuestos") setPresupuestos(asignarFolios(valor));
+      else if (clave === "avatares") setAvatares(valor || {});
+      else if (clave === "gastos") setGastos(valor || []);
     } catch (e) {
       console.error("Error aplicando " + clave, e);
     }
@@ -3610,12 +3875,14 @@ export default function App() {
     setCargando(true);
     (async () => {
       try {
-        const [rp, rc, rcfg, rh, rpr] = await Promise.allSettled([
+        const [rp, rc, rcfg, rh, rpr, rav, rg] = await Promise.allSettled([
           almacen.get("pedidos"),
           almacen.get("clientes"),
           almacen.get("config-productos"),
           almacen.get("historico-mensual"),
           almacen.get("presupuestos"),
+          almacen.get("avatares"),
+          almacen.get("gastos"),
         ]);
         if (cancelado) return;
         if (rp.status === "fulfilled" && rp.value) aplicarClave("pedidos", rp.value.value);
@@ -3627,6 +3894,8 @@ export default function App() {
         }
         if (rh.status === "fulfilled" && rh.value) aplicarClave("historico-mensual", rh.value.value);
         if (rpr.status === "fulfilled" && rpr.value) aplicarClave("presupuestos", rpr.value.value);
+        if (rav.status === "fulfilled" && rav.value) aplicarClave("avatares", rav.value.value);
+        if (rg.status === "fulfilled" && rg.value) aplicarClave("gastos", rg.value.value);
       } catch (e) {
         console.error("Error cargando datos", e);
       } finally {
@@ -3654,6 +3923,17 @@ export default function App() {
   const guardarConfig = (nueva) => { setConfig(nueva); persist("config-productos", nueva); };
   const guardarHistorico = (nuevo) => { setHistorico(nuevo); persist("historico-mensual", nuevo); };
   const guardarPresupuestos = (lista) => { setPresupuestos(lista); persist("presupuestos", lista); };
+  const guardarGastos = (lista) => { setGastos(lista); persist("gastos", lista); };
+
+  // Foto de perfil: se guarda por usuario (clave = su correo) para que cada
+  // quien vea/edite solo la suya, aunque compartan el mismo dispositivo.
+  const actualizarAvatar = (key, dataUrl) => {
+    const nuevos = { ...avatares };
+    if (dataUrl) nuevos[key] = dataUrl;
+    else delete nuevos[key];
+    setAvatares(nuevos);
+    persist("avatares", nuevos);
+  };
 
   const addCliente = (data) => {
     const c = {
@@ -4057,11 +4337,13 @@ export default function App() {
     const configImp = { ...DEFAULT_CONFIG, ...(data.config || {}), desechables: (data.config && data.config.desechables) || DEFAULT_CONFIG.desechables, ingredientes: ((data.config && data.config.ingredientes) || []).map(normalizarIngrediente) };
     const historicoImp = data.historico || {};
     const presupuestosImp = asignarFolios(data.presupuestos || []);
+    const gastosImp = data.gastos || [];
     guardarPedidos(pedidosImp);
     guardarClientes(clientesImp);
     guardarConfig(configImp);
     guardarHistorico(historicoImp);
     guardarPresupuestos(presupuestosImp);
+    guardarGastos(gastosImp);
     showToast("Respaldo restaurado correctamente");
   };
 
@@ -4128,12 +4410,22 @@ export default function App() {
     <div className="af-app">
       <style>{AZAFRAN_CSS}</style>
 
-      <div className="af-sidebar">
-        <div className="af-logo-mark af-logo-sidebar" />
-        <div className="af-sidebar-nav">
+      <div className="af-topbar">
+        <div className="af-logo-mark af-logo-topbar" />
+        <nav className="af-topbar-nav">
           {navItems.map((n) => (
-            <NavButton key={n.key} active={view === n.key} icon={n.icon} label={n.label} onClick={() => irAVista(n.key)} />
+            <button key={n.key} className={"af-topbar-link" + (view === n.key ? " active" : "")} onClick={() => irAVista(n.key)}>
+              {n.label}
+            </button>
           ))}
+        </nav>
+        <div className="af-topbar-right">
+          {view !== "buscar" && (
+            <button className="af-icon-btn" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
+              <Search size={18} />
+            </button>
+          )}
+          <AvatarButton perfil={perfil} avatares={avatares} onGuardarAvatar={actualizarAvatar} />
         </div>
       </div>
 
@@ -4160,17 +4452,20 @@ export default function App() {
               ) : (
                 <span className="af-header-title-plain">{titulos[view]}</span>
               )}
-              {view !== "buscar" && (
-                <button className="af-icon-btn" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
-                  <Search size={20} />
-                </button>
-              )}
+              <div className="flex items-center gap-2 af-only-mobile">
+                {view !== "buscar" && (
+                  <button className="af-icon-btn" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
+                    <Search size={20} />
+                  </button>
+                )}
+                <AvatarButton perfil={perfil} avatares={avatares} onGuardarAvatar={actualizarAvatar} size={30} />
+              </div>
             </div>
           )}
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} perfil={perfil} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
           {view === "clientes" && (
@@ -4185,13 +4480,13 @@ export default function App() {
               onCambiarEstado={cambiarEstadoPedido}
             />
           )}
-          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} />}
+          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} />}
           {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} />}
           {view === "ajustes" && (
             <AjustesView
               config={config}
               onGuardarConfig={guardarConfig}
-              datosRespaldo={{ pedidos, clientes, config, historico, presupuestos }}
+              datosRespaldo={{ pedidos, clientes, config, historico, presupuestos, gastos }}
               onImportarDatos={importarDatos}
               perfil={perfil}
               onCerrarSesion={cerrarSesion}
@@ -4249,22 +4544,23 @@ const AZAFRAN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
 
 .af-app {
-  --bg: #F8F1E1;
+  --bg: #EEF3FC;
   --surface: #FFFFFF;
-  --ink: #2B2015;
-  --ink-soft: #8A7860;
-  --chrome: #A15A35;
-  --chrome-deep: #723F22;
-  --wine: #C15A34;
-  --wine-soft: #F9E4D3;
-  --gold: #D9A62E;
-  --gold-soft: #FBEFC9;
-  --olive: #5B7052;
-  --olive-soft: #E4EBDE;
-  --azul: #4A5F8C;
-  --azul-soft: #DEE4F2;
-  --neutral-soft: #EFE6D3;
-  --line: #E9DCC0;
+  --ink: #16233F;
+  --ink-soft: #64758F;
+  --chrome: #2F5FE0;
+  --chrome-deep: #15308F;
+  --wine: #2F5FE0;
+  --wine-soft: #E3ECFC;
+  --gold: #7C6FF0;
+  --gold-soft: #ECE9FC;
+  --olive: #1FA971;
+  --olive-soft: #DDF3E9;
+  --azul: #14B8A6;
+  --azul-soft: #DAF5F1;
+  --neutral-soft: #EAF0FB;
+  --line: #D7E3F5;
+  --glass: rgba(255,255,255,0.7);
 
   font-family: 'Inter', sans-serif;
   background: var(--bg);
@@ -4294,22 +4590,56 @@ const AZAFRAN_CSS = `
 }
 .af-logo-header { width: 150px; background-color: var(--chrome); }
 .af-logo-sidebar { width: 150px; background-color: var(--bg); margin-bottom: 22px; }
+.af-logo-topbar { width: 118px; flex-shrink: 0; background-color: var(--chrome); }
 
 .af-sidebar { display: none; }
+.af-topbar { display: none; }
 
 .af-main { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
 
-.af-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 5; box-shadow: 0 4px 10px -8px rgba(36,27,20,0.2); }
+.af-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 5; box-shadow: 0 4px 10px -8px rgba(22,35,63,0.08); display: flex; align-items: center; gap: 10px; }
 .af-header-title-plain { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; }
 .af-header-title-desktop { display: none; font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; }
-.af-header-back { display: flex; align-items: center; justify-content: space-between; }
-.af-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.af-header-back { display: flex; align-items: center; justify-content: space-between; flex: 1; }
+.af-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 1; }
 .af-header-title { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; }
+
+/* Avatar de perfil, editable por cada usuario */
+.af-avatar-wrap { position: relative; flex-shrink: 0; }
+.af-avatar-btn {
+  border: 2px solid rgba(255,255,255,0.9); border-radius: 50%; overflow: hidden; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0;
+  background: var(--wine-soft); box-shadow: 0 2px 8px rgba(22,35,63,0.15); transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.af-avatar-btn:hover { transform: scale(1.06); box-shadow: 0 4px 12px rgba(22,35,63,0.22); }
+.af-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.af-avatar-fallback { font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--wine); font-size: 14px; }
+.af-avatar-modal { background: var(--surface); border-radius: 20px; width: 300px; max-width: 90vw; padding: 0 0 18px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); }
+.af-avatar-preview { width: 96px; height: 96px; border-radius: 50%; overflow: hidden; margin: 6px auto 18px; display: flex; align-items: center; justify-content: center; background: var(--wine-soft); box-shadow: 0 4px 14px rgba(22,35,63,0.18); }
+.af-avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+.af-avatar-preview span { font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--wine); font-size: 30px; }
+.af-avatar-modal-body { padding: 0 20px; }
 
 .af-content { flex: 1; padding: 16px 16px 100px; overflow-y: auto; }
 
-.af-greeting { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; }
+.af-greeting { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; }
 .af-today-date { color: var(--ink-soft); font-size: 14px; margin-top: 2px; }
+.af-greeting-panel {
+  background: linear-gradient(135deg, rgba(227,236,252,0.85), rgba(255,255,255,0.55));
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.7);
+  border-radius: 22px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 10px 30px -14px rgba(47,95,224,0.3);
+}
+@keyframes af-greeting-in {
+  0% { opacity: 0; transform: translateY(16px) scale(0.96); filter: blur(10px); }
+  65% { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.af-greeting-panel.af-greeting-animar { animation: af-greeting-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 .af-stat-pill { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 8px; text-align: center; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
 .af-stat-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; }
@@ -4631,6 +4961,16 @@ const AZAFRAN_CSS = `
 .af-year-label { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px; min-width: 64px; text-align: center; }
 .af-year-total-card { text-align: center; padding: 16px; }
 .af-year-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 26px; color: var(--wine); margin-top: 2px; }
+
+.af-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.af-kpi-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
+.af-kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin-bottom: 5px; }
+.af-kpi-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 19px; color: var(--ink); }
+.af-kpi-value.af-kpi-up { color: var(--olive); }
+.af-kpi-value.af-kpi-down { color: #E0524A; }
+
+.af-gasto-row { display: flex; align-items: center; gap: 10px; }
+.af-gasto-monto { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; white-space: nowrap; color: #E0524A; }
 .af-mes-nombre { font-weight: 700; font-size: 14px; }
 .af-mes-auto-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; color: var(--wine); }
 
@@ -4646,37 +4986,50 @@ const AZAFRAN_CSS = `
 .af-card-grid { display: grid; grid-template-columns: 1fr; row-gap: 0; }
 
 .af-ink-soft { color: var(--ink-soft); }
+.af-only-mobile { display: flex; }
+@media (min-width: 700px) { .af-only-mobile { display: none !important; } }
 
 /* Tablet vertical (iPad mini/Air/Pro en retrato) y ventanas angostas de escritorio:
-   aparece el riel lateral, pero el contenido se queda en una sola columna. */
+   aparece la barra superior, con vidrio esmerilado tipo Apple. */
 @media (min-width: 700px) {
-  .af-app { max-width: none; width: 100%; flex-direction: row; }
-  .af-sidebar {
-    display: flex; flex-direction: column; width: 220px; flex-shrink: 0;
-    background: radial-gradient(circle at 28% -10%, var(--chrome-deep), var(--chrome) 60%);
-    padding: 28px 16px;
+  .af-app { max-width: none; width: 100%; flex-direction: column; }
+  .af-sidebar { display: none; }
+  .af-topbar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 12px 32px;
+    background: var(--glass);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 30;
   }
-  .af-sidebar .af-nav-btn { flex-direction: row; justify-content: flex-start; gap: 12px; width: 100%; padding: 11px 12px; font-size: 14px; color: var(--bg); opacity: 0.72; border-radius: 10px; cursor: pointer; transition: all 0.18s ease; }
-  .af-sidebar .af-nav-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); transform: translateX(3px); }
-  .af-sidebar .af-nav-btn:hover svg { transform: scale(1.12); }
-  .af-sidebar .af-nav-btn.active { opacity: 1; background: rgba(255,255,255,0.09); color: var(--gold); }
-  .af-sidebar .af-nav-btn.active:hover { transform: translateX(3px) scale(1.01); }
+  .af-topbar-nav { display: flex; gap: 2px; flex: 1; padding-left: 12px; }
+  .af-topbar-link {
+    padding: 9px 16px; border-radius: 999px; border: none; background: none;
+    font-size: 14px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
+    transition: all 0.18s ease; white-space: nowrap;
+  }
+  .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); }
+  .af-topbar-link.active { color: white; background: var(--wine); box-shadow: 0 3px 10px -3px rgba(47,95,224,0.5); }
+  .af-topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .af-nav { display: none; }
   .af-fab { bottom: 28px; right: 28px; }
   .af-header-brand { display: none; }
   .af-header-title-desktop { display: block; }
-  .af-main { width: 0; } /* fuerza a que flex:1 reparta el ancho real en vez de encogerse al contenido */
+  .af-header { position: static; background: transparent; box-shadow: none; border-bottom: none; }
+  .af-main { width: 100%; }
   .af-header, .af-content { padding-left: 40px; padding-right: 40px; }
-  .af-content { padding-top: 24px; padding-bottom: 60px; max-width: 760px; margin: 0 auto; width: 100%; }
+  .af-content { padding-top: 16px; padding-bottom: 60px; max-width: 760px; margin: 0 auto; width: 100%; }
 }
 
 /* Tablet horizontal, laptop: hay espacio de sobra para 2-3 columnas. */
 @media (min-width: 1000px) {
-  .af-sidebar { width: 240px; padding: 32px 20px; }
+  .af-topbar { padding: 12px 48px; }
   .af-content { max-width: 980px; }
   .af-header, .af-content { padding-left: 48px; padding-right: 48px; }
   .af-card-grid { grid-template-columns: 1fr 1fr; column-gap: 18px; }
   .af-menu-grid { grid-template-columns: 1fr 1fr; }
+  .af-kpi-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
 }
 
 /* Pantallas grandes de escritorio: un poco más de aire y una tercera columna. */
