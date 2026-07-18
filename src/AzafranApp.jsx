@@ -431,9 +431,14 @@ const calcularConsumoIngredientes = (items, ingredientes) => {
 // del stock), aquí queremos la cantidad cruda en la unidad de uso del
 // ingrediente (piezas, gramos...), que es lo que se necesita para pelar o
 // sacar del congelador.
+// Agrupa variantes del mismo platillo (ej. "Croquetas de Bacalao" y
+// "Croquetas de Jamón") bajo su primera palabra, para que la producción del
+// día dé un solo total ("Croquetas") y no uno por cada sabor/orden.
+const familiaPlatillo = (nombre) => (nombre || "").trim().split(/\s+/)[0] || "Platillo";
+
 const produccionDelDia = (pedidosDelDia, config) => {
   const paellasKg = {}; // paellaId -> kg total
-  const platillos = {}; // extraId -> cantidad total (piezas si aplica, si no unidades)
+  const platillos = {}; // familia (ej. "Croquetas") -> { cantidad, unidad }
   const ingredientesUso = {}; // ingredienteId -> cantidad en su usoUnidad
 
   pedidosDelDia.forEach((p) => {
@@ -441,10 +446,13 @@ const produccionDelDia = (pedidosDelDia, config) => {
       if (it.tipo === "paella") {
         paellasKg[it.paellaId] = (paellasKg[it.paellaId] || 0) + it.kg;
       } else if (it.tipo === "extra") {
-        // Número total tal cual se pidió (sin convertir a piezas): es lo que
-        // hay que sacar del congelador/almacén; cómo se reparte entre los
-        // pedidos ya se ve en cada tarjeta.
-        platillos[it.extraId] = (platillos[it.extraId] || 0) + it.cantidad;
+        // Número total tal cual se pidió (sin convertir a piezas), sumando
+        // todas las variantes del mismo platillo: es lo que hay que sacar
+        // del congelador/almacén; cómo se reparte entre pedidos y sabores
+        // ya se ve en cada tarjeta.
+        const familia = familiaPlatillo(it.nombre);
+        if (!platillos[familia]) platillos[familia] = { cantidad: 0, unidad: it.unidad || "unidad" };
+        platillos[familia].cantidad += it.cantidad;
       }
     });
   });
@@ -958,8 +966,6 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
 
   const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
-  const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
-  const unidadExtra = (id) => (config.extras || []).find((e) => e.id === id)?.unidad || "unidad";
 
   const cambiarMes = (delta) => {
     setMesSel((prev) => {
@@ -1060,10 +1066,10 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
                         <span className="af-produccion-valor">{fmtKg(kg)}</span>
                       </div>
                     ))}
-                    {Object.entries(platillos).map(([extraId, cant]) => (
-                      <div key={extraId} className="af-produccion-row">
-                        <span>{nombreExtra(extraId)}</span>
-                        <span className="af-produccion-valor">{Math.round(cant * 10) / 10} {unidadExtra(extraId)}</span>
+                    {Object.entries(platillos).map(([familia, info]) => (
+                      <div key={familia} className="af-produccion-row">
+                        <span>{familia}</span>
+                        <span className="af-produccion-valor">{Math.round(info.cantidad * 10) / 10} {info.unidad}</span>
                       </div>
                     ))}
                     {Object.keys(ingredientesUso).length > 0 && (
