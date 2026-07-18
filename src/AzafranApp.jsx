@@ -2838,6 +2838,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 const paelleras = draft.paelleras.map((x, xi) => (xi === i ? { ...x, ...cambios } : x));
                 setDraft({ ...draft, paelleras });
               };
+              const esExacto = t.rangoMin === t.rangoMax;
               return (
                 <div key={t.id} className="af-menu-card">
                   <div className="af-menu-card-top">
@@ -2851,23 +2852,44 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       <Trash2 size={15} />
                     </button>
                   </div>
-                  <div className="af-menu-card-row">
-                    <span className="af-ink-soft text-sm">De</span>
-                    <NumberField
-                      value={t.rangoMin}
-                      min={0}
-                      className="af-input af-menu-kgrange"
-                      onChange={(v) => setT({ rangoMin: v })}
+                  <label className="af-check-row af-check-row-small mb-2">
+                    <input
+                      type="checkbox"
+                      checked={esExacto}
+                      onChange={(e) => setT(e.target.checked ? { rangoMax: t.rangoMin } : { rangoMax: t.rangoMin + 2 })}
                     />
-                    <span className="af-ink-soft text-sm">a</span>
-                    <NumberField
-                      value={t.rangoMax}
-                      min={0}
-                      className="af-input af-menu-kgrange"
-                      onChange={(v) => setT({ rangoMax: v })}
-                    />
-                    <span className="af-ink-soft text-sm">kg</span>
-                  </div>
+                    <span>Kilos exactos (no un rango)</span>
+                  </label>
+                  {esExacto ? (
+                    <div className="af-menu-card-row">
+                      <span className="af-ink-soft text-sm">Es de</span>
+                      <NumberField
+                        value={t.rangoMin}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setT({ rangoMin: v, rangoMax: v })}
+                      />
+                      <span className="af-ink-soft text-sm">kg</span>
+                    </div>
+                  ) : (
+                    <div className="af-menu-card-row">
+                      <span className="af-ink-soft text-sm">De</span>
+                      <NumberField
+                        value={t.rangoMin}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setT({ rangoMin: v })}
+                      />
+                      <span className="af-ink-soft text-sm">a</span>
+                      <NumberField
+                        value={t.rangoMax}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setT({ rangoMax: v })}
+                      />
+                      <span className="af-ink-soft text-sm">kg</span>
+                    </div>
+                  )}
                   <div className="af-mini-label">Tengo</div>
                   <NumberField
                     value={t.stock}
