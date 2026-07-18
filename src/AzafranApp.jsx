@@ -440,13 +440,13 @@ const produccionDelDia = (pedidosDelDia, config) => {
   const paellasKg = {}; // paellaId -> kg total
   const platillos = {}; // extraId -> cantidad total (piezas si aplica, si no unidades)
   const ingredientesUso = {}; // ingredienteId -> cantidad en su usoUnidad
-  let sueltasKg = 0; // paellas de PAELLA_SUELTA_MAX_KG o menos: no cabe en ninguna paellera
+  const sueltasPorPaella = {}; // paellaId -> kg de PAELLA_SUELTA_MAX_KG o menos: no cabe en ninguna paellera
 
   pedidosDelDia.forEach((p) => {
     (p.items || []).forEach((it) => {
       if (it.tipo === "paella") {
         paellasKg[it.paellaId] = (paellasKg[it.paellaId] || 0) + it.kg;
-        if (it.kg <= PAELLA_SUELTA_MAX_KG) sueltasKg += it.kg;
+        if (it.kg <= PAELLA_SUELTA_MAX_KG) sueltasPorPaella[it.paellaId] = (sueltasPorPaella[it.paellaId] || 0) + it.kg;
       } else if (it.tipo === "extra") {
         // Cantidad convertida a piezas cuando aplica (ej. 4 órdenes de
         // "ración de 6" = 24 piezas): es lo que hay que sacar del
@@ -469,7 +469,7 @@ const produccionDelDia = (pedidosDelDia, config) => {
     if (total > 0) ingredientesUso[ing.id] = total;
   });
 
-  return { paellasKg, platillos, ingredientesUso, sueltasKg };
+  return { paellasKg, platillos, ingredientesUso, sueltasPorPaella };
 };
 
 // Paelleras (los recipientes grandes que se prestan al cliente) necesarias
@@ -543,7 +543,7 @@ const sumaAbonos = (abonos) => (abonos || []).reduce((a, x) => a + (parseFloat(x
 
 // Input numérico con memoria propia: se puede borrar y escribir libremente
 // mientras se edita, y solo se valida/redondea al salir del campo.
-function NumberField({ value, onChange, min, className }) {
+function NumberField({ value, onChange, min, className, disabled }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
 
@@ -560,6 +560,7 @@ function NumberField({ value, onChange, min, className }) {
       inputMode="decimal"
       className={className}
       value={text}
+      disabled={disabled}
       onFocus={(e) => e.target.select()}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
@@ -643,11 +644,23 @@ function EstadoPedidoSelect({ estado, onChange }) {
   );
 }
 
-function OrderCard({ pedido, onClick, showFecha, onCambiarEstado }) {
+function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoWhatsApp }) {
   const itemsPaellera = pedido.items.filter((it) => it.tipo === "paella" && it.enPaellera);
   const hayPaellera = itemsPaellera.length > 0;
   const todasDevueltas = hayPaellera && itemsPaellera.every((it) => it.paelleraDevuelta);
   const estado = pedido.estado || "pendiente";
+  // En celular (sobre todo iOS), abrir WhatsApp automático desde el onChange
+  // de un <select> casi nunca funciona: el navegador no lo cuenta como un
+  // toque directo del usuario y bloquea la ventana en silencio. Por eso, en
+  // vez de intentarlo solo, mostramos un botón para que el envío salga de un
+  // toque real.
+  const [avisoPendiente, setAvisoPendiente] = useState(false);
+
+  const cambiarEstado = (v) => {
+    const yaEstabaAvisado = estado === "avisado";
+    onCambiarEstado(pedido.id, v);
+    setAvisoPendiente(v === "avisado" && !yaEstabaAvisado);
+  };
 
   return (
     <div className="af-card af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
@@ -661,11 +674,20 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado }) {
           {showFecha && <div className="af-fecha-sub">{fmtDateHuman(pedido.fecha)}</div>}
         </div>
         {onCambiarEstado ? (
-          <EstadoPedidoSelect estado={estado} onChange={(v) => onCambiarEstado(pedido.id, v)} />
+          <EstadoPedidoSelect estado={estado} onChange={cambiarEstado} />
         ) : (
           <span className={"af-badge af-estado-badge af-estado-" + estado}>{ESTADO_LABEL[estado]}</span>
         )}
       </div>
+
+      {avisoPendiente && onEnviarAvisoWhatsApp && pedido.clienteTelefono && (
+        <button
+          className="af-btn-wa w-full mb-2"
+          onClick={(e) => { e.stopPropagation(); onEnviarAvisoWhatsApp(pedido); setAvisoPendiente(false); }}
+        >
+          <MessageCircle size={15} className="inline mr-1" /> Enviar aviso por WhatsApp
+        </button>
+      )}
 
       <div className="af-tear" />
 
@@ -810,6 +832,25 @@ function Toast({ toast }) {
   );
 }
 
+// Alerta de "muchas paellas a la vez" en su propia ventana: un toast se
+// puede pasar de largo sin verlo, y esto sí requiere que lo confirmes.
+function AlertaFranjaModal({ alerta, onCerrar }) {
+  if (!alerta) return null;
+  return (
+    <div className="af-modal-overlay af-modal-overlay-center" onClick={onCerrar}>
+      <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="af-alerta-icon"><AlertTriangle size={26} /></div>
+        <div className="af-alerta-titulo">Muchas paellas a la vez</div>
+        <p className="af-alerta-texto">
+          Ya son <strong>{alerta.total} paellas</strong> cerca de las {fmtHora12(alerta.hora)} del {fmtDateHuman(alerta.fecha)}.
+          Revisa que alcancen a prepararse a tiempo.
+        </p>
+        <button className="af-btn-primary w-full" onClick={onCerrar}>Entendido</button>
+      </div>
+    </div>
+  );
+}
+
 function NavButton({ active, icon, label, onClick }) {
   return (
     <button className={"af-nav-btn" + (active ? " active" : "")} onClick={onClick}>
@@ -898,7 +939,7 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
         // display:contents evita que este div afecte el layout (el .af-app
         // original ya trae su propio flex/min-height).
         <div className="af-app" style={{ display: "contents" }}>
-          <div className="af-modal-overlay" onClick={() => setEditando(false)}>
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setEditando(false)}>
             <div className="af-avatar-modal" onClick={(e) => e.stopPropagation()}>
               <div className="af-modal-header">
                 <span>Mi perfil</span>
@@ -967,7 +1008,7 @@ function SaludoInicio({ nombre, saliendo }) {
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onNuevoPedido, onNuevoPresupuesto }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, onNuevoPedido, onNuevoPresupuesto }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
 
@@ -1053,7 +1094,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           {activosHoy
             .slice()
             .sort((a, b) => a.hora.localeCompare(b.hora))
-            .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} />)}
+            .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />)}
         </div>
       )}
 
@@ -1064,7 +1105,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           </div>
           <div className="af-card-grid">
             {proximos.map((p) => (
-              <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} />
+              <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />
             ))}
           </div>
         </div>
@@ -1080,7 +1121,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               {entregadosHoy
                 .slice()
                 .sort((a, b) => a.hora.localeCompare(b.hora))
-                .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} />)}
+                .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />)}
             </div>
           )}
         </div>
@@ -1108,7 +1149,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 /*  Vista: Agenda                                                         */
 /* ---------------------------------------------------------------------- */
 
-function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
+function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp }) {
   const [tab, setTab] = useState("pendientes");
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
@@ -1223,10 +1264,10 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
 
       {fechas.map((fecha) => {
         const pedidosDelDia = grupos[fecha];
-        const { paellasKg, platillos, ingredientesUso, sueltasKg } = produccionDelDia(pedidosDelDia, config);
+        const { paellasKg, platillos, ingredientesUso, sueltasPorPaella } = produccionDelDia(pedidosDelDia, config);
         const conteoPaelleras = paellerasDelDia(pedidosDelDia, config.paelleras);
         const paellerasTexto = textoPaelleras(conteoPaelleras);
-        const hayProduccion = Object.keys(paellasKg).length > 0 || Object.keys(platillos).length > 0 || sueltasKg > 0;
+        const hayProduccion = Object.keys(paellasKg).length > 0 || Object.keys(platillos).length > 0 || Object.keys(sueltasPorPaella).length > 0;
         return (
           <div key={fecha} className="mb-4">
             <div className="af-section-title">
@@ -1252,12 +1293,12 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
                         <span className="af-produccion-valor">{fmtKg(kg)}</span>
                       </div>
                     ))}
-                    {sueltasKg > 0 && (
-                      <div className="af-produccion-row">
-                        <span>Paella suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
-                        <span className="af-produccion-valor">{fmtKg(sueltasKg)}</span>
+                    {Object.entries(sueltasPorPaella).map(([paellaId, kg]) => (
+                      <div key={"suelta-" + paellaId} className="af-produccion-row">
+                        <span>{nombrePaella(paellaId)} suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
+                        <span className="af-produccion-valor">{fmtKg(kg)}</span>
                       </div>
-                    )}
+                    ))}
                     {Object.entries(platillos).map(([extraId, cant]) => (
                       <div key={extraId} className="af-produccion-row">
                         <span>{nombreExtra(extraId)}</span>
@@ -1291,7 +1332,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
                 .slice()
                 .sort((a, b) => a.hora.localeCompare(b.hora))
                 .map((p) => (
-                  <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} />
+                  <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />
                 ))}
             </div>
           </div>
@@ -1380,7 +1421,7 @@ function PresupuestosView({ presupuestos, onAbrir, onAceptar }) {
 /*  Vista: Buscar                                                         */
 /* ---------------------------------------------------------------------- */
 
-function BuscarView({ pedidos, onAbrir, onCambiarEstado }) {
+function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp }) {
   const [q, setQ] = useState("");
   const term = q.trim().toLowerCase();
 
@@ -1426,7 +1467,7 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado }) {
           .slice()
           .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1))
           .map((p) => (
-            <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} />
+            <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />
           ))}
       </div>
     </div>
@@ -1437,7 +1478,7 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado }) {
 /*  Vista: Clientes                                                       */
 /* ---------------------------------------------------------------------- */
 
-function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado }) {
+function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp }) {
   const [q, setQ] = useState("");
   const [detalleId, setDetalleId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
@@ -1590,7 +1631,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
           <EmptyState icon={<Users size={24} />} title="Sin pedidos todavía" />
         ) : (
           <div className="af-card-grid">
-            {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} />)}
+            {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />)}
           </div>
         )}
       </div>
@@ -1673,7 +1714,8 @@ const COLOR_INK_SOFT = "#64758F";
 const chartTooltipStyle = { borderRadius: 10, border: `1px solid ${COLOR_LINE_CHART}`, fontSize: 12, boxShadow: "0 4px 14px rgba(43,32,21,0.12)" };
 const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 
-function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos }) {
+function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil }) {
+  const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("ventas");
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [mesComparar, setMesComparar] = useState(new Date().getMonth());
@@ -1864,6 +1906,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     value={historico[clave] || 0}
                     min={0}
                     className="af-input"
+                    disabled={!esAdmin}
                     onChange={(v) => onGuardarHistorico({ ...historico, [clave]: v })}
                   />
                 </div>
@@ -1993,6 +2036,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </ResponsiveContainer>
         </div>
 
+        {esAdmin && (
+        <>
         <div className="af-section-title">Agregar gasto</div>
         <div className="af-card p-4 mb-5">
           <div className="af-field">
@@ -2015,6 +2060,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
           <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
         </div>
+        </>
+        )}
 
         <div className="af-section-title">Gastos de {anio}</div>
         <div className="af-mes-pills mb-3">
@@ -2039,7 +2086,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <div className="af-ink-soft text-sm">{fmtDateHuman(g.fecha)}</div>
                 </div>
                 <div className="af-gasto-monto">{money(g.monto)}</div>
-                <button className="af-icon-btn" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+                {esAdmin && (
+                  <button className="af-icon-btn" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+                )}
               </div>
             ))}
           </div>
@@ -2148,6 +2197,7 @@ function UsuariosPanel({ perfil, showToast }) {
 }
 
 function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, perfil, nombreUsuario, onCerrarSesion, showToast }) {
+  const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("menu");
   const [draft, setDraft] = useState(config);
   const [guardado, setGuardado] = useState(false);
@@ -2233,6 +2283,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </button>
             </div>
           )}
+          {!esAdmin && (
+            <div className="af-hint mb-4">Solo el administrador puede modificar los ajustes. Tú puedes ver todo.</div>
+          )}
+          <fieldset disabled={!esAdmin} className="af-fieldset-reset">
           <div className="af-section-title">Datos de pago para clientes</div>
           <div className="af-card p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
@@ -2344,11 +2398,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </div>
             )}
           </div>
+          </fieldset>
         </div>
       )}
 
       {tab === "menu" && (
-        <div>
+        <fieldset disabled={!esAdmin} className="af-fieldset-reset">
           <div className="af-section-title">Paellas <span className="af-ink-soft">(precio por kg)</span></div>
           <div className="af-menu-grid mb-5">
             {draft.paellas.map((p, i) => (
@@ -2537,11 +2592,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <span>Añadir extra</span>
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
 
       {tab === "inventario" && (
-        <div>
+        <fieldset disabled={!esAdmin} className="af-fieldset-reset">
           <div className="af-section-title">Ingredientes</div>
           <div className="af-hint mb-3">
             Dile a la app cómo COMPRAS cada ingrediente (ej. bolsa de 1.5 kilos) y cuánto USAS
@@ -2806,10 +2861,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <span>Añadir paellera</span>
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
 
-      {tab !== "datos" && tab !== "usuarios" && (
+      {tab !== "datos" && tab !== "usuarios" && esAdmin && (
         <button className="af-btn-primary w-full mt-5" onClick={guardar}>
           {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
         </button>
@@ -3882,6 +3937,7 @@ export default function App() {
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
+  const [alertaFranja, setAlertaFranja] = useState(null); // { total, hora } o null
 
   // Sesión (solo aplica en modo nube; en modo local no hay login).
   const [sesion, setSesion] = useState(null);
@@ -4069,8 +4125,6 @@ export default function App() {
   };
 
   const cambiarEstadoPedido = (pedidoId, estado) => {
-    const anterior = pedidos.find((p) => p.id === pedidoId);
-    let actualizado = null;
     guardarPedidos(
       pedidos.map((p) => {
         if (p.id !== pedidoId) return p;
@@ -4085,14 +4139,19 @@ export default function App() {
             nuevo = { ...nuevo, abonos, pagado: sumaAbonos(abonos), saldo: 0, estadoPago: "pagado" };
           }
         }
-        actualizado = nuevo;
         return nuevo;
       })
     );
-    // Al avisar que el pedido está listo, se abre WhatsApp con el mensaje
-    // correspondiente (recoger o a domicilio) ya redactado.
-    if (estado === "avisado" && anterior && anterior.estado !== "avisado" && actualizado?.clienteTelefono) {
-      abrirWhatsApp(actualizado.clienteTelefono, mensajeAvisado(actualizado, config.mensajes));
+    // El envío de WhatsApp al avisar NO se dispara aquí: en celular (sobre
+    // todo iOS) el navegador bloquea en silencio un window.open que viene del
+    // onChange de un <select>, porque no lo cuenta como un toque directo. En
+    // vez de eso, OrderCard muestra un botón "Enviar aviso" que dispara
+    // enviarAvisoWhatsApp desde un clic real.
+  };
+
+  const enviarAvisoWhatsApp = (pedido) => {
+    if (pedido.clienteTelefono) {
+      abrirWhatsApp(pedido.clienteTelefono, mensajeAvisado(pedido, config.mensajes));
     }
   };
 
@@ -4268,10 +4327,12 @@ export default function App() {
     const otrasEnFranja = contarPaellasEnFranja(pedidos, form.fecha, form.hora, form.pedidoId);
     const totalFranja = otrasEnFranja + paellasPropias;
     const base = form.pedidoId ? "Pedido actualizado" : `Pedido ${fmtFolio(pedidoObj.folio)} guardado`;
+    showToast(base);
+    // La alerta de demasiadas paellas en una franja de horario se muestra en
+    // su propia ventana (no en el toast, que desaparece solo y es fácil de
+    // no ver a tiempo para reaccionar).
     if (paellasPropias > 0 && totalFranja > MAX_PAELLAS_POR_FRANJA) {
-      showToast(`${base} — ⚠ ya son ${totalFranja} paellas cerca de las ${fmtHora12(form.hora)}, revisa que alcancen`, "error");
-    } else {
-      showToast(base);
+      setAlertaFranja({ total: totalFranja, hora: form.hora, fecha: form.fecha });
     }
   };
 
@@ -4560,9 +4621,9 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
-          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
-          {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
+          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} />}
+          {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} />}
           {view === "clientes" && (
             <ClientesView
               clientes={clientes}
@@ -4573,9 +4634,10 @@ export default function App() {
               onAbrirPedido={irAEditar}
               onMarcarDevuelta={marcarPaelleraDevuelta}
               onCambiarEstado={cambiarEstadoPedido}
+              onEnviarAvisoWhatsApp={enviarAvisoWhatsApp}
             />
           )}
-          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} />}
+          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} />}
           {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} />}
           {view === "ajustes" && (
             <AjustesView
@@ -4627,6 +4689,7 @@ export default function App() {
         )}
 
         <Toast toast={toast} />
+        <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
       </div>
     </div>
   );
@@ -4710,11 +4773,16 @@ const AZAFRAN_CSS = `
 .af-avatar-btn:hover { transform: scale(1.06); box-shadow: 0 4px 12px rgba(22,35,63,0.22); }
 .af-avatar-img { width: 100%; height: 100%; object-fit: cover; }
 .af-avatar-fallback { font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--wine); font-size: 14px; }
-.af-avatar-modal { background: var(--surface); border-radius: 20px; width: 300px; max-width: 90vw; padding: 0 0 18px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); }
+.af-avatar-modal { background: var(--surface); border-radius: 20px; width: 300px; max-width: 90vw; padding: 0 0 18px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); overflow: hidden; }
 .af-avatar-preview { width: 96px; height: 96px; border-radius: 50%; overflow: hidden; margin: 6px auto 18px; display: flex; align-items: center; justify-content: center; background: var(--wine-soft); box-shadow: 0 4px 14px rgba(22,35,63,0.18); }
 .af-avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
 .af-avatar-preview span { font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--wine); font-size: 30px; }
 .af-avatar-modal-body { padding: 0 20px; }
+
+.af-alerta-modal { background: var(--surface); border-radius: 20px; width: 320px; max-width: 90vw; padding: 24px 22px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); text-align: center; }
+.af-alerta-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--wine-soft); color: var(--wine); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+.af-alerta-titulo { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; margin-bottom: 8px; }
+.af-alerta-texto { color: var(--ink-soft); font-size: 14px; line-height: 1.5; margin-bottom: 18px; }
 
 .af-content { flex: 1; padding: 16px 16px 100px; overflow-y: auto; }
 
@@ -4849,6 +4917,12 @@ const AZAFRAN_CSS = `
 
 .af-input { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; font-size: 14.5px; font-family: 'Inter', sans-serif; color: var(--ink); outline: none; }
 .af-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+/* Bug conocido de iOS Safari: el valor de <input type="date"> no queda
+   centrado verticalmente dentro del campo a menos que se fuerce esto. */
+input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 1.2em; }
+/* Deja ver, pero no editar: solo el admin puede modificar Ajustes/Reportes. */
+.af-fieldset-reset { border: none; padding: 0; margin: 0; min-width: 0; }
+.af-fieldset-reset:disabled { opacity: 0.55; }
 .af-input-small { width: 100px; text-align: right; }
 .af-input-search { padding-left: 38px; }
 .af-search-wrap { position: relative; }
@@ -4942,6 +5016,10 @@ const AZAFRAN_CSS = `
 
 /* Modal "Agregar ítem" */
 .af-modal-overlay { position: fixed; inset: 0; background: rgba(36,27,20,0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
+/* Para el modal de "Mi perfil": centrado en cualquier tamaño de pantalla,
+   no solo en escritorio (a diferencia de los demás modales, que en celular
+   se abren pegados abajo). */
+.af-modal-overlay-center { align-items: center; padding: 24px; }
 .af-modal { background: var(--bg); width: 100%; height: 92vh; max-height: 92vh; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -8px 30px rgba(36,27,20,0.3); }
 .af-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--line); font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; background: var(--surface); flex-shrink: 0; }
 .af-modal-panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
