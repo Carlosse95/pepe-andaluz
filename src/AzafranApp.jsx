@@ -1289,19 +1289,22 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                   <div className="af-produccion-box">
                     {Object.entries(paellasKg).map(([paellaId, kg]) => (
                       <div key={paellaId} className="af-produccion-row">
-                        <span>{nombrePaella(paellaId)}</span>
+                        <span className="af-produccion-nombre">{nombrePaella(paellaId)}</span>
+                        <span className="af-produccion-puntos" />
                         <span className="af-produccion-valor">{fmtKg(kg)}</span>
                       </div>
                     ))}
                     {Object.entries(sueltasPorPaella).map(([paellaId, kg]) => (
                       <div key={"suelta-" + paellaId} className="af-produccion-row">
-                        <span>{nombrePaella(paellaId)} suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
+                        <span className="af-produccion-nombre">{nombrePaella(paellaId)} suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
+                        <span className="af-produccion-puntos" />
                         <span className="af-produccion-valor">{fmtKg(kg)}</span>
                       </div>
                     ))}
                     {Object.entries(platillos).map(([extraId, cant]) => (
                       <div key={extraId} className="af-produccion-row">
-                        <span>{nombreExtra(extraId)}</span>
+                        <span className="af-produccion-nombre">{nombreExtra(extraId)}</span>
+                        <span className="af-produccion-puntos" />
                         <span className="af-produccion-valor">{Math.round(cant * 10) / 10} {unidadExtra(extraId)}</span>
                       </div>
                     ))}
@@ -1315,7 +1318,8 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                           const valor = info.familia === "piezas" ? Math.round(cant) : Math.round(cant * 10) / 10;
                           return (
                             <div key={ingId} className="af-produccion-row">
-                              <span>{ing.nombre}</span>
+                              <span className="af-produccion-nombre">{ing.nombre}</span>
+                              <span className="af-produccion-puntos" />
                               <span className="af-produccion-valor">{valor} {info.label}</span>
                             </div>
                           );
@@ -4851,8 +4855,10 @@ const AZAFRAN_CSS = `
 .af-colapsable-btn:hover { border-color: var(--gold); color: var(--ink); }
 
 .af-produccion-box { background: var(--olive-soft); border-radius: 12px; padding: 10px 14px; margin-top: 6px; }
-.af-produccion-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13.5px; color: var(--ink); }
-.af-produccion-valor { font-weight: 700; font-family: 'Space Grotesk', sans-serif; color: var(--olive); }
+.af-produccion-row { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; font-size: 13.5px; color: var(--ink); }
+.af-produccion-nombre { flex-shrink: 0; }
+.af-produccion-puntos { flex: 1 1 auto; min-width: 12px; border-bottom: 1.5px dotted var(--ink-soft); opacity: 0.45; margin-bottom: 3px; }
+.af-produccion-valor { flex-shrink: 0; font-weight: 700; font-family: 'Space Grotesk', sans-serif; color: var(--olive); }
 .af-produccion-subtitle { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin: 10px 0 2px; padding-top: 8px; border-top: 1px dashed rgba(91,112,82,0.3); }
 
 /* Método de pago */
