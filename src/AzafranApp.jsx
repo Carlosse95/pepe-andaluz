@@ -66,6 +66,9 @@ const DEFAULT_CONFIG = {
     { id: "env_grande", nombre: "Envase grande", kgMin: 4, kgMax: 6, stock: 20, minimo: 8 },
     { id: "env_xl", nombre: "Envase extra grande", kgMin: 6, kgMax: 50, stock: 10, minimo: 5 },
   ],
+  // Paelleras (recipientes grandes que se prestan al cliente): cada tamaño
+  // cubre un rango de kilos y se sabe cuántas se tienen de ese tamaño.
+  paelleras: [],
 };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -425,34 +428,30 @@ const calcularConsumoIngredientes = (items, ingredientes) => {
 };
 
 // Resumen de producción de un conjunto de pedidos (normalmente los de un
-// mismo día): cuántos kilos de cada paella, cuántas piezas de cada platillo,
-// y cuánto de cada ingrediente con receta (ej. camarón) hay que preparar.
-// A diferencia de calcularConsumoIngredientes (que da "bolsas" a descontar
-// del stock), aquí queremos la cantidad cruda en la unidad de uso del
-// ingrediente (piezas, gramos...), que es lo que se necesita para pelar o
-// sacar del congelador.
-// Agrupa variantes del mismo platillo (ej. "Croquetas de Bacalao" y
-// "Croquetas de Jamón") bajo su primera palabra, para que la producción del
-// día dé un solo total ("Croquetas") y no uno por cada sabor/orden.
-const familiaPlatillo = (nombre) => (nombre || "").trim().split(/\s+/)[0] || "Platillo";
-
+// mismo día): cuántos kilos de cada paella, cuántas piezas de cada platillo
+// (cada uno por separado, ej. "Croquetas de Bacalao" y "Croquetas de Jamón"
+// no se juntan), y cuánto de cada ingrediente con receta (ej. camarón) hay
+// que preparar. A diferencia de calcularConsumoIngredientes (que da "bolsas"
+// a descontar del stock), aquí queremos la cantidad cruda en la unidad de
+// uso del ingrediente (piezas, gramos...), que es lo que se necesita para
+// pelar o sacar del congelador.
 const produccionDelDia = (pedidosDelDia, config) => {
   const paellasKg = {}; // paellaId -> kg total
-  const platillos = {}; // familia (ej. "Croquetas") -> { cantidad, unidad }
+  const platillos = {}; // extraId -> cantidad total (piezas si aplica, si no unidades)
   const ingredientesUso = {}; // ingredienteId -> cantidad en su usoUnidad
+  let sueltasKg = 0; // paellas de PAELLA_SUELTA_MAX_KG o menos: no cabe en ninguna paellera
 
   pedidosDelDia.forEach((p) => {
     (p.items || []).forEach((it) => {
       if (it.tipo === "paella") {
         paellasKg[it.paellaId] = (paellasKg[it.paellaId] || 0) + it.kg;
+        if (it.kg <= PAELLA_SUELTA_MAX_KG) sueltasKg += it.kg;
       } else if (it.tipo === "extra") {
-        // Número total tal cual se pidió (sin convertir a piezas), sumando
-        // todas las variantes del mismo platillo: es lo que hay que sacar
-        // del congelador/almacén; cómo se reparte entre pedidos y sabores
-        // ya se ve en cada tarjeta.
-        const familia = familiaPlatillo(it.nombre);
-        if (!platillos[familia]) platillos[familia] = { cantidad: 0, unidad: it.unidad || "unidad" };
-        platillos[familia].cantidad += it.cantidad;
+        // Cantidad convertida a piezas cuando aplica (ej. 4 órdenes de
+        // "ración de 6" = 24 piezas): es lo que hay que sacar del
+        // congelador para descongelar. Cada platillo/sabor por separado.
+        const cant = it.piezasPorUnidad > 0 ? it.cantidad * it.piezasPorUnidad : it.cantidad;
+        platillos[it.extraId] = (platillos[it.extraId] || 0) + cant;
       }
     });
   });
@@ -469,7 +468,24 @@ const produccionDelDia = (pedidosDelDia, config) => {
     if (total > 0) ingredientesUso[ing.id] = total;
   });
 
-  return { paellasKg, platillos, ingredientesUso };
+  return { paellasKg, platillos, ingredientesUso, sueltasKg };
+};
+
+// Paelleras (los recipientes grandes que se prestan al cliente) necesarias
+// un día, según el rango de kilos de cada paella configurado en Ajustes →
+// Inventario. Las paellas de PAELLA_SUELTA_MAX_KG o menos no caben en
+// ninguna paellera y se cuentan aparte como "sueltas".
+const PAELLA_SUELTA_MAX_KG = 2;
+const paellerasDelDia = (pedidosDelDia, paelleras) => {
+  const conteo = {}; // paelleraId -> cuántas se necesitan
+  pedidosDelDia.forEach((p) => {
+    (p.items || []).forEach((it) => {
+      if (it.tipo !== "paella" || it.kg <= PAELLA_SUELTA_MAX_KG) return;
+      const tier = (paelleras || []).find((t) => it.kg > t.rangoMin && it.kg <= t.rangoMax);
+      if (tier) conteo[tier.id] = (conteo[tier.id] || 0) + 1;
+    });
+  });
+  return conteo;
 };
 
 // Capacidad de cocina: cuántas paellas (líneas, no kilos) hay agendadas el
@@ -966,6 +982,20 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
 
   const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
+  const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
+  const unidadExtra = (id) => {
+    const ex = (config.extras || []).find((e) => e.id === id);
+    return ex && ex.piezasPorUnidad > 0 ? "piezas" : (ex?.unidad || "unidad");
+  };
+  // "4 de 2-4kg · 2 de 6-8kg" — cuántas paelleras de cada tamaño hacen falta.
+  const textoPaelleras = (conteo) =>
+    Object.entries(conteo)
+      .map(([id, n]) => {
+        const t = (config.paelleras || []).find((x) => x.id === id);
+        return t ? `${n} de ${t.rangoMin}-${t.rangoMax}kg` : null;
+      })
+      .filter(Boolean)
+      .join(" · ");
 
   const cambiarMes = (delta) => {
     setMesSel((prev) => {
@@ -1040,14 +1070,17 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
 
       {fechas.map((fecha) => {
         const pedidosDelDia = grupos[fecha];
-        const { paellasKg, platillos, ingredientesUso } = produccionDelDia(pedidosDelDia, config);
-        const hayProduccion = Object.keys(paellasKg).length > 0 || Object.keys(platillos).length > 0;
+        const { paellasKg, platillos, ingredientesUso, sueltasKg } = produccionDelDia(pedidosDelDia, config);
+        const conteoPaelleras = paellerasDelDia(pedidosDelDia, config.paelleras);
+        const paellerasTexto = textoPaelleras(conteoPaelleras);
+        const hayProduccion = Object.keys(paellasKg).length > 0 || Object.keys(platillos).length > 0 || sueltasKg > 0;
         return (
           <div key={fecha} className="mb-4">
             <div className="af-section-title">
               {fmtDateHuman(fecha)}
               <span className="af-ink-soft" style={{ fontWeight: 600, textTransform: "none", letterSpacing: 0 }}>
                 {" "}({pedidosDelDia.length} {pedidosDelDia.length === 1 ? "pedido" : "pedidos"})
+                {paellerasTexto && ` (${paellerasTexto})`}
               </span>
               {esHoy(fecha) && <span className="af-chip af-chip-gold">Hoy</span>}
               {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong">Atrasado</span>}
@@ -1066,10 +1099,16 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
                         <span className="af-produccion-valor">{fmtKg(kg)}</span>
                       </div>
                     ))}
-                    {Object.entries(platillos).map(([familia, info]) => (
-                      <div key={familia} className="af-produccion-row">
-                        <span>{familia}</span>
-                        <span className="af-produccion-valor">{Math.round(info.cantidad * 10) / 10} {info.unidad}</span>
+                    {sueltasKg > 0 && (
+                      <div className="af-produccion-row">
+                        <span>Paella suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
+                        <span className="af-produccion-valor">{fmtKg(sueltasKg)}</span>
+                      </div>
+                    )}
+                    {Object.entries(platillos).map(([extraId, cant]) => (
+                      <div key={extraId} className="af-produccion-row">
+                        <span>{nombreExtra(extraId)}</span>
+                        <span className="af-produccion-valor">{Math.round(cant * 10) / 10} {unidadExtra(extraId)}</span>
                       </div>
                     ))}
                     {Object.keys(ingredientesUso).length > 0 && (
@@ -1837,6 +1876,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       extrasPaella: (draft.extrasPaella || []).filter((e) => e.nombre.trim().length > 0),
       desechables: (draft.desechables || []).filter((d) => d.nombre.trim().length > 0).map(normalizarDesechable),
       ingredientes: (draft.ingredientes || []).filter((i) => i.nombre.trim().length > 0),
+      paelleras: draft.paelleras || [],
       pago: draft.pago || { banco: "", titular: "", clabe: "" },
       mensajes: { ...MENSAJES_DEFAULT, ...(draft.mensajes || {}) },
     };
@@ -2385,6 +2425,68 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             >
               <Plus size={20} />
               <span>Añadir envase</span>
+            </button>
+          </div>
+
+          <div className="af-section-title">Paelleras</div>
+          <div className="af-hint mb-3">
+            Cada tamaño cubre un rango de kilos. Al guardar un pedido, según los kilos de cada
+            paella se sabe qué tamaño de paellera se necesita — se ve en Agenda, junto a la fecha.
+            Las paellas de {PAELLA_SUELTA_MAX_KG} kg o menos son muy chicas para cualquier paellera
+            y se cuentan aparte como "sueltas" en Producción del día.
+          </div>
+          <div className="af-menu-grid">
+            {(draft.paelleras || []).map((t, i) => {
+              const setT = (cambios) => {
+                const paelleras = draft.paelleras.map((x, xi) => (xi === i ? { ...x, ...cambios } : x));
+                setDraft({ ...draft, paelleras });
+              };
+              return (
+                <div key={t.id} className="af-menu-card">
+                  <div className="af-menu-card-top">
+                    <span className="af-item-nombre">Paellera</span>
+                    <button className="af-icon-btn" onClick={() => setDraft({ ...draft, paelleras: draft.paelleras.filter((_, xi) => xi !== i) })}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  <div className="af-menu-card-row">
+                    <span className="af-ink-soft text-sm">De</span>
+                    <NumberField
+                      value={t.rangoMin}
+                      min={0}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => setT({ rangoMin: v })}
+                    />
+                    <span className="af-ink-soft text-sm">a</span>
+                    <NumberField
+                      value={t.rangoMax}
+                      min={0}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => setT({ rangoMax: v })}
+                    />
+                    <span className="af-ink-soft text-sm">kg</span>
+                  </div>
+                  <div className="af-mini-label">Tengo</div>
+                  <NumberField
+                    value={t.stock}
+                    min={0}
+                    className="af-input w-full"
+                    onChange={(v) => setT({ stock: v })}
+                  />
+                </div>
+              );
+            })}
+            <button
+              className="af-add-card"
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  paelleras: [...(draft.paelleras || []), { id: uid(), rangoMin: 2, rangoMax: 4, stock: 1 }],
+                })
+              }
+            >
+              <Plus size={20} />
+              <span>Añadir paellera</span>
             </button>
           </div>
         </div>
