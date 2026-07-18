@@ -36,7 +36,10 @@
       "Bash(gh run *)",
       "Bash(curl -s https://carlosse95.github.io/pepe-andaluz/)",
       "Bash(awk -F: '$1>1650 && $1<1900')",
-      "Bash(awk '/^function SaludoInicio/,/^\\\\/\\\\* -+ \\\\*\\\\/\\\\n\\\\/\\\\*  Vista: Agenda/' src/AzafranApp.jsx)"
+      "Bash(awk '/^function SaludoInicio/,/^\\\\/\\\\* -+ \\\\*\\\\/\\\\n\\\\/\\\\*  Vista: Agenda/' src/AzafranApp.jsx)",
+      "Bash(awk '/^function AjustesView/,0' src/AzafranApp.jsx)",
+      "Bash(awk 'NR>2150 && /^function [A-Za-z]/{print NR\": \"$0; exit}' src/AzafranApp.jsx)",
+      "Bash(grep -n \"return { paellasKg, platillos, ingredientesUso, sueltasKg };\" src/AzafranApp.jsx)"
     ]
   }
 }
