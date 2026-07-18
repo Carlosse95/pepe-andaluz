@@ -892,32 +892,39 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
         {foto ? <img src={foto} alt="" className="af-avatar-img" /> : <span className="af-avatar-fallback">{inicial}</span>}
       </button>
       {editando && createPortal(
-        <div className="af-modal-overlay" onClick={() => setEditando(false)}>
-          <div className="af-avatar-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="af-modal-header">
-              <span>Mi perfil</span>
-              <button className="af-icon-btn" onClick={() => setEditando(false)}><X size={18} /></button>
-            </div>
-            <div className="af-avatar-modal-body">
-              <div className="af-avatar-preview">
-                {fotoDraft ? <img src={fotoDraft} alt="" /> : <span>{(nombreDraft || "U")[0]?.toUpperCase() || "U"}</span>}
+        // Los colores (--surface, --wine, etc.) se definen en .af-app, y un
+        // portal a document.body queda fuera de ese árbol; sin envolverlo
+        // aquí el modal pierde todas las variables y sale transparente.
+        // display:contents evita que este div afecte el layout (el .af-app
+        // original ya trae su propio flex/min-height).
+        <div className="af-app" style={{ display: "contents" }}>
+          <div className="af-modal-overlay" onClick={() => setEditando(false)}>
+            <div className="af-avatar-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-modal-header">
+                <span>Mi perfil</span>
+                <button className="af-icon-btn" onClick={() => setEditando(false)}><X size={18} /></button>
               </div>
-              <label className="af-btn-secondary w-full text-center mb-2" style={{ display: "block", cursor: "pointer" }}>
-                {subiendo ? "Subiendo..." : "Cambiar foto"}
-                <input type="file" accept="image/*" style={{ display: "none" }} onChange={onArchivo} disabled={subiendo} />
-              </label>
-              {fotoDraft && (
-                <button className="af-btn-ghost w-full mb-3" onClick={() => setFotoDraft(null)}>
-                  Quitar foto
+              <div className="af-avatar-modal-body">
+                <div className="af-avatar-preview">
+                  {fotoDraft ? <img src={fotoDraft} alt="" /> : <span>{(nombreDraft || "U")[0]?.toUpperCase() || "U"}</span>}
+                </div>
+                <label className="af-btn-secondary w-full text-center mb-2" style={{ display: "block", cursor: "pointer" }}>
+                  {subiendo ? "Subiendo..." : "Cambiar foto"}
+                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={onArchivo} disabled={subiendo} />
+                </label>
+                {fotoDraft && (
+                  <button className="af-btn-ghost w-full mb-3" onClick={() => setFotoDraft(null)}>
+                    Quitar foto
+                  </button>
+                )}
+                <div className="af-field">
+                  <label>Nombre</label>
+                  <input className="af-input" placeholder="Tu nombre" value={nombreDraft} onChange={(e) => setNombreDraft(e.target.value)} />
+                </div>
+                <button className="af-btn-primary w-full" onClick={guardar} disabled={guardando}>
+                  {guardando ? "Guardando..." : "Guardar"}
                 </button>
-              )}
-              <div className="af-field">
-                <label>Nombre</label>
-                <input className="af-input" placeholder="Tu nombre" value={nombreDraft} onChange={(e) => setNombreDraft(e.target.value)} />
               </div>
-              <button className="af-btn-primary w-full" onClick={guardar} disabled={guardando}>
-                {guardando ? "Guardando..." : "Guardar"}
-              </button>
             </div>
           </div>
         </div>,
@@ -5111,11 +5118,9 @@ const AZAFRAN_CSS = `
     font-size: 14px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
     transition: all 0.18s ease; white-space: nowrap;
   }
-  .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); }
+  .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); transform: scale(1.08); }
   .af-topbar-link.active { color: white; background: var(--wine); box-shadow: 0 3px 10px -3px rgba(47,95,224,0.5); }
   .af-topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  /* En la barra de arriba no queremos que nada "crezca" al pasar el cursor. */
-  .af-topbar .af-icon-btn:hover, .af-topbar .af-avatar-btn:hover { transform: none; }
   .af-nav { display: none; }
   .af-fab { bottom: 28px; right: 28px; }
   .af-header-brand { display: none; }
