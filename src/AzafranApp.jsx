@@ -24,6 +24,15 @@ const LOGO_MASK_B64 = "iVBORw0KGgoAAAANSUhEUgAAA7EAAAHxCAYAAAC75DscAACT3ElEQVR42
 /*  Datos por defecto y utilidades                                        */
 /* ---------------------------------------------------------------------- */
 
+// Plantillas de los mensajes automáticos de WhatsApp; se pueden editar en
+// Ajustes → Datos. Admiten {nombre} y {folio} como marcadores.
+const MENSAJES_DEFAULT = {
+  saludoPedido: "¡Hola {nombre}! Le compartimos el resumen de su pedido en Pepe Andaluz 🥘",
+  cierrePedido: "¡Gracias por su preferencia!",
+  avisadoRecoger: "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘",
+  avisadoDomicilio: "¡Hola {nombre}! Su pedido {folio} ya está listo y va en camino a su domicilio 🚚",
+};
+
 const DEFAULT_CONFIG = {
   paellas: [
     { id: "mar_tierra", nombre: "Mar y Tierra", precioKg: 480 },
@@ -42,6 +51,8 @@ const DEFAULT_CONFIG = {
   ],
   // Datos para que el cliente deposite el anticipo (se anexan al WhatsApp y al PDF).
   pago: { banco: "", titular: "", clabe: "" },
+  // Plantillas editables de los mensajes automáticos de WhatsApp.
+  mensajes: MENSAJES_DEFAULT,
   // Ingredientes con stock y consumo por kilo de cada paella (porKg[paellaId] = cantidad).
   ingredientes: [],
   extrasPaella: [
@@ -159,12 +170,23 @@ const telWhatsApp = (tel) => {
   return d.length === 10 ? "52" + d : d;
 };
 
+const aplicarPlantillaMensaje = (texto, datos) => {
+  const nombre = (datos.clienteNombre || "").split(/\s+/)[0] || "";
+  const folio = datos.folio ? fmtFolio(datos.folio) : "";
+  return (texto || "").replaceAll("{nombre}", nombre).replaceAll("{folio}", folio);
+};
+
 // Texto de resumen para mandar por WhatsApp (pedido o presupuesto).
 // `pago` son los datos bancarios de Ajustes para ofrecer el anticipo.
-const mensajeWhatsApp = (datos, modo, pago) => {
+// `mensajes` son las plantillas editables de Ajustes → Datos.
+const mensajeWhatsApp = (datos, modo, pago, mensajes) => {
   const lineas = [];
   const nombre = (datos.clienteNombre || "").split(/\s+/)[0];
-  lineas.push(`¡Hola${nombre ? " " + nombre : ""}! Le compartimos el resumen de su ${modo === "presupuesto" ? "presupuesto" : "pedido"} en Pepe Andaluz 🥘`);
+  if (modo === "pedido") {
+    lineas.push(aplicarPlantillaMensaje(mensajes?.saludoPedido || MENSAJES_DEFAULT.saludoPedido, datos));
+  } else {
+    lineas.push(`¡Hola${nombre ? " " + nombre : ""}! Le compartimos el resumen de su presupuesto en Pepe Andaluz 🥘`);
+  }
   if (datos.folio) lineas.push(`Folio: ${fmtFolio(datos.folio, modo === "presupuesto" ? "P-" : "")}`);
   lineas.push("");
   lineas.push(`📅 ${fmtDateHuman(datos.fecha)} · ${fmtHora12(datos.hora)}`);
@@ -205,8 +227,21 @@ const mensajeWhatsApp = (datos, modo, pago) => {
     lineas.push("Por favor, en el concepto de la transferencia ponga únicamente su nombre.");
   }
   lineas.push("");
-  lineas.push("¡Gracias por su preferencia!");
+  lineas.push(
+    modo === "pedido"
+      ? aplicarPlantillaMensaje(mensajes?.cierrePedido || MENSAJES_DEFAULT.cierrePedido, datos)
+      : "¡Gracias por su preferencia!"
+  );
   return lineas.join("\n");
+};
+
+// Mensaje corto para avisar que el pedido ya está listo (al marcarlo "Avisar"),
+// distinto según sea para recoger o a domicilio.
+const mensajeAvisado = (pedido, mensajes) => {
+  const plantilla = pedido.entrega
+    ? mensajes?.avisadoDomicilio || MENSAJES_DEFAULT.avisadoDomicilio
+    : mensajes?.avisadoRecoger || MENSAJES_DEFAULT.avisadoRecoger;
+  return aplicarPlantillaMensaje(plantilla, pedido);
 };
 
 const abrirWhatsApp = (telefono, texto) => {
@@ -220,7 +255,7 @@ const abrirWhatsApp = (telefono, texto) => {
 const ESTADOS_PEDIDO = [
   { id: "pendiente", label: "Pendiente" },
   { id: "preparacion", label: "En preparación" },
-  { id: "avisado", label: "Avisado" },
+  { id: "avisado", label: "Avisar" },
   { id: "entregado", label: "Entregado" },
 ];
 const ESTADO_LABEL = Object.fromEntries(ESTADOS_PEDIDO.map((e) => [e.id, e.label]));
@@ -406,13 +441,17 @@ const produccionDelDia = (pedidosDelDia, config) => {
       if (it.tipo === "paella") {
         paellasKg[it.paellaId] = (paellasKg[it.paellaId] || 0) + it.kg;
       } else if (it.tipo === "extra") {
-        const cant = it.piezasPorUnidad > 0 ? it.cantidad * it.piezasPorUnidad : it.cantidad;
-        platillos[it.extraId] = (platillos[it.extraId] || 0) + cant;
+        // Número total tal cual se pidió (sin convertir a piezas): es lo que
+        // hay que sacar del congelador/almacén; cómo se reparte entre los
+        // pedidos ya se ve en cada tarjeta.
+        platillos[it.extraId] = (platillos[it.extraId] || 0) + it.cantidad;
       }
     });
   });
 
-  (config.ingredientes || []).forEach((raw) => {
+  // Solo ingredientes marcados explícitamente (ej. camarón, que se pela con
+  // anticipación) — el resto de la receta no hace falta anunciarlo aquí.
+  (config.ingredientes || []).filter((raw) => raw.avisarProduccion).forEach((raw) => {
     const ing = normalizarIngrediente(raw);
     let total = 0;
     Object.entries(paellasKg).forEach(([paellaId, kg]) => {
@@ -920,10 +959,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
 
   const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
   const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
-  const unidadExtra = (id) => {
-    const ex = (config.extras || []).find((e) => e.id === id);
-    return ex && ex.piezasPorUnidad > 0 ? "piezas" : (ex?.unidad || "unidad");
-  };
+  const unidadExtra = (id) => (config.extras || []).find((e) => e.id === id)?.unidad || "unidad";
 
   const cambiarMes = (delta) => {
     setMesSel((prev) => {
@@ -1796,6 +1832,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       desechables: (draft.desechables || []).filter((d) => d.nombre.trim().length > 0).map(normalizarDesechable),
       ingredientes: (draft.ingredientes || []).filter((i) => i.nombre.trim().length > 0),
       pago: draft.pago || { banco: "", titular: "", clabe: "" },
+      mensajes: { ...MENSAJES_DEFAULT, ...(draft.mensajes || {}) },
     };
     onGuardarConfig(limpio);
     setDraft(limpio);
@@ -1853,6 +1890,54 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <button className="af-btn-primary w-full" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos de pago"}
+            </button>
+          </div>
+
+          <div className="af-section-title">Mensajes de WhatsApp</div>
+          <div className="af-card p-4 mb-4">
+            <p className="af-ink-soft text-sm mb-3">
+              Así se redactan los mensajes automáticos. Puedes usar <strong>{"{nombre}"}</strong> y{" "}
+              <strong>{"{folio}"}</strong> y se rellenan solos. El detalle del pedido (platillos, total, folio)
+              se agrega aparte, no hace falta escribirlo aquí.
+            </p>
+            <div className="af-field">
+              <label>Saludo al crear un pedido</label>
+              <textarea
+                className="af-input"
+                rows={2}
+                value={(draft.mensajes || MENSAJES_DEFAULT).saludoPedido}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), saludoPedido: e.target.value } })}
+              />
+            </div>
+            <div className="af-field">
+              <label>Despedida al crear un pedido</label>
+              <textarea
+                className="af-input"
+                rows={2}
+                value={(draft.mensajes || MENSAJES_DEFAULT).cierrePedido}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), cierrePedido: e.target.value } })}
+              />
+            </div>
+            <div className="af-field">
+              <label>Al avisar — pedido para recoger</label>
+              <textarea
+                className="af-input"
+                rows={2}
+                value={(draft.mensajes || MENSAJES_DEFAULT).avisadoRecoger}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoRecoger: e.target.value } })}
+              />
+            </div>
+            <div className="af-field">
+              <label>Al avisar — pedido a domicilio</label>
+              <textarea
+                className="af-input"
+                rows={2}
+                value={(draft.mensajes || MENSAJES_DEFAULT).avisadoDomicilio}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoDomicilio: e.target.value } })}
+              />
+            </div>
+            <button className="af-btn-primary w-full" onClick={guardar}>
+              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar mensajes"}
             </button>
           </div>
 
@@ -2195,6 +2280,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       />
                     </div>
                   ))}
+                  <label className="af-check-row af-check-row-small mt-2">
+                    <input type="checkbox" checked={!!ing.avisarProduccion} onChange={(e) => setIng({ avisarProduccion: e.target.checked })} />
+                    <span>Avisar el total en Agenda → Producción del día (ej. camarón que se pela con anticipación)</span>
+                  </label>
                   {ing.stock <= ing.minimo && <div className="af-stock-alert">¡Hay que comprar más!</div>}
                 </div>
               );
@@ -3261,7 +3350,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <button className="af-btn-secondary flex-1" onClick={descargarPDF}>
                 <Download size={16} className="inline mr-1" /> PDF
               </button>
-              <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago))}>
+              <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago, config.mensajes))}>
                 <MessageCircle size={16} className="inline mr-1" /> WhatsApp
               </button>
             </div>
@@ -3303,7 +3392,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       ) : (
         <>
           {form.clienteId && form.items.length > 0 && (
-            <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago))}>
+            <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago, config.mensajes))}>
               <MessageCircle size={16} className="inline mr-1" /> Enviar resumen por WhatsApp
             </button>
           )}
@@ -3506,6 +3595,8 @@ export default function App() {
   };
 
   const cambiarEstadoPedido = (pedidoId, estado) => {
+    const anterior = pedidos.find((p) => p.id === pedidoId);
+    let actualizado = null;
     guardarPedidos(
       pedidos.map((p) => {
         if (p.id !== pedidoId) return p;
@@ -3520,9 +3611,15 @@ export default function App() {
             nuevo = { ...nuevo, abonos, pagado: sumaAbonos(abonos), saldo: 0, estadoPago: "pagado" };
           }
         }
+        actualizado = nuevo;
         return nuevo;
       })
     );
+    // Al avisar que el pedido está listo, se abre WhatsApp con el mensaje
+    // correspondiente (recoger o a domicilio) ya redactado.
+    if (estado === "avisado" && anterior && anterior.estado !== "avisado" && actualizado?.clienteTelefono) {
+      abrirWhatsApp(actualizado.clienteTelefono, mensajeAvisado(actualizado, config.mensajes));
+    }
   };
 
   const irAVista = (v) => { setError(""); setView(v); };
@@ -3630,6 +3727,9 @@ export default function App() {
     if (form.items.length === 0) { setError("Añade al menos una paella o un platillo."); return; }
     if (form.entrega && !form.ubicacion.trim() && !form.direccion.trim()) { setError("Agrega la ubicación o una referencia para la entrega."); return; }
 
+    const esNuevo = !form.pedidoId;
+    const anteriorPedido = form.pedidoId ? pedidos.find((p) => p.id === form.pedidoId) : null;
+
     const total = totalDe(form);
     const abonos = form.abonos || [];
     const pagado = sumaAbonos(abonos);
@@ -3668,12 +3768,9 @@ export default function App() {
     // "devuelve" lo que ese pedido consumía antes, luego se descuenta lo nuevo.
     let desechables = config.desechables || [];
     let ingredientes = config.ingredientes || [];
-    if (form.pedidoId) {
-      const anterior = pedidos.find((p) => p.id === form.pedidoId);
-      if (anterior) {
-        desechables = ajustarStock(desechables, calcularConsumo(anterior.items, desechables, config.extras), "restaurar");
-        ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(anterior.items, ingredientes), "restaurar");
-      }
+    if (anteriorPedido) {
+      desechables = ajustarStock(desechables, calcularConsumo(anteriorPedido.items, desechables, config.extras), "restaurar");
+      ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(anteriorPedido.items, ingredientes), "restaurar");
     }
     desechables = ajustarStock(desechables, calcularConsumo(form.items, desechables, config.extras), "consumir");
     ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(form.items, ingredientes), "consumir");
@@ -3682,6 +3779,16 @@ export default function App() {
     guardarPedidos(nuevaLista);
     setView(formOrigen);
     setError("");
+
+    // WhatsApp automático: al crear el pedido se manda la confirmación; si se
+    // acaba de marcar "Avisar" se manda el mensaje de listo para recoger/domicilio.
+    if (pedidoObj.clienteTelefono) {
+      if (esNuevo) {
+        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeWhatsApp(pedidoObj, "pedido", config.pago, config.mensajes));
+      } else if (anteriorPedido && anteriorPedido.estado !== "avisado" && pedidoObj.estado === "avisado") {
+        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeAvisado(pedidoObj, config.mensajes));
+      }
+    }
 
     const paellasPropias = form.items.filter((it) => it.tipo === "paella").length;
     const otrasEnFranja = contarPaellasEnFranja(pedidos, form.fecha, form.hora, form.pedidoId);
@@ -4038,10 +4145,10 @@ const AZAFRAN_CSS = `
   --surface: #FFFFFF;
   --ink: #2B2015;
   --ink-soft: #8A7860;
-  --chrome: #9E3417;
-  --chrome-deep: #6E2410;
-  --wine: #C1421F;
-  --wine-soft: #F7DFD1;
+  --chrome: #A15A35;
+  --chrome-deep: #723F22;
+  --wine: #C15A34;
+  --wine-soft: #F9E4D3;
   --gold: #D9A62E;
   --gold-soft: #FBEFC9;
   --olive: #5B7052;
@@ -4105,13 +4212,7 @@ const AZAFRAN_CSS = `
 .af-alert-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--wine); margin-bottom: 6px; }
 .af-alert-line { font-size: 13px; color: var(--wine); padding: 2px 0; }
 
-.af-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(36,27,20,0.04), 0 3px 10px -6px rgba(36,27,20,0.12); }
-.af-ticket::before, .af-ticket::after {
-  content: ''; position: absolute; top: -8px; width: 16px; height: 16px;
-  background: var(--bg); border-radius: 50%; border: 1px solid var(--line);
-}
-.af-ticket::before { left: -1px; }
-.af-ticket::after { right: -1px; }
+.af-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(36,27,20,0.04), 0 3px 10px -6px rgba(36,27,20,0.12); transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease; }
 .af-tear { border-bottom: 2px dashed var(--line); margin: 10px 0; }
 
 .af-hora { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; color: var(--wine); }
@@ -4131,8 +4232,8 @@ const AZAFRAN_CSS = `
 .af-chip-wine-strong { background: var(--wine); color: white; }
 
 /* Botón para desplegar/ocultar secciones secundarias (entregados, paelleras) */
-.af-colapsable-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-soft); cursor: pointer; font-family: 'Space Grotesk', sans-serif; }
-.af-colapsable-btn:hover { border-color: var(--gold); }
+.af-colapsable-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-soft); cursor: pointer; font-family: 'Space Grotesk', sans-serif; transition: all 0.15s ease; }
+.af-colapsable-btn:hover { border-color: var(--gold); color: var(--ink); }
 
 .af-produccion-box { background: var(--olive-soft); border-radius: 12px; padding: 10px 14px; margin-top: 6px; }
 .af-produccion-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13.5px; color: var(--ink); }
@@ -4141,8 +4242,9 @@ const AZAFRAN_CSS = `
 
 /* Método de pago */
 .af-metodo-row { display: flex; gap: 6px; margin-top: 10px; }
-.af-metodo-pill { flex: 1; padding: 8px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer; }
+.af-metodo-pill { flex: 1; padding: 8px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
 .af-metodo-pill.active { background: var(--olive); border-color: var(--olive); color: white; }
+.af-metodo-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
 .af-abonos-lista { margin-bottom: 4px; }
 .af-abono-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
@@ -4170,7 +4272,8 @@ const AZAFRAN_CSS = `
 }
 
 .af-estado-pills { display: flex; flex-wrap: wrap; gap: 8px; }
-.af-estado-pill { border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; background: var(--surface); color: var(--ink-soft); cursor: pointer; }
+.af-estado-pill { border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; background: var(--surface); color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
+.af-estado-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); transform: translateY(-1px); }
 .af-estado-pill.active.af-estado-pendiente { background: var(--neutral-soft); color: var(--ink-soft); border-color: transparent; }
 .af-estado-pill.active.af-estado-preparacion { background: var(--gold); color: white; border-color: transparent; }
 .af-estado-pill.active.af-estado-avisado { background: var(--azul); color: white; border-color: transparent; }
@@ -4184,10 +4287,15 @@ const AZAFRAN_CSS = `
 .af-empty-sub { font-size: 13px; margin-top: 4px; max-width: 260px; margin-left: auto; margin-right: auto; }
 
 .af-nav { position: sticky; bottom: 0; display: flex; background: var(--surface); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
-.af-nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; background: none; border: none; color: var(--ink-soft); font-size: 10.5px; font-weight: 600; }
+.af-nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; background: none; border: none; color: var(--ink-soft); font-size: 10.5px; font-weight: 600; transition: color 0.15s ease, transform 0.15s ease; }
 .af-nav-btn.active { color: var(--wine); }
+.af-nav-btn:active { transform: scale(0.92); }
+.af-nav-btn svg { transition: transform 0.15s ease; }
+.af-nav-btn.active svg { transform: translateY(-1px) scale(1.08); }
 
-.af-fab { position: absolute; bottom: 78px; right: 20px; background: var(--wine); color: white; width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 6px 16px rgba(193,66,31,0.35); z-index: 10; }
+.af-fab { position: absolute; bottom: 78px; right: 20px; background: var(--wine); color: white; width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 6px 16px rgba(193,66,31,0.35); z-index: 10; transition: transform 0.18s ease, box-shadow 0.18s ease; cursor: pointer; }
+.af-fab:hover { transform: scale(1.07); box-shadow: 0 8px 22px rgba(193,90,52,0.45); }
+.af-fab:active { transform: scale(0.96); }
 
 .af-field { margin-bottom: 16px; }
 .af-field label { display: block; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin-bottom: 6px; }
@@ -4226,8 +4334,9 @@ const AZAFRAN_CSS = `
 .af-envio-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
 .af-total-big { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px; color: var(--wine); }
 
-.af-toggle-btn { flex: 1; padding: 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px; color: var(--ink-soft); }
+.af-toggle-btn { flex: 1; padding: 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px; color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
 .af-toggle-btn.active { background: var(--wine); border-color: var(--wine); color: white; }
+.af-toggle-btn:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
 .af-check-row { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; text-transform: none; font-weight: 500; font-size: 14.5px; color: var(--ink); cursor: pointer; }
 .af-check-row input { width: 18px; height: 18px; accent-color: var(--wine); }
@@ -4241,21 +4350,22 @@ const AZAFRAN_CSS = `
 
 .af-error { background: var(--wine-soft); color: var(--wine); border-radius: 10px; padding: 10px 13px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 
-.af-btn-primary { background: var(--wine); color: white; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14.5px; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 3px 10px -3px rgba(193,66,31,0.4); cursor: pointer; }
-.af-btn-primary:hover { background: #9C3618; }
-.af-btn-secondary { background: var(--gold-soft); color: #7A5A1E; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-family: 'Space Grotesk', sans-serif; cursor: pointer; }
-.af-btn-secondary:hover { background: #F3E2A8; }
-.af-btn-ghost { background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13.5px; padding: 6px 0; cursor: pointer; }
-.af-btn-ghost:hover { text-decoration: underline; }
-.af-btn-danger { background: none; border: 1px solid var(--wine); color: var(--wine); font-weight: 700; border-radius: 12px; padding: 12px; font-size: 13.5px; cursor: pointer; }
+.af-btn-primary { background: var(--wine); color: white; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14.5px; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 3px 10px -3px rgba(193,90,52,0.4); cursor: pointer; transition: all 0.15s ease; }
+.af-btn-primary:hover { background: #A64826; transform: translateY(-1px); box-shadow: 0 6px 16px -4px rgba(193,90,52,0.5); }
+.af-btn-primary:active { transform: translateY(0); }
+.af-btn-secondary { background: var(--gold-soft); color: #7A5A1E; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.15s ease; }
+.af-btn-secondary:hover { background: #F3E2A8; transform: translateY(-1px); }
+.af-btn-ghost { background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13.5px; padding: 6px 0; cursor: pointer; transition: opacity 0.15s ease; }
+.af-btn-ghost:hover { text-decoration: underline; opacity: 0.85; }
+.af-btn-danger { background: none; border: 1px solid var(--wine); color: var(--wine); font-weight: 700; border-radius: 12px; padding: 12px; font-size: 13.5px; cursor: pointer; transition: all 0.15s ease; }
 .af-btn-danger:hover { background: var(--wine-soft); }
 .af-btn-chip { background: var(--olive); color: white; border: none; border-radius: 10px; padding: 8px 12px; font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .af-btn-chip:hover { background: #4A5C42; }
-.af-icon-btn { background: none; border: none; color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 4px; cursor: pointer; border-radius: 6px; }
-.af-icon-btn:hover { background: var(--neutral-soft); }
+.af-icon-btn { background: none; border: none; color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 4px; cursor: pointer; border-radius: 6px; transition: all 0.15s ease; }
+.af-icon-btn:hover { background: var(--neutral-soft); color: var(--wine); transform: scale(1.08); }
 .af-tag-btn { cursor: pointer; }
 .af-tag-btn:hover { border-color: var(--gold); }
-.af-card.cursor-pointer:hover { border-color: var(--gold); }
+.af-card.cursor-pointer:hover { border-color: var(--gold); box-shadow: 0 6px 18px -6px rgba(36,27,20,0.2); transform: translateY(-2px); }
 
 .af-back-row { display: flex; align-items: center; gap: 6px; color: var(--wine); font-weight: 600; font-size: 13.5px; margin-bottom: 14px; cursor: pointer; }
 
@@ -4301,18 +4411,20 @@ const AZAFRAN_CSS = `
 
 .af-category-pills { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; margin: 10px 0 0; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none; }
 .af-category-pills::-webkit-scrollbar { display: none; }
-.af-category-pill { flex-shrink: 0; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
+.af-category-pill { flex-shrink: 0; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; white-space: nowrap; transition: all 0.15s ease; }
 .af-category-pill.active { background: var(--wine); border-color: var(--wine); color: white; }
+.af-category-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
 .af-picker-group-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin: 14px 2px 6px; }
-.af-picker-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border-radius: 10px; cursor: pointer; gap: 8px; }
+.af-picker-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border-radius: 10px; cursor: pointer; gap: 8px; transition: background 0.15s ease; }
 .af-picker-item:hover { background: var(--gold-soft); }
 .af-picker-item.active { background: var(--wine-soft); }
 .af-picker-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ink-soft); padding: 50px 20px; text-align: center; font-size: 13.5px; height: 100%; }
 .af-picker-form { padding: 2px; }
 .af-picker-back-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13px; padding: 0 0 14px; cursor: pointer; }
 .af-add-card-row { flex-direction: row; min-height: unset; padding: 12px; margin-top: 8px; }
-.af-picker-add-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--wine); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; }
+.af-picker-add-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--wine); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; transition: transform 0.15s ease, background 0.15s ease; }
+.af-picker-add-btn:hover { transform: scale(1.1); background: #A64826; }
 .af-carrito-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: var(--wine-soft); border: none; border-radius: 12px; padding: 10px 14px; margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--wine); cursor: pointer; text-align: left; }
 .af-carrito-bar-link { flex-shrink: 0; }
 .af-carrito-lista { display: flex; flex-direction: column; }
@@ -4436,9 +4548,11 @@ const AZAFRAN_CSS = `
     background: radial-gradient(circle at 28% -10%, var(--chrome-deep), var(--chrome) 60%);
     padding: 28px 16px;
   }
-  .af-sidebar .af-nav-btn { flex-direction: row; justify-content: flex-start; gap: 12px; width: 100%; padding: 11px 12px; font-size: 14px; color: var(--bg); opacity: 0.72; border-radius: 10px; cursor: pointer; }
-  .af-sidebar .af-nav-btn:hover { opacity: 1; background: rgba(255,255,255,0.05); }
+  .af-sidebar .af-nav-btn { flex-direction: row; justify-content: flex-start; gap: 12px; width: 100%; padding: 11px 12px; font-size: 14px; color: var(--bg); opacity: 0.72; border-radius: 10px; cursor: pointer; transition: all 0.18s ease; }
+  .af-sidebar .af-nav-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); transform: translateX(3px); }
+  .af-sidebar .af-nav-btn:hover svg { transform: scale(1.12); }
   .af-sidebar .af-nav-btn.active { opacity: 1; background: rgba(255,255,255,0.09); color: var(--gold); }
+  .af-sidebar .af-nav-btn.active:hover { transform: translateX(3px) scale(1.01); }
   .af-nav { display: none; }
   .af-fab { bottom: 28px; right: 28px; }
   .af-header-brand { display: none; }
