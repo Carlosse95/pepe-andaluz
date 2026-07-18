@@ -5112,13 +5112,13 @@ const AZAFRAN_CSS = `
     border-bottom: 1px solid var(--line);
     position: sticky; top: 0; z-index: 30;
   }
-  .af-topbar-nav { display: flex; gap: 2px; flex: 1; padding-left: 12px; }
+  .af-topbar-nav { display: flex; gap: 8px; flex: 1; padding-left: 12px; }
   .af-topbar-link {
     padding: 9px 16px; border-radius: 999px; border: none; background: none;
     font-size: 14px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
     transition: all 0.18s ease; white-space: nowrap;
   }
-  .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); transform: scale(1.08); }
+  .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); transform: scale(1.05); position: relative; z-index: 1; }
   .af-topbar-link.active { color: white; background: var(--wine); box-shadow: 0 3px 10px -3px rgba(47,95,224,0.5); }
   .af-topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .af-nav { display: none; }
