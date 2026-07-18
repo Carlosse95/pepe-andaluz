@@ -345,6 +345,11 @@ const normalizarDesechable = (d) => ({
 // tiene, su rango de kilos como respaldo.
 const nombrePaellera = (t) => (t.nombre && t.nombre.trim() ? t.nombre.trim() : `Paellera ${t.rangoMin}-${t.rangoMax}kg`);
 
+// Compara si un valor cae dentro de un rango (min, max]. Cuando min===max
+// (un tamaño exacto, ej. "de 3 a 3 kg") ese rango sería imposible con
+// "mayor que min" — en ese caso se compara con igualdad.
+const enRango = (valor, min, max) => (min === max ? valor === min : valor > min && valor <= max);
+
 // Calcula cuántos envases de cada tipo consume un pedido:
 // - Paellas sin paellera: el envase cuyo rango en KILOS incluya los kilos de la paella.
 // - Platillos con empaque "pieza": un envase por cada unidad pedida.
@@ -355,7 +360,7 @@ const calcularConsumo = (items, desechables, extrasCatalogo) => {
   const envases = (desechables || []).map(normalizarDesechable);
   (items || []).forEach((it) => {
     if (it.tipo === "paella" && !it.enPaellera) {
-      const tier = envases.find((d) => d.unidad === "kg" && it.kg > d.rangoMin && it.kg <= d.rangoMax);
+      const tier = envases.find((d) => d.unidad === "kg" && enRango(it.kg, d.rangoMin, d.rangoMax));
       if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
     }
     // Platillos con empaque vinculado (ej. alioli en su envase, croquetas
@@ -367,7 +372,7 @@ const calcularConsumo = (items, desechables, extrasCatalogo) => {
         consumo[cat.empaqueEnvaseId] = (consumo[cat.empaqueEnvaseId] || 0) + Math.ceil(it.cantidad);
       } else if (cat.empaqueTipo === "rango") {
         const totalPiezas = it.piezasPorUnidad > 0 ? it.cantidad * it.piezasPorUnidad : it.cantidad;
-        const tier = envases.find((d) => d.unidad === "piezas" && totalPiezas > d.rangoMin && totalPiezas <= d.rangoMax);
+        const tier = envases.find((d) => d.unidad === "piezas" && enRango(totalPiezas, d.rangoMin, d.rangoMax));
         if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
       }
     }
@@ -492,7 +497,7 @@ const paellerasDelDia = (pedidosDelDia, paelleras) => {
   pedidosDelDia.forEach((p) => {
     (p.items || []).forEach((it) => {
       if (it.tipo !== "paella" || it.kg <= PAELLA_SUELTA_MAX_KG) return;
-      const tier = (paelleras || []).find((t) => it.kg > t.rangoMin && it.kg <= t.rangoMax);
+      const tier = (paelleras || []).find((t) => enRango(it.kg, t.rangoMin, t.rangoMax));
       if (tier) conteo[tier.id] = (conteo[tier.id] || 0) + 1;
     });
   });
