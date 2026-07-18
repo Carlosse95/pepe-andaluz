@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
@@ -843,15 +844,23 @@ const leerImagenComoAvatar = (file) =>
     reader.readAsDataURL(file);
   });
 
-// Foto de perfil de quien tiene la sesión abierta; cada usuario edita la suya.
-// En modo local (sin login) se guarda bajo la llave "local".
-function AvatarButton({ perfil, avatares, onGuardarAvatar, size = 34 }) {
+// Foto y nombre de quien tiene la sesión abierta; cada usuario edita lo suyo.
+// El modal se monta con un portal a document.body porque el topbar usa
+// backdrop-filter, y eso crea un "containing block" para position:fixed que
+// rompe el centrado (el modal quedaba pegado arriba, dentro del topbar).
+function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
   const [editando, setEditando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
-  const key = perfil?.email || "local";
-  const foto = avatares?.[key];
-  const nombre = (perfil?.nombre || perfil?.email || "Yo").trim();
-  const inicial = nombre[0]?.toUpperCase() || "U";
+  const [guardando, setGuardando] = useState(false);
+  const [fotoDraft, setFotoDraft] = useState(foto);
+  const [nombreDraft, setNombreDraft] = useState(nombre);
+  const inicial = (nombre || "U")[0]?.toUpperCase() || "U";
+
+  const abrir = () => {
+    setFotoDraft(foto);
+    setNombreDraft(nombre);
+    setEditando(true);
+  };
 
   const onArchivo = async (e) => {
     const file = e.target.files?.[0];
@@ -859,43 +868,60 @@ function AvatarButton({ perfil, avatares, onGuardarAvatar, size = 34 }) {
     setSubiendo(true);
     try {
       const dataUrl = await leerImagenComoAvatar(file);
-      onGuardarAvatar(key, dataUrl);
+      setFotoDraft(dataUrl);
     } catch {
-      // Si la imagen no se pudo leer, simplemente no se guarda nada.
+      // Si la imagen no se pudo leer, simplemente no se actualiza el preview.
     } finally {
       setSubiendo(false);
+    }
+  };
+
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      await onGuardar({ foto: fotoDraft, nombre: nombreDraft.trim() });
       setEditando(false);
+    } finally {
+      setGuardando(false);
     }
   };
 
   return (
     <div className="af-avatar-wrap">
-      <button className="af-avatar-btn" style={{ width: size, height: size }} onClick={() => setEditando(true)} title="Foto de perfil">
+      <button className="af-avatar-btn" style={{ width: size, height: size }} onClick={abrir} title="Mi perfil">
         {foto ? <img src={foto} alt="" className="af-avatar-img" /> : <span className="af-avatar-fallback">{inicial}</span>}
       </button>
-      {editando && (
+      {editando && createPortal(
         <div className="af-modal-overlay" onClick={() => setEditando(false)}>
           <div className="af-avatar-modal" onClick={(e) => e.stopPropagation()}>
             <div className="af-modal-header">
-              <span>Foto de perfil</span>
+              <span>Mi perfil</span>
               <button className="af-icon-btn" onClick={() => setEditando(false)}><X size={18} /></button>
             </div>
             <div className="af-avatar-modal-body">
               <div className="af-avatar-preview">
-                {foto ? <img src={foto} alt="" /> : <span>{inicial}</span>}
+                {fotoDraft ? <img src={fotoDraft} alt="" /> : <span>{(nombreDraft || "U")[0]?.toUpperCase() || "U"}</span>}
               </div>
-              <label className="af-btn-primary w-full text-center" style={{ display: "block", cursor: "pointer" }}>
-                {subiendo ? "Subiendo..." : "Subir foto"}
+              <label className="af-btn-secondary w-full text-center mb-2" style={{ display: "block", cursor: "pointer" }}>
+                {subiendo ? "Subiendo..." : "Cambiar foto"}
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={onArchivo} disabled={subiendo} />
               </label>
-              {foto && (
-                <button className="af-btn-ghost w-full mt-2" onClick={() => { onGuardarAvatar(key, null); setEditando(false); }}>
+              {fotoDraft && (
+                <button className="af-btn-ghost w-full mb-3" onClick={() => setFotoDraft(null)}>
                   Quitar foto
                 </button>
               )}
+              <div className="af-field">
+                <label>Nombre</label>
+                <input className="af-input" placeholder="Tu nombre" value={nombreDraft} onChange={(e) => setNombreDraft(e.target.value)} />
+              </div>
+              <button className="af-btn-primary w-full" onClick={guardar} disabled={guardando}>
+                {guardando ? "Guardando..." : "Guardar"}
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -915,31 +941,34 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
   );
 }
 
+// Pantalla completa de bienvenida al abrir la app, una sola vez por sesión.
+function SaludoInicio({ nombre, saliendo }) {
+  const h = new Date().getHours();
+  const saludo = h < 13 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
+  return (
+    <div className={"af-saludo-inicio" + (saliendo ? " af-saludo-inicio-salir" : "")}>
+      <div className="af-saludo-inicio-texto">
+        <div className="af-logo-mark af-logo-saludo" />
+        <div className="af-saludo-inicio-titulo">{saludo}{nombre ? `, ${nombre}` : ""}</div>
+        <div className="af-saludo-inicio-fecha">{fmtDateHuman(todayISO())}</div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------------- */
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-// El saludo animado solo se ve una vez por sesión (al abrir la app), no
-// cada vez que se vuelve a la pestaña Hoy.
-let saludoYaAnimado = false;
-
-function HoyView({ pedidosHoy, pedidos, config, perfil, onAbrir, onMarcarDevuelta, onCambiarEstado, onNuevoPedido, onNuevoPresupuesto }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onNuevoPedido, onNuevoPresupuesto }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
-  // Solo se anima una vez por sesión (al abrir la app), no cada vez que se
-  // vuelve a la pestaña Hoy.
-  const [animarSaludo] = useState(() => {
-    if (saludoYaAnimado) return false;
-    saludoYaAnimado = true;
-    return true;
-  });
 
   const total = pedidosHoy.reduce((a, p) => a + p.total, 0);
   // Solo lo que falta cobrar de HOY (lo de otros días se ve en Agenda).
   const porCobrarHoy = pedidosHoy.reduce((a, p) => a + (p.saldo || 0), 0);
   const h = new Date().getHours();
   const saludo = h < 13 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
-  const nombre = (perfil?.nombre || "").trim() || (perfil?.email ? perfil.email.split("@")[0] : "");
 
   // En "Hoy" solo se trabaja lo que falta: los entregados se guardan colapsados.
   const activosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") !== "entregado");
@@ -969,7 +998,7 @@ function HoyView({ pedidosHoy, pedidos, config, perfil, onAbrir, onMarcarDevuelt
 
   return (
     <div>
-      <div className={"af-greeting-panel" + (animarSaludo ? " af-greeting-animar" : "")}>
+      <div className="af-greeting-panel">
         <div className="af-greeting">{saludo}{nombre ? `, ${nombre}` : ""}</div>
         <div className="af-today-date">{fmtDateHuman(todayISO())}</div>
       </div>
@@ -1077,6 +1106,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
+  const [diaEntregados, setDiaEntregados] = useState(""); // "" = ver todos (por mes)
 
   const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
   const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
@@ -1104,8 +1134,10 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
 
   const pendientes = pedidos.filter((p) => (p.estado || "pendiente") !== "entregado");
   const entregados = pedidos.filter((p) => (p.estado || "pendiente") === "entregado");
-  const entregadosMes = entregados.filter((p) => (p.fecha || "").startsWith(claveMesSel));
-  const lista = tab === "pendientes" ? pendientes : entregadosMes;
+  const entregadosFiltrados = diaEntregados
+    ? entregados.filter((p) => p.fecha === diaEntregados)
+    : entregados.filter((p) => (p.fecha || "").startsWith(claveMesSel));
+  const lista = tab === "pendientes" ? pendientes : entregadosFiltrados;
 
   const grupos = {};
   lista.forEach((p) => {
@@ -1142,10 +1174,27 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
       )}
 
       {tab === "entregados" && (
-        <div className="af-year-switch" style={{ marginBottom: 10 }}>
-          <button className="af-icon-btn" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></button>
-          <span className="af-year-label" style={{ minWidth: 170 }}>{MESES[mesSel.m]} {mesSel.a}</span>
-          <button className="af-icon-btn" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></button>
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="date"
+              className="af-input"
+              value={diaEntregados}
+              onChange={(e) => setDiaEntregados(e.target.value)}
+            />
+            {diaEntregados && (
+              <button className="af-btn-ghost" style={{ flexShrink: 0 }} onClick={() => setDiaEntregados("")}>
+                Ver todos
+              </button>
+            )}
+          </div>
+          {!diaEntregados && (
+            <div className="af-year-switch" style={{ marginBottom: 0 }}>
+              <button className="af-icon-btn" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></button>
+              <span className="af-year-label" style={{ minWidth: 170 }}>{MESES[mesSel.m]} {mesSel.a}</span>
+              <button className="af-icon-btn" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1159,8 +1208,8 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado }) {
         ) : (
           <EmptyState
             icon={<Check size={28} />}
-            title={`Sin entregados en ${MESES[mesSel.m].toLowerCase()} ${mesSel.a}`}
-            subtitle="Usa las flechas de arriba para cambiar de mes."
+            title={diaEntregados ? `Sin entregados el ${fmtDateHuman(diaEntregados)}` : `Sin entregados en ${MESES[mesSel.m].toLowerCase()} ${mesSel.a}`}
+            subtitle={diaEntregados ? "Elige otra fecha o toca \"Ver todos\"." : "Usa las flechas de arriba para cambiar de mes."}
           />
         )
       )}
@@ -2091,7 +2140,7 @@ function UsuariosPanel({ perfil, showToast }) {
   );
 }
 
-function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, perfil, onCerrarSesion, showToast }) {
+function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, perfil, nombreUsuario, onCerrarSesion, showToast }) {
   const [tab, setTab] = useState("menu");
   const [draft, setDraft] = useState(config);
   const [guardado, setGuardado] = useState(false);
@@ -2167,7 +2216,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {perfil && (
             <div className="af-card p-4 mb-4 af-usuario-row">
               <div className="flex-1 min-w-0">
-                <div className="af-cliente-nombre">{perfil.nombre || perfil.email}</div>
+                <div className="af-cliente-nombre">{nombreUsuario || perfil.email}</div>
                 <div className="af-ink-soft text-sm">
                   {perfil.email} · {perfil.rol === "admin" ? "Administrador" : "Usuario"}
                 </div>
@@ -3800,6 +3849,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 /*  App principal                                                         */
 /* ---------------------------------------------------------------------- */
 
+let saludoInicialMostrado = false;
+
 export default function App() {
   const [cargando, setCargando] = useState(true);
   const [pedidos, setPedidos] = useState([]);
@@ -3807,8 +3858,16 @@ export default function App() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [historico, setHistorico] = useState({});
   const [presupuestos, setPresupuestos] = useState([]);
-  const [avatares, setAvatares] = useState({}); // email (o "local") -> foto en base64
+  const [avatares, setAvatares] = useState({}); // email (o "local") -> { foto, nombre }
   const [gastos, setGastos] = useState([]);
+
+  // Saludo de pantalla completa al abrir la app: una sola vez por sesión.
+  const [saludoInicioVisible, setSaludoInicioVisible] = useState(() => {
+    if (saludoInicialMostrado) return false;
+    saludoInicialMostrado = true;
+    return true;
+  });
+  const [saludoInicioSaliendo, setSaludoInicioSaliendo] = useState(false);
 
   const [view, setView] = useState("hoy");
   const [formOrigen, setFormOrigen] = useState("hoy");
@@ -3909,6 +3968,16 @@ export default function App() {
     // eslint-disable-next-line
   }, [puedeUsarDatos]);
 
+  // Una vez cargados los datos, el saludo de pantalla completa se queda
+  // visible un momento y luego se retira solo, dejando ver "Hoy" debajo.
+  useEffect(() => {
+    if (cargando || !saludoInicioVisible) return;
+    const t1 = setTimeout(() => setSaludoInicioSaliendo(true), 1500);
+    const t2 = setTimeout(() => setSaludoInicioVisible(false), 1950);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // eslint-disable-next-line
+  }, [cargando]);
+
   const persist = async (key, value) => {
     try {
       await almacen.set(key, JSON.stringify(value));
@@ -3925,12 +3994,22 @@ export default function App() {
   const guardarPresupuestos = (lista) => { setPresupuestos(lista); persist("presupuestos", lista); };
   const guardarGastos = (lista) => { setGastos(lista); persist("gastos", lista); };
 
-  // Foto de perfil: se guarda por usuario (clave = su correo) para que cada
-  // quien vea/edite solo la suya, aunque compartan el mismo dispositivo.
-  const actualizarAvatar = (key, dataUrl) => {
-    const nuevos = { ...avatares };
-    if (dataUrl) nuevos[key] = dataUrl;
-    else delete nuevos[key];
+  // Foto y nombre personalizado: se guardan por usuario (clave = su correo)
+  // para que cada quien edite solo lo suyo, aunque compartan el mismo
+  // dispositivo. Se guarda en "avatares" (no en la tabla perfiles) para que
+  // cualquier usuario pueda cambiar su propio nombre sin depender de permisos
+  // de administrador. Las entradas viejas (antes de tener nombre) eran solo
+  // un string con la foto; se normalizan al vuelo.
+  const claveAvatar = perfil?.email || "local";
+  const entradaAvatar = avatares?.[claveAvatar];
+  const fotoUsuario = typeof entradaAvatar === "string" ? entradaAvatar : (entradaAvatar?.foto || null);
+  const nombrePersonalizado = typeof entradaAvatar === "object" && entradaAvatar?.nombre ? entradaAvatar.nombre.trim() : "";
+  const nombreUsuario = nombrePersonalizado || (perfil?.nombre || "").trim() || (perfil?.email ? perfil.email.split("@")[0] : "");
+
+  const guardarPerfilPersonal = ({ foto, nombre }) => {
+    const actual = avatares?.[claveAvatar];
+    const base = typeof actual === "string" ? { foto: actual, nombre: "" } : (actual || { foto: null, nombre: "" });
+    const nuevos = { ...avatares, [claveAvatar]: { ...base, foto, nombre } };
     setAvatares(nuevos);
     persist("avatares", nuevos);
   };
@@ -4393,6 +4472,15 @@ export default function App() {
     );
   }
 
+  if (saludoInicioVisible) {
+    return (
+      <div className="af-app">
+        <style>{AZAFRAN_CSS}</style>
+        <SaludoInicio nombre={nombreUsuario} saliendo={saludoInicioSaliendo} />
+      </div>
+    );
+  }
+
   const pedidosHoy = pedidos.filter((p) => esHoy(p.fecha));
 
   const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", reportes: "Reportes", ajustes: "Ajustes" };
@@ -4425,7 +4513,7 @@ export default function App() {
               <Search size={18} />
             </button>
           )}
-          <AvatarButton perfil={perfil} avatares={avatares} onGuardarAvatar={actualizarAvatar} />
+          <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} />
         </div>
       </div>
 
@@ -4458,14 +4546,14 @@ export default function App() {
                     <Search size={20} />
                   </button>
                 )}
-                <AvatarButton perfil={perfil} avatares={avatares} onGuardarAvatar={actualizarAvatar} size={30} />
+                <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} size={30} />
               </div>
             </div>
           )}
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} perfil={perfil} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} />}
           {view === "clientes" && (
@@ -4489,6 +4577,7 @@ export default function App() {
               datosRespaldo={{ pedidos, clientes, config, historico, presupuestos, gastos }}
               onImportarDatos={importarDatos}
               perfil={perfil}
+              nombreUsuario={nombreUsuario}
               onCerrarSesion={cerrarSesion}
               showToast={showToast}
             />
@@ -4577,7 +4666,7 @@ const AZAFRAN_CSS = `
 .af-logo-loading { width: 200px; }
 
 .af-logo-mark {
-  background-color: var(--wine);
+  background-color: #111111;
   -webkit-mask-image: url(data:image/png;base64,${LOGO_MASK_B64});
   mask-image: url(data:image/png;base64,${LOGO_MASK_B64});
   -webkit-mask-size: contain;
@@ -4588,9 +4677,9 @@ const AZAFRAN_CSS = `
   mask-position: left center;
   aspect-ratio: 945 / 497;
 }
-.af-logo-header { width: 150px; background-color: var(--chrome); }
+.af-logo-header { width: 150px; }
 .af-logo-sidebar { width: 150px; background-color: var(--bg); margin-bottom: 22px; }
-.af-logo-topbar { width: 118px; flex-shrink: 0; background-color: var(--chrome); }
+.af-logo-topbar { width: 118px; flex-shrink: 0; }
 
 .af-sidebar { display: none; }
 .af-topbar { display: none; }
@@ -4634,12 +4723,25 @@ const AZAFRAN_CSS = `
   margin-bottom: 16px;
   box-shadow: 0 10px 30px -14px rgba(47,95,224,0.3);
 }
-@keyframes af-greeting-in {
-  0% { opacity: 0; transform: translateY(16px) scale(0.96); filter: blur(10px); }
-  65% { opacity: 1; filter: blur(0); }
-  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+.af-saludo-inicio {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--chrome-deep) 0%, var(--chrome) 55%, var(--gold) 100%);
+  animation: af-saludo-in 0.5s ease both;
 }
-.af-greeting-panel.af-greeting-animar { animation: af-greeting-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.af-saludo-inicio-texto { text-align: center; color: white; padding: 24px; }
+.af-logo-saludo { width: 130px; background-color: white; margin: 0 auto 22px; }
+.af-saludo-inicio-titulo { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(28px, 6vw, 42px); }
+.af-saludo-inicio-fecha { margin-top: 10px; font-size: 15px; opacity: 0.85; }
+@keyframes af-saludo-in {
+  0% { opacity: 0; transform: scale(1.03); filter: blur(8px); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+@keyframes af-saludo-out {
+  0% { opacity: 1; transform: scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: scale(1.04); filter: blur(10px); }
+}
+.af-saludo-inicio.af-saludo-inicio-salir { animation: af-saludo-out 0.45s ease both; }
 
 .af-stat-pill { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 8px; text-align: center; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
 .af-stat-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; }
@@ -4888,7 +4990,7 @@ const AZAFRAN_CSS = `
 /* Pantalla de login */
 .af-login { align-items: center; justify-content: center; padding: 24px; max-width: none; }
 .af-login-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px 24px; box-shadow: 0 10px 30px -12px rgba(36,27,20,0.25); }
-.af-logo-login { width: 180px; margin-bottom: 6px; background-color: var(--wine); }
+.af-logo-login { width: 180px; margin-bottom: 6px; }
 .af-login-sub { color: var(--ink-soft); font-size: 13.5px; margin-bottom: 20px; }
 .af-login .af-btn-primary:disabled { opacity: 0.5; cursor: wait; }
 
@@ -5012,6 +5114,8 @@ const AZAFRAN_CSS = `
   .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); }
   .af-topbar-link.active { color: white; background: var(--wine); box-shadow: 0 3px 10px -3px rgba(47,95,224,0.5); }
   .af-topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  /* En la barra de arriba no queremos que nada "crezca" al pasar el cursor. */
+  .af-topbar .af-icon-btn:hover, .af-topbar .af-avatar-btn:hover { transform: none; }
   .af-nav { display: none; }
   .af-fab { bottom: 28px; right: 28px; }
   .af-header-brand { display: none; }
