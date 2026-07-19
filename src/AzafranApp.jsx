@@ -345,10 +345,11 @@ const normalizarDesechable = (d) => ({
 // tiene, su rango de kilos como respaldo.
 const nombrePaellera = (t) => (t.nombre && t.nombre.trim() ? t.nombre.trim() : `Paellera ${t.rangoMin}-${t.rangoMax}kg`);
 
-// Compara si un valor cae dentro de un rango (min, max]. Cuando min===max
-// (un tamaño exacto, ej. "de 3 a 3 kg") ese rango sería imposible con
-// "mayor que min" — en ese caso se compara con igualdad.
-const enRango = (valor, min, max) => (min === max ? valor === min : valor > min && valor <= max);
+// Compara si un valor cae dentro de un rango [min, max], incluyendo AMBOS
+// extremos ("de 5 a 7 kg" incluye 5, 6 y 7). Si dos rangos llegan a tocarse
+// (ej. "de 2 a 4" y "de 4 a 6"), el valor del límite compartido cae en el
+// primero que aparezca en la lista — no hay hueco ni doble conteo.
+const enRango = (valor, min, max) => valor >= min && valor <= max;
 
 // Calcula cuántos envases de cada tipo consume un pedido:
 // - Paellas sin paellera: el envase cuyo rango en KILOS incluya los kilos de la paella.
