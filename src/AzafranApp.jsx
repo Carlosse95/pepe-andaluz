@@ -1171,6 +1171,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
   const [diaEntregados, setDiaEntregados] = useState(""); // "" = ver todos (por mes)
+  const [estadoFiltro, setEstadoFiltro] = useState("todos"); // "todos" | pendiente | preparacion | avisado
 
   const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
   const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
@@ -1188,11 +1189,13 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   const claveMesSel = `${mesSel.a}-${String(mesSel.m + 1).padStart(2, "0")}`;
 
   const pendientes = pedidos.filter((p) => (p.estado || "pendiente") !== "entregado");
+  const pendientesFiltrados =
+    estadoFiltro === "todos" ? pendientes : pendientes.filter((p) => (p.estado || "pendiente") === estadoFiltro);
   const entregados = pedidos.filter((p) => (p.estado || "pendiente") === "entregado");
   const entregadosFiltrados = diaEntregados
     ? entregados.filter((p) => p.fecha === diaEntregados)
     : entregados.filter((p) => (p.fecha || "").startsWith(claveMesSel));
-  const lista = tab === "pendientes" ? pendientes : entregadosFiltrados;
+  const lista = tab === "pendientes" ? pendientesFiltrados : entregadosFiltrados;
 
   const grupos = {};
   lista.forEach((p) => {
@@ -1207,8 +1210,8 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 
   const hoy = todayISO();
 
-  const totalPendiente = pendientes.reduce((a, p) => a + p.total, 0);
-  const porCobrarPendiente = pendientes.reduce((a, p) => a + (p.saldo || 0), 0);
+  const totalPendiente = pendientesFiltrados.reduce((a, p) => a + p.total, 0);
+  const porCobrarPendiente = pendientesFiltrados.reduce((a, p) => a + (p.saldo || 0), 0);
 
   return (
     <div>
@@ -1220,6 +1223,23 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
           Entregados
         </button>
       </div>
+
+      {tab === "pendientes" && pendientes.length > 0 && (
+        <div className="af-category-pills mb-3">
+          <button className={"af-category-pill" + (estadoFiltro === "todos" ? " active" : "")} onClick={() => setEstadoFiltro("todos")}>
+            Todos
+          </button>
+          {ESTADOS_PEDIDO.filter((e) => e.id !== "entregado").map((e) => (
+            <button
+              key={e.id}
+              className={"af-category-pill" + (estadoFiltro === e.id ? " active" : "")}
+              onClick={() => setEstadoFiltro(e.id)}
+            >
+              {e.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === "pendientes" && pendientes.length > 0 && (
         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -1257,8 +1277,12 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
         tab === "pendientes" ? (
           <EmptyState
             icon={<CalendarDays size={28} />}
-            title="Nada pendiente por entregar"
-            subtitle="Los pedidos que registres aparecerán aquí, ordenados por fecha."
+            title={estadoFiltro === "todos" ? "Nada pendiente por entregar" : `Nada en "${ESTADO_LABEL[estadoFiltro]}"`}
+            subtitle={
+              estadoFiltro === "todos"
+                ? "Los pedidos que registres aparecerán aquí, ordenados por fecha."
+                : "Prueba con otro filtro o toca \"Todos\"."
+            }
           />
         ) : (
           <EmptyState
@@ -1448,20 +1472,20 @@ function PresupuestosView({ presupuestos, onAbrir, onAceptar }) {
 
 function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp }) {
   const [q, setQ] = useState("");
-  const term = q.trim().toLowerCase();
+  const term = normNombre(q);
 
   const resultados =
     term.length === 0
       ? []
       : pedidos.filter((p) => {
           const enProductos = p.items.some((it) =>
-            (it.tipo === "paella" ? it.paellaNombre : it.nombre).toLowerCase().includes(term)
+            normNombre(it.tipo === "paella" ? it.paellaNombre : it.nombre).includes(term)
           );
           return (
-            p.clienteNombre.toLowerCase().includes(term) ||
+            normNombre(p.clienteNombre).includes(term) ||
             (p.clienteTelefono || "").includes(term) ||
             p.fecha.includes(term) ||
-            fmtDateHuman(p.fecha).toLowerCase().includes(term) ||
+            normNombre(fmtDateHuman(p.fecha)).includes(term) ||
             enProductos
           );
         });
@@ -1663,9 +1687,9 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
     );
   }
 
-  const term = q.trim().toLowerCase();
+  const term = normNombre(q);
   const lista = clientes
-    .filter((c) => term.length === 0 || c.nombre.toLowerCase().includes(term) || (c.telefono || "").includes(term))
+    .filter((c) => term.length === 0 || normNombre(c.nombre).includes(term) || (c.telefono || "").includes(term))
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   return (
@@ -2943,10 +2967,10 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   const [draftProducto, setDraftProducto] = useState({ nombre: "", categoria: "platillo", precio: 0, unidad: "pieza" });
 
   const productos = productosDeConfig(config);
-  const term = query.trim().toLowerCase();
+  const term = normNombre(query);
   const filtrados = productos.filter((p) => {
     if (categoria !== "todos" && p.categoria !== categoria) return false;
-    if (term && !p.nombre.toLowerCase().includes(term)) return false;
+    if (term && !normNombre(p.nombre).includes(term)) return false;
     return true;
   });
   const agrupados = CATEGORIAS_ITEM.map((c) => ({ ...c, items: filtrados.filter((p) => p.categoria === c.id) })).filter(
@@ -3179,11 +3203,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const [mostrarOtroMetodo, setMostrarOtroMetodo] = useState(false);
   const [abonoDraft, setAbonoDraft] = useState({ monto: 0, metodo: "efectivo" });
 
-  const term = busqueda.trim().toLowerCase();
+  const term = normNombre(busqueda);
   const sugeridos = (
     term.length === 0
       ? clientes.slice(0, 8)
-      : clientes.filter((c) => c.nombre.toLowerCase().includes(term) || (c.telefono || "").includes(term))
+      : clientes.filter((c) => normNombre(c.nombre).includes(term) || (c.telefono || "").includes(term))
   ).slice(0, 8);
 
   const seleccionarCliente = (c) => {
