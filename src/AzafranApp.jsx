@@ -1197,6 +1197,12 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
     : entregados.filter((p) => (p.fecha || "").startsWith(claveMesSel));
   const lista = tab === "pendientes" ? pendientesFiltrados : entregadosFiltrados;
 
+  const vendidoDiaEntregados = entregadosFiltrados.reduce((a, p) => a + p.total, 0);
+  const cobradoDiaEntregados = entregadosFiltrados.reduce(
+    (a, p) => a + (p.abonos || []).reduce((s, ab) => s + (parseFloat(ab.monto) || 0), 0),
+    0
+  );
+
   const grupos = {};
   lista.forEach((p) => {
     if (!grupos[p.fecha]) grupos[p.fecha] = [];
@@ -1268,6 +1274,12 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
               <button className="af-icon-btn" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></button>
               <span className="af-year-label" style={{ minWidth: 170 }}>{MESES[mesSel.m]} {mesSel.a}</span>
               <button className="af-icon-btn" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></button>
+            </div>
+          )}
+          {diaEntregados && entregadosFiltrados.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <StatPill label="Vendido ese día" value={money(vendidoDiaEntregados)} />
+              <StatPill label="Cobrado ese día" value={money(cobradoDiaEntregados)} warn={cobradoDiaEntregados < vendidoDiaEntregados} />
             </div>
           )}
         </div>
