@@ -5,7 +5,7 @@ import {
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet, CalendarClock,
-  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt,
+  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
 import jsPDF from "jspdf";
@@ -741,6 +741,11 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
             {it.tipo === "paella"
               ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}${it.enPaellera ? " · paellera" : ""}`
               : `${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
+            {it.nota && (
+              <div className="af-item-nota">
+                <StickyNote size={12} className="inline mr-1" />{it.nota}
+              </div>
+            )}
           </li>
         ))}
         {pedido.envio > 0 && <li>Envío a domicilio — {money(pedido.envio)}</li>}
@@ -3203,6 +3208,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const [mostrarClientes, setMostrarClientes] = useState(false);
   const [mostrarPicker, setMostrarPicker] = useState(false);
   const [extrasAbierto, setExtrasAbierto] = useState(null); // id del ítem paella con el menú de extras abierto
+  const [notaAbierta, setNotaAbierta] = useState(null); // id del ítem con el campo de nota abierto
   const [mostrarAbono, setMostrarAbono] = useState(false);
   const [mostrarOtroMetodo, setMostrarOtroMetodo] = useState(false);
   const [abonoDraft, setAbonoDraft] = useState({ monto: 0, metodo: "efectivo" });
@@ -3330,6 +3336,15 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
   const removeItem = (itemId) => {
     setForm((prev) => ({ ...prev, items: prev.items.filter((it) => it.id !== itemId) }));
+  };
+
+  // Nota por ítem (ej. "sin ejotes, sin chícharos"): solo uso interno, no
+  // sale en el PDF ni en el mensaje de WhatsApp.
+  const updateNotaItem = (itemId, nota) => {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => (it.id === itemId ? { ...it, nota } : it)),
+    }));
   };
 
   // Abonos: permiten registrar varios pagos con distinto método
@@ -3734,6 +3749,26 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       <span><ChefHat size={13} className="inline mr-1" /> Va en paellera</span>
                     </label>
                   )}
+                  {modo === "pedido" && (
+                    notaAbierta === it.id ? (
+                      <input
+                        autoFocus
+                        className="af-input af-input-small mt-1"
+                        placeholder="Ej. sin chícharos, sin ejotes..."
+                        value={it.nota || ""}
+                        onChange={(e) => updateNotaItem(it.id, e.target.value)}
+                        onBlur={() => setNotaAbierta(null)}
+                      />
+                    ) : it.nota ? (
+                      <div className="af-item-nota" onClick={() => setNotaAbierta(it.id)}>
+                        <StickyNote size={12} className="inline mr-1" />{it.nota}
+                      </div>
+                    ) : (
+                      <button className="af-btn-ghost af-extra-btn" onClick={() => setNotaAbierta(it.id)}>
+                        <Plus size={13} className="inline mr-1" /> Nota
+                      </button>
+                    )
+                  )}
                 </div>
                 <Stepper
                   value={it.tipo === "paella" ? it.kg : it.cantidad}
@@ -4075,8 +4110,12 @@ export default function App() {
   useEffect(() => {
     if (!puedeUsarDatos) return;
     let cancelado = false;
-    setCargando(true);
-    (async () => {
+
+    // mostrarPantalla=true solo la primera vez (pantalla completa "Cargando
+    // pedidos..."); en las siguientes llamadas (al volver a la app) se
+    // actualiza en silencio para no interrumpir lo que se esté viendo.
+    const cargarTodo = async (mostrarPantalla) => {
+      if (mostrarPantalla) setCargando(true);
       try {
         const [rp, rc, rcfg, rh, rpr, rav, rg] = await Promise.allSettled([
           almacen.get("pedidos"),
@@ -4102,13 +4141,30 @@ export default function App() {
       } catch (e) {
         console.error("Error cargando datos", e);
       } finally {
-        if (!cancelado) setCargando(false);
+        if (!cancelado && mostrarPantalla) setCargando(false);
       }
-    })();
+    };
+
+    cargarTodo(true);
 
     // Tiempo real: si alguien más guarda desde otro dispositivo, se refleja aquí.
     const desuscribir = suscribirAlmacen((clave, raw) => aplicarClave(clave, raw));
-    return () => { cancelado = true; desuscribir(); };
+
+    // En celular (sobre todo iOS) la conexión en tiempo real se corta cuando
+    // la app pasa a segundo plano o se bloquea la pantalla, y no se reconecta
+    // sola con los cambios perdidos mientras tanto — por eso antes hacía
+    // falta cerrar y volver a abrir la app para ver lo nuevo. Al regresar a
+    // la pestaña/app se vuelve a pedir todo (en silencio) para ponerse al día.
+    const alVolverVisible = () => {
+      if (document.visibilityState === "visible") cargarTodo(false);
+    };
+    document.addEventListener("visibilitychange", alVolverVisible);
+
+    return () => {
+      cancelado = true;
+      desuscribir();
+      document.removeEventListener("visibilitychange", alVolverVisible);
+    };
     // eslint-disable-next-line
   }, [puedeUsarDatos]);
 
@@ -5148,6 +5204,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-extra-menu { position: absolute; left: 0; top: 100%; min-width: 210px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 24px -8px rgba(36,27,20,0.3); overflow: hidden; }
 .af-extra-menu-item { display: flex; justify-content: space-between; gap: 14px; padding: 9px 13px; font-size: 13.5px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--line); }
 .af-extra-menu-item:last-child { border-bottom: none; }
+.af-item-nota { display: flex; align-items: flex-start; gap: 4px; font-size: 12.5px; color: var(--wine); font-style: italic; margin-top: 4px; cursor: pointer; line-height: 1.4; }
 .af-extra-menu-item:hover { background: var(--gold-soft); }
 
 /* Panel de usuarios */
