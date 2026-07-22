@@ -3195,7 +3195,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   );
 }
 
-function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido", perfil }) {
+function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
   const [busqueda, setBusqueda] = useState("");
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [nuevoCliente, setNuevoCliente] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "" });
@@ -3543,20 +3543,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   };
 
   const editando = !!form.pedidoId;
-  const esAdmin = !perfil || perfil.rol === "admin";
-  // Al editar un pedido/presupuesto ya existente, quien no es admin solo puede
-  // ver, cambiar el estado y registrar cobros — no tocar platillos, cliente,
-  // entrega, ni borrar/duplicar/convertir. Al crear uno nuevo, sí puede todo.
-  const soloLectura = editando && !esAdmin;
 
   return (
     <div>
-      {soloLectura && (
-        <div className="af-hint mb-4">
-          Solo el administrador puede modificar los platillos, el cliente o la entrega de un pedido ya
-          creado. Tú puedes ver todo, cambiar el estado y registrar cobros.
-        </div>
-      )}
       {editando && modo === "pedido" && (
         <div className="af-field">
           <label>Estado del pedido</label>
@@ -3583,7 +3572,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </div>
       )}
 
-      <fieldset disabled={soloLectura} className="af-fieldset-reset">
       <div className="af-card-grid">
         <div className="af-field">
           <label>Fecha</label>
@@ -3831,7 +3819,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           </div>
         )}
       </div>
-      </fieldset>
 
       {modo === "pedido" && (
         <div className="af-field">
@@ -3932,7 +3919,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           <button className="af-btn-primary w-full mt-2" onClick={onGuardar}>
             {editando ? "Guardar cambios" : "Guardar presupuesto"}
           </button>
-          {editando && !soloLectura && (
+          {editando && (
             form.convertido ? (
               <div className="af-hint mt-2" style={{ textAlign: "center" }}>Ya se convirtió en un pedido.</div>
             ) : (
@@ -3941,12 +3928,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               </button>
             )
           )}
-          {editando && !soloLectura && (
+          {editando && (
             <button className="af-btn-secondary w-full mt-2" onClick={onDuplicar}>
               <Copy size={15} className="inline mr-1" /> Duplicar presupuesto
             </button>
           )}
-          {editando && !soloLectura && (
+          {editando && (
             <button
               className="af-btn-danger w-full mt-2"
               onClick={() => {
@@ -3974,12 +3961,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             {editando ? "Guardar cambios" : "Guardar pedido"}
           </button>
 
-          {editando && !soloLectura && (
+          {editando && (
             <button className="af-btn-secondary w-full mt-2" onClick={onDuplicar}>
               <Copy size={15} className="inline mr-1" /> Repetir pedido
             </button>
           )}
-          {editando && !soloLectura && (
+          {editando && (
             <button
               className="af-btn-danger w-full mt-2"
               onClick={() => {
@@ -4759,7 +4746,6 @@ export default function App() {
               onDuplicar={duplicarActual}
               error={error}
               modo={formModo}
-              perfil={perfil}
             />
           )}
         </div>
