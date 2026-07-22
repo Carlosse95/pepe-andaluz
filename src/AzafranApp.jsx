@@ -1889,6 +1889,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     });
   });
   const cobradoDia = porMetodo.efectivo + porMetodo.tarjeta + porMetodo.transferencia;
+  // Si a un pedido le pagaron más de lo que costaba, la diferencia es propina.
+  const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
 
   return (
     <div>
@@ -1915,6 +1917,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <div className="af-pago-line"><span>💵 Efectivo</span><span>{money(porMetodo.efectivo)}</span></div>
               <div className="af-pago-line"><span>💳 Tarjeta</span><span>{money(porMetodo.tarjeta)}</span></div>
               <div className="af-pago-line"><span>🏦 Transferencia</span><span>{money(porMetodo.transferencia)}</span></div>
+              {propinaDia > 0 && (
+                <div className="af-pago-line af-pago-propina"><span>🎉 Propinas</span><span>{money(propinaDia)}</span></div>
+              )}
             </div>
             {cobradoDia < vendidoDia && (
               <div className="af-hint mt-2">Faltan {money(vendidoDia - cobradoDia)} por cobrar de ese día.</div>
@@ -3263,6 +3268,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const total = totalItems + envioNum + ivaNum;
   const pagadoNum = sumaAbonos(form.abonos);
   const saldo = Math.max(Math.round((total - pagadoNum) * 100) / 100, 0);
+  // Si pagaron más de lo que costaba el pedido, la diferencia se toma como propina.
+  const propinaNum = Math.max(Math.round((pagadoNum - total) * 100) / 100, 0);
 
   const addPaella = (p) => {
     setForm((prev) => ({
@@ -3874,7 +3881,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             )}
 
             <div className="af-pago-line"><span>Pagado</span><span>{money(pagadoNum)}</span></div>
-            <div className="af-pago-line af-pago-saldo"><span>Saldo pendiente</span><span>{money(saldo)}</span></div>
+            {saldo > 0 && (
+              <div className="af-pago-line af-pago-saldo"><span>Saldo pendiente</span><span>{money(saldo)}</span></div>
+            )}
+            {propinaNum > 0 && (
+              <div className="af-pago-line af-pago-propina"><span>🎉 Propina</span><span>{money(propinaNum)}</span></div>
+            )}
 
             {saldo > 0.5 && (
               <div className="mt-2">
@@ -5104,6 +5116,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-pago-box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 .af-pago-line { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 14px; }
 .af-pago-saldo { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 8px; font-weight: 700; color: var(--wine); }
+.af-pago-propina { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 8px; font-weight: 700; color: var(--gold); }
 .af-hint { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
 .af-hora-preview { font-size: 12.5px; color: var(--wine); margin-top: 6px; }
 .af-hora-preview strong { font-family: 'Space Grotesk', sans-serif; }
