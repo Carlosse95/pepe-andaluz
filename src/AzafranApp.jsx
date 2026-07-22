@@ -4,7 +4,7 @@ import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
-  MoreHorizontal, PackageSearch, MessageCircle, Copy, Wallet, CalendarClock,
+  PackageSearch, MessageCircle, Copy, Wallet, CalendarClock,
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
@@ -3011,11 +3011,6 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
     setEditando("nuevo");
   };
 
-  const abrirEditar = (p) => {
-    setDraftProducto({ nombre: p.nombre, categoria: p.categoria, precio: p.precio, unidad: p.unidad });
-    setEditando(p.id);
-  };
-
   const volver = () => { setEditando(null); setVerResumen(false); };
 
   const guardarProducto = () => {
@@ -3107,13 +3102,10 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                           {enCarrito ? (
                             <Stepper value={enCarrito.cantidad} min={0} step={1} onChange={(v) => setCantidadCarrito(p, v)} />
                           ) : (
-                            <span className="af-total">{money(p.precio)}</span>
-                          )}
-                          <button className="af-icon-btn" onClick={() => abrirEditar(p)}>
-                            <MoreHorizontal size={16} />
-                          </button>
-                          {!enCarrito && (
-                            <button className="af-picker-add-btn" onClick={() => agregarAlCarrito(p)}><Plus size={16} /></button>
+                            <>
+                              <span className="af-total">{money(p.precio)}</span>
+                              <button className="af-picker-add-btn" onClick={() => agregarAlCarrito(p)}><Plus size={16} /></button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -3203,7 +3195,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   );
 }
 
-function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
+function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido", perfil }) {
   const [busqueda, setBusqueda] = useState("");
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [nuevoCliente, setNuevoCliente] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "" });
@@ -3551,9 +3543,20 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   };
 
   const editando = !!form.pedidoId;
+  const esAdmin = !perfil || perfil.rol === "admin";
+  // Al editar un pedido/presupuesto ya existente, quien no es admin solo puede
+  // ver, cambiar el estado y registrar cobros — no tocar platillos, cliente,
+  // entrega, ni borrar/duplicar/convertir. Al crear uno nuevo, sí puede todo.
+  const soloLectura = editando && !esAdmin;
 
   return (
     <div>
+      {soloLectura && (
+        <div className="af-hint mb-4">
+          Solo el administrador puede modificar los platillos, el cliente o la entrega de un pedido ya
+          creado. Tú puedes ver todo, cambiar el estado y registrar cobros.
+        </div>
+      )}
       {editando && modo === "pedido" && (
         <div className="af-field">
           <label>Estado del pedido</label>
@@ -3580,6 +3583,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </div>
       )}
 
+      <fieldset disabled={soloLectura} className="af-fieldset-reset">
       <div className="af-card-grid">
         <div className="af-field">
           <label>Fecha</label>
@@ -3827,6 +3831,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           </div>
         )}
       </div>
+      </fieldset>
 
       {modo === "pedido" && (
         <div className="af-field">
@@ -3927,7 +3932,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           <button className="af-btn-primary w-full mt-2" onClick={onGuardar}>
             {editando ? "Guardar cambios" : "Guardar presupuesto"}
           </button>
-          {editando && (
+          {editando && !soloLectura && (
             form.convertido ? (
               <div className="af-hint mt-2" style={{ textAlign: "center" }}>Ya se convirtió en un pedido.</div>
             ) : (
@@ -3936,12 +3941,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               </button>
             )
           )}
-          {editando && (
+          {editando && !soloLectura && (
             <button className="af-btn-secondary w-full mt-2" onClick={onDuplicar}>
               <Copy size={15} className="inline mr-1" /> Duplicar presupuesto
             </button>
           )}
-          {editando && (
+          {editando && !soloLectura && (
             <button
               className="af-btn-danger w-full mt-2"
               onClick={() => {
@@ -3969,12 +3974,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             {editando ? "Guardar cambios" : "Guardar pedido"}
           </button>
 
-          {editando && (
+          {editando && !soloLectura && (
             <button className="af-btn-secondary w-full mt-2" onClick={onDuplicar}>
               <Copy size={15} className="inline mr-1" /> Repetir pedido
             </button>
           )}
-          {editando && (
+          {editando && !soloLectura && (
             <button
               className="af-btn-danger w-full mt-2"
               onClick={() => {
@@ -4754,6 +4759,7 @@ export default function App() {
               onDuplicar={duplicarActual}
               error={error}
               modo={formModo}
+              perfil={perfil}
             />
           )}
         </div>
