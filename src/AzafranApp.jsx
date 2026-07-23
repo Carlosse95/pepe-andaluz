@@ -523,6 +523,9 @@ const contarPaellasEnFranja = (pedidos, fecha, hora, excluirId) => {
   let total = 0;
   pedidos.forEach((p) => {
     if (p.id === excluirId || p.fecha !== fecha) return;
+    // Los pedidos ya entregados no compiten por tiempo de cocina: no cuentan
+    // para la alerta de "muchas paellas a la vez".
+    if ((p.estado || "pendiente") === "entregado") return;
     if (Math.abs(minutosDeHora(p.hora) - centro) > 30) return;
     total += p.items.filter((it) => it.tipo === "paella").length;
   });
