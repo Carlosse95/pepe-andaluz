@@ -32,6 +32,7 @@ const MENSAJES_DEFAULT = {
   cierrePedido: "¡Gracias por su preferencia!",
   avisadoRecoger: "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘",
   avisadoDomicilio: "¡Hola {nombre}! Su pedido {folio} ya está listo y va en camino a su domicilio 🚚",
+  entregado: "¡Hola {nombre}! Su pedido {folio} fue entregado. ¡Gracias por su preferencia, esperamos disfrute su comida! 🥘",
 };
 
 const DEFAULT_CONFIG = {
@@ -247,6 +248,10 @@ const mensajeAvisado = (pedido, mensajes) => {
     : mensajes?.avisadoRecoger || MENSAJES_DEFAULT.avisadoRecoger;
   return aplicarPlantillaMensaje(plantilla, pedido);
 };
+
+// Mensaje corto para avisar que el pedido ya se entregó (al marcarlo "Entregado").
+const mensajeEntregado = (pedido, mensajes) =>
+  aplicarPlantillaMensaje(mensajes?.entregado || MENSAJES_DEFAULT.entregado, pedido);
 
 const abrirWhatsApp = (telefono, texto) => {
   const tel = telWhatsApp(telefono);
@@ -660,7 +665,7 @@ function EstadoPedidoSelect({ estado, onChange }) {
   );
 }
 
-function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoWhatsApp }) {
+function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoWhatsApp, avisoPendiente }) {
   const itemsPaellera = pedido.items.filter((it) => it.tipo === "paella" && it.enPaellera);
   const hayPaellera = itemsPaellera.length > 0;
   const todasDevueltas = hayPaellera && itemsPaellera.every((it) => it.paelleraDevuelta);
@@ -669,15 +674,11 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
   // de un <select> casi nunca funciona: el navegador no lo cuenta como un
   // toque directo del usuario y bloquea la ventana en silencio. Por eso, en
   // vez de intentarlo solo, mostramos un botón para que el envío salga de un
-  // toque real.
-  const [avisoPendiente, setAvisoPendiente] = useState(false);
-
-  const cambiarEstado = (v) => {
-    const yaEstabaAvisado = estado === "avisado";
-    onCambiarEstado(pedido.id, v);
-    setAvisoPendiente(v === "avisado" && !yaEstabaAvisado);
-  };
-
+  // toque real. avisoPendiente ("avisado" | "entregado" | undefined) llega
+  // como prop desde App — se guarda ahí y no aquí como estado local porque al
+  // marcar "Entregado" la tarjeta salta de la lista de pendientes a la de
+  // entregados (listas distintas) y React la desmonta y monta de nuevo,
+  // perdiendo cualquier estado propio antes de que el botón llegue a mostrarse.
   return (
     <div className="af-card af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
       <div className="flex items-start justify-between gap-2">
@@ -690,7 +691,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
           {showFecha && <div className="af-fecha-sub">{fmtDateHuman(pedido.fecha)}</div>}
         </div>
         {onCambiarEstado ? (
-          <EstadoPedidoSelect estado={estado} onChange={cambiarEstado} />
+          <EstadoPedidoSelect estado={estado} onChange={(v) => onCambiarEstado(pedido.id, v)} />
         ) : (
           <span className={"af-badge af-estado-badge af-estado-" + estado}>{ESTADO_LABEL[estado]}</span>
         )}
@@ -699,9 +700,10 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
       {avisoPendiente && onEnviarAvisoWhatsApp && pedido.clienteTelefono && (
         <button
           className="af-btn-wa w-full mb-2"
-          onClick={(e) => { e.stopPropagation(); onEnviarAvisoWhatsApp(pedido); setAvisoPendiente(false); }}
+          onClick={(e) => { e.stopPropagation(); onEnviarAvisoWhatsApp(pedido); }}
         >
-          <MessageCircle size={15} className="inline mr-1" /> Enviar aviso por WhatsApp
+          <MessageCircle size={15} className="inline mr-1" />
+          {avisoPendiente === "entregado" ? "Enviar aviso de entrega" : "Enviar aviso por WhatsApp"}
         </button>
       )}
 
@@ -1029,7 +1031,7 @@ function SaludoInicio({ nombre, saliendo }) {
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, onNuevoPedido, onNuevoPresupuesto }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
 
@@ -1115,7 +1117,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           {activosHoy
             .slice()
             .sort((a, b) => a.hora.localeCompare(b.hora))
-            .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />)}
+            .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
         </div>
       )}
 
@@ -1126,7 +1128,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           </div>
           <div className="af-card-grid">
             {proximos.map((p) => (
-              <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />
+              <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
             ))}
           </div>
         </div>
@@ -1142,7 +1144,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               {entregadosHoy
                 .slice()
                 .sort((a, b) => a.hora.localeCompare(b.hora))
-                .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />)}
+                .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
             </div>
           )}
         </div>
@@ -1170,7 +1172,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 /*  Vista: Agenda                                                         */
 /* ---------------------------------------------------------------------- */
 
-function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp }) {
+function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [tab, setTab] = useState("pendientes");
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
@@ -1398,7 +1400,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                 .slice()
                 .sort((a, b) => a.hora.localeCompare(b.hora))
                 .map((p) => (
-                  <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />
+                  <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
                 ))}
             </div>
           </div>
@@ -1487,7 +1489,7 @@ function PresupuestosView({ presupuestos, onAbrir, onAceptar }) {
 /*  Vista: Buscar                                                         */
 /* ---------------------------------------------------------------------- */
 
-function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp }) {
+function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [q, setQ] = useState("");
   const term = normNombre(q);
 
@@ -1533,7 +1535,7 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp }
           .slice()
           .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1))
           .map((p) => (
-            <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />
+            <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
           ))}
       </div>
     </div>
@@ -1544,7 +1546,7 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp }
 /*  Vista: Clientes                                                       */
 /* ---------------------------------------------------------------------- */
 
-function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp }) {
+function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [q, setQ] = useState("");
   const [detalleId, setDetalleId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
@@ -1697,7 +1699,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
           <EmptyState icon={<Users size={24} />} title="Sin pedidos todavía" />
         ) : (
           <div className="af-card-grid">
-            {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} />)}
+            {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
           </div>
         )}
       </div>
@@ -1892,6 +1894,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Si a un pedido le pagaron más de lo que costaba, la diferencia es propina.
   const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
 
+  // Propinas de TODO el mes del día elegido arriba (no solo ese día), para
+  // poder juntarlas y repartirlas al final del mes.
+  const mesDeDiaSel = diaSel.slice(0, 7); // "AAAA-MM"
+  const nombreMesSel = MESES[Number(mesDeDiaSel.split("-")[1]) - 1];
+  const propinaMes = pedidos
+    .filter((p) => (p.fecha || "").startsWith(mesDeDiaSel))
+    .reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
+
   return (
     <div>
       <div className="af-subtabs mb-4">
@@ -1926,6 +1936,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             )}
           </>
         )}
+      </div>
+
+      <div className="af-card af-propina-mes-card mb-5">
+        <div className="af-ink-soft text-sm">🎉 Propinas de {nombreMesSel} {mesDeDiaSel.split("-")[0]}</div>
+        <div className="af-propina-mes-total">{money(propinaMes)}</div>
+        <div className="af-hint">Elige cualquier día de otro mes arriba para ver el total de ese mes.</div>
       </div>
 
       <div className="af-year-switch">
@@ -2422,6 +2438,15 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).avisadoDomicilio}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoDomicilio: e.target.value } })}
+              />
+            </div>
+            <div className="af-field">
+              <label>Al marcar Entregado</label>
+              <textarea
+                className="af-input"
+                rows={2}
+                value={(draft.mensajes || MENSAJES_DEFAULT).entregado || MENSAJES_DEFAULT.entregado}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), entregado: e.target.value } })}
               />
             </div>
             <button className="af-btn-primary w-full" onClick={guardar}>
@@ -4050,6 +4075,12 @@ export default function App() {
   const [presupuestos, setPresupuestos] = useState([]);
   const [avatares, setAvatares] = useState({}); // email (o "local") -> { foto, nombre }
   const [gastos, setGastos] = useState([]);
+  // pedidoId -> "avisado" | "entregado": pedidos que acaban de cambiar a ese
+  // estado y siguen esperando que alguien toque "Enviar aviso" (ver OrderCard).
+  // Vive aquí (no en OrderCard) porque al marcar "Entregado" la tarjeta salta
+  // de la lista de pendientes a la de entregados y se desmonta/monta de
+  // nuevo, perdiendo cualquier estado que no venga de un nivel más alto.
+  const [avisosPendientes, setAvisosPendientes] = useState({});
 
   // Saludo de pantalla completa al abrir la app: una sola vez por sesión.
   const [saludoInicioVisible, setSaludoInicioVisible] = useState(() => {
@@ -4274,6 +4305,7 @@ export default function App() {
   };
 
   const cambiarEstadoPedido = (pedidoId, estado) => {
+    const estadoAnterior = (pedidos.find((p) => p.id === pedidoId) || {}).estado || "pendiente";
     guardarPedidos(
       pedidos.map((p) => {
         if (p.id !== pedidoId) return p;
@@ -4291,17 +4323,31 @@ export default function App() {
         return nuevo;
       })
     );
-    // El envío de WhatsApp al avisar NO se dispara aquí: en celular (sobre
-    // todo iOS) el navegador bloquea en silencio un window.open que viene del
-    // onChange de un <select>, porque no lo cuenta como un toque directo. En
-    // vez de eso, OrderCard muestra un botón "Enviar aviso" que dispara
-    // enviarAvisoWhatsApp desde un clic real.
+    // El envío de WhatsApp al avisar/entregar NO se dispara aquí: en celular
+    // (sobre todo iOS) el navegador bloquea en silencio un window.open que
+    // viene del onChange de un <select>, porque no lo cuenta como un toque
+    // directo. En vez de eso, se marca como pendiente y OrderCard muestra un
+    // botón "Enviar aviso" que dispara enviarAvisoWhatsApp desde un clic real.
+    setAvisosPendientes((prev) => {
+      if ((estado === "avisado" || estado === "entregado") && estado !== estadoAnterior) {
+        return { ...prev, [pedidoId]: estado };
+      }
+      if (!(pedidoId in prev)) return prev;
+      const { [pedidoId]: _quitado, ...resto } = prev;
+      return resto;
+    });
   };
 
   const enviarAvisoWhatsApp = (pedido) => {
     if (pedido.clienteTelefono) {
-      abrirWhatsApp(pedido.clienteTelefono, mensajeAvisado(pedido, config.mensajes));
+      const mensaje = pedido.estado === "entregado" ? mensajeEntregado(pedido, config.mensajes) : mensajeAvisado(pedido, config.mensajes);
+      abrirWhatsApp(pedido.clienteTelefono, mensaje);
     }
+    setAvisosPendientes((prev) => {
+      if (!(pedido.id in prev)) return prev;
+      const { [pedido.id]: _quitado, ...resto } = prev;
+      return resto;
+    });
   };
 
   const irAVista = (v) => { setError(""); setView(v); };
@@ -4463,12 +4509,15 @@ export default function App() {
     setError("");
 
     // WhatsApp automático: al crear el pedido se manda la confirmación; si se
-    // acaba de marcar "Avisar" se manda el mensaje de listo para recoger/domicilio.
+    // acaba de marcar "Avisar" se manda el mensaje de listo para recoger/domicilio;
+    // si se acaba de marcar "Entregado" se manda el mensaje de entrega.
     if (pedidoObj.clienteTelefono) {
       if (esNuevo) {
         abrirWhatsApp(pedidoObj.clienteTelefono, mensajeWhatsApp(pedidoObj, "pedido", config.pago, config.mensajes));
       } else if (anteriorPedido && anteriorPedido.estado !== "avisado" && pedidoObj.estado === "avisado") {
         abrirWhatsApp(pedidoObj.clienteTelefono, mensajeAvisado(pedidoObj, config.mensajes));
+      } else if (anteriorPedido && anteriorPedido.estado !== "entregado" && pedidoObj.estado === "entregado") {
+        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeEntregado(pedidoObj, config.mensajes));
       }
     }
 
@@ -4770,9 +4819,9 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
-          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} />}
-          {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
+          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
+          {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "clientes" && (
             <ClientesView
               clientes={clientes}
@@ -4784,6 +4833,7 @@ export default function App() {
               onMarcarDevuelta={marcarPaelleraDevuelta}
               onCambiarEstado={cambiarEstadoPedido}
               onEnviarAvisoWhatsApp={enviarAvisoWhatsApp}
+              avisosPendientes={avisosPendientes}
             />
           )}
           {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} />}
@@ -5301,6 +5351,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-year-label { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px; min-width: 64px; text-align: center; }
 .af-year-total-card { text-align: center; padding: 16px; }
 .af-year-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 26px; color: var(--wine); margin-top: 2px; }
+.af-propina-mes-card { text-align: center; padding: 16px; background: var(--gold-soft); }
+.af-propina-mes-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 26px; color: var(--gold); margin-top: 2px; }
 
 .af-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .af-kpi-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
