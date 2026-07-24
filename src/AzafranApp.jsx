@@ -30,10 +30,20 @@ const LOGO_MASK_B64 = "iVBORw0KGgoAAAANSUhEUgAAA7EAAAHxCAYAAAC75DscAACT3ElEQVR42
 const MENSAJES_DEFAULT = {
   saludoPedido: "¡Hola {nombre}! Le compartimos el resumen de su pedido en Pepe Andaluz 🥘",
   cierrePedido: "¡Gracias por su preferencia!",
-  avisadoRecoger: "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘",
+  avisadoRecoger:
+    "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘\n\n" +
+    "📍 Calle 8 número 341 x 17 y 19, Montebello\n" +
+    "Ubicación: https://maps.google.com/?q=21.032793,-89.590668\n" +
+    "Foto de la fachada: https://carlosse95.github.io/pepe-andaluz/casa-recoleccion.webp",
   avisadoDomicilio: "¡Hola {nombre}! Su pedido {folio} ya está listo y va en camino a su domicilio 🚚",
   entregado: "¡Hola {nombre}! Su pedido {folio} fue entregado. ¡Gracias por su preferencia, esperamos disfrute su comida! 🥘",
 };
+
+// Mensaje de "listo para recoger" de antes de agregar la dirección/ubicación/
+// foto — sirve para detectar configuraciones guardadas que todavía traen el
+// texto viejo y actualizarlas solas la primera vez que se cargan (ver
+// aplicarClave, más abajo).
+const MENSAJE_RECOGER_ANTERIOR = "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘";
 
 const DEFAULT_CONFIG = {
   paellas: [
@@ -2433,7 +2443,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <label>Al avisar — pedido para recoger</label>
               <textarea
                 className="af-input"
-                rows={2}
+                rows={6}
                 value={(draft.mensajes || MENSAJES_DEFAULT).avisadoRecoger}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoRecoger: e.target.value } })}
               />
@@ -4148,7 +4158,24 @@ export default function App() {
       const valor = JSON.parse(raw);
       if (clave === "pedidos") setPedidos(asignarFolios(valor.map(migrarPedido)));
       else if (clave === "clientes") setClientes(valor);
-      else if (clave === "config-productos") setConfig({ ...DEFAULT_CONFIG, ...valor, desechables: valor.desechables || DEFAULT_CONFIG.desechables, ingredientes: (valor.ingredientes || []).map(normalizarIngrediente) });
+      else if (clave === "config-productos") {
+        const mensajesFusionados = { ...MENSAJES_DEFAULT, ...(valor.mensajes || {}) };
+        // Migración de una sola vez: si el mensaje de "listo para recoger"
+        // guardado todavía es el de antes (sin dirección/ubicación/foto), se
+        // actualiza solo al nuevo por defecto sin pisar nada que se haya
+        // personalizado a mano.
+        if (mensajesFusionados.avisadoRecoger === MENSAJE_RECOGER_ANTERIOR) {
+          mensajesFusionados.avisadoRecoger = MENSAJES_DEFAULT.avisadoRecoger;
+          almacen.set("config-productos", JSON.stringify({ ...valor, mensajes: mensajesFusionados })).catch(() => {});
+        }
+        setConfig({
+          ...DEFAULT_CONFIG,
+          ...valor,
+          mensajes: mensajesFusionados,
+          desechables: valor.desechables || DEFAULT_CONFIG.desechables,
+          ingredientes: (valor.ingredientes || []).map(normalizarIngrediente),
+        });
+      }
       else if (clave === "historico-mensual") setHistorico(valor);
       else if (clave === "presupuestos") setPresupuestos(asignarFolios(valor));
       else if (clave === "avatares") setAvatares(valor || {});
@@ -4214,11 +4241,12 @@ export default function App() {
     // Respaldo además del tiempo real: en celular el canal de Supabase se
     // puede quedar "colgado" sin avisar (red débil, cambio de wifi a datos,
     // el sistema operativo lo pausa un rato) y ahí ya no llegan cambios
-    // aunque la app siga abierta y visible. Este ping cada 15s en silencio
-    // asegura que lo que hacen los demás aparezca rápido de todas formas.
+    // aunque la app siga abierta y visible. Este ping cada 3s en silencio
+    // asegura que lo que hacen los demás aparezca casi al instante de todas
+    // formas — es el intervalo más corto razonable sin saturar Supabase.
     const intervalo = setInterval(() => {
       if (document.visibilityState === "visible") cargarTodo(false);
-    }, 15000);
+    }, 3000);
 
     return () => {
       cancelado = true;
