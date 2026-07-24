@@ -4,7 +4,7 @@ import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
-  PackageSearch, MessageCircle, Copy, Wallet, CalendarClock,
+  PackageSearch, MessageCircle, Copy, Wallet,
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
@@ -877,6 +877,29 @@ function AlertaFranjaModal({ alerta, onCerrar }) {
   );
 }
 
+// Se muestra apenas se marca "Avisado" o "Entregado", sin importar en qué
+// pestaña esté el usuario, para que el envío del WhatsApp salga de un toque
+// real ahí mismo — antes había que ir a buscar el pedido a otra lista.
+function AvisoPendienteModal({ aviso, onEnviar, onCerrar }) {
+  if (!aviso) return null;
+  const { pedido, tipo } = aviso;
+  return (
+    <div className="af-modal-overlay af-modal-overlay-center" onClick={onCerrar}>
+      <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="af-alerta-icon"><MessageCircle size={26} /></div>
+        <div className="af-alerta-titulo">{tipo === "entregado" ? "Pedido entregado" : "Pedido avisado"}</div>
+        <p className="af-alerta-texto">
+          ¿Enviamos el mensaje de WhatsApp a <strong>{pedido.clienteNombre}</strong>?
+        </p>
+        <button className="af-btn-primary w-full" onClick={onEnviar}>
+          <MessageCircle size={15} className="inline mr-1" /> Enviar por WhatsApp
+        </button>
+        <button className="af-btn-secondary w-full mt-2" onClick={onCerrar}>Ahora no</button>
+      </div>
+    </div>
+  );
+}
+
 function NavButton({ active, icon, label, onClick }) {
   return (
     <button className={"af-nav-btn" + (active ? " active" : "")} onClick={onClick}>
@@ -1048,12 +1071,6 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const activosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") !== "entregado");
   const entregadosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") === "entregado");
 
-  const hoy = todayISO();
-  const proximos = pedidos
-    .filter((p) => p.fecha > hoy && (p.estado || "pendiente") !== "entregado")
-    .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? -1 : 1))
-    .slice(0, 4);
-
   // Paelleras por recoger: solo de pedidos YA ENTREGADOS (antes de eso,
   // la paellera sigue en la cocina y no hay nada que perseguir).
   const pendientesPaellera = [];
@@ -1121,19 +1138,6 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
             .slice()
             .sort((a, b) => a.hora.localeCompare(b.hora))
             .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
-        </div>
-      )}
-
-      {proximos.length > 0 && (
-        <div className="mt-5">
-          <div className="af-section-title">
-            <CalendarClock size={14} /> Próximos pedidos
-          </div>
-          <div className="af-card-grid">
-            {proximos.map((p) => (
-              <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
-            ))}
-          </div>
         </div>
       )}
 
@@ -1773,7 +1777,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
 /* ---------------------------------------------------------------------- */
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Gas/Servicios", "Otros"];
+const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Gas/Servicios", "Familiar/Personal", "Otros"];
 
 const COLOR_WINE = "#2F5FE0";
 const COLOR_GOLD = "#7C6FF0";
@@ -2078,11 +2082,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         <div className="af-kpi-grid mb-5">
           <div className="af-kpi-card">
-            <div className="af-kpi-label">Ingresos {anio}</div>
+            <div className="af-kpi-label">Ingresos</div>
             <div className="af-kpi-value af-kpi-up">{money(totalAnio)}</div>
           </div>
           <div className="af-kpi-card">
-            <div className="af-kpi-label">Gastos {anio}</div>
+            <div className="af-kpi-label">Gastos</div>
             <div className="af-kpi-value af-kpi-down">{money(totalGastosAnio)}</div>
           </div>
           <div className="af-kpi-card">
@@ -2090,7 +2094,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <div className={"af-kpi-value" + (utilidadAnio >= 0 ? " af-kpi-up" : " af-kpi-down")}>{money(utilidadAnio)}</div>
           </div>
           <div className="af-kpi-card">
-            <div className="af-kpi-label">Clientes nuevos {anio}</div>
+            <div className="af-kpi-label">Clientes nuevos</div>
             <div className="af-kpi-value">{clientesNuevosAnio}</div>
           </div>
         </div>
@@ -4100,6 +4104,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const [alertaFranja, setAlertaFranja] = useState(null); // { total, hora } o null
+  const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
 
   // Sesión (solo aplica en modo nube; en modo local no hay login).
   const [sesion, setSesion] = useState(null);
@@ -4206,10 +4211,20 @@ export default function App() {
     };
     document.addEventListener("visibilitychange", alVolverVisible);
 
+    // Respaldo además del tiempo real: en celular el canal de Supabase se
+    // puede quedar "colgado" sin avisar (red débil, cambio de wifi a datos,
+    // el sistema operativo lo pausa un rato) y ahí ya no llegan cambios
+    // aunque la app siga abierta y visible. Este ping cada 15s en silencio
+    // asegura que lo que hacen los demás aparezca rápido de todas formas.
+    const intervalo = setInterval(() => {
+      if (document.visibilityState === "visible") cargarTodo(false);
+    }, 15000);
+
     return () => {
       cancelado = true;
       desuscribir();
       document.removeEventListener("visibilitychange", alVolverVisible);
+      clearInterval(intervalo);
     };
     // eslint-disable-next-line
   }, [puedeUsarDatos]);
@@ -4309,6 +4324,7 @@ export default function App() {
 
   const cambiarEstadoPedido = (pedidoId, estado) => {
     const estadoAnterior = (pedidos.find((p) => p.id === pedidoId) || {}).estado || "pendiente";
+    let pedidoActualizado = null;
     guardarPedidos(
       pedidos.map((p) => {
         if (p.id !== pedidoId) return p;
@@ -4323,22 +4339,27 @@ export default function App() {
             nuevo = { ...nuevo, abonos, pagado: sumaAbonos(abonos), saldo: 0, estadoPago: "pagado" };
           }
         }
+        pedidoActualizado = nuevo;
         return nuevo;
       })
     );
-    // El envío de WhatsApp al avisar/entregar NO se dispara aquí: en celular
-    // (sobre todo iOS) el navegador bloquea en silencio un window.open que
-    // viene del onChange de un <select>, porque no lo cuenta como un toque
-    // directo. En vez de eso, se marca como pendiente y OrderCard muestra un
-    // botón "Enviar aviso" que dispara enviarAvisoWhatsApp desde un clic real.
+    // El envío de WhatsApp al avisar/entregar NO se dispara solo aquí: en
+    // celular (sobre todo iOS) el navegador bloquea en silencio un
+    // window.open que viene del onChange de un <select>, porque no lo cuenta
+    // como un toque directo. En vez de eso, se marca como pendiente y se abre
+    // un modal (AvisoPendienteModal) con un botón real para enviarlo al
+    // toque — así aparece sin importar en qué pestaña esté el usuario, en vez
+    // de tener que ir a buscar el pedido a la lista de Entregados.
+    const esNuevoAviso = (estado === "avisado" || estado === "entregado") && estado !== estadoAnterior;
     setAvisosPendientes((prev) => {
-      if ((estado === "avisado" || estado === "entregado") && estado !== estadoAnterior) {
-        return { ...prev, [pedidoId]: estado };
-      }
+      if (esNuevoAviso) return { ...prev, [pedidoId]: estado };
       if (!(pedidoId in prev)) return prev;
       const { [pedidoId]: _quitado, ...resto } = prev;
       return resto;
     });
+    if (esNuevoAviso && pedidoActualizado && pedidoActualizado.clienteTelefono) {
+      setAvisoModal({ pedido: pedidoActualizado, tipo: estado });
+    }
   };
 
   const enviarAvisoWhatsApp = (pedido) => {
@@ -4892,6 +4913,11 @@ export default function App() {
 
         <Toast toast={toast} />
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
+        <AvisoPendienteModal
+          aviso={avisoModal}
+          onEnviar={() => { enviarAvisoWhatsApp(avisoModal.pedido); setAvisoModal(null); }}
+          onCerrar={() => setAvisoModal(null)}
+        />
       </div>
     </div>
   );
@@ -4930,6 +4956,7 @@ const AZAFRAN_CSS = `
   max-width: 560px;
   margin: 0 auto;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -5020,8 +5047,8 @@ const AZAFRAN_CSS = `
 }
 .af-saludo-inicio.af-saludo-inicio-salir { animation: af-saludo-out 0.45s ease both; }
 
-.af-stat-pill { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 8px; text-align: center; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
-.af-stat-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; }
+.af-stat-pill { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 6px; text-align: center; box-shadow: 0 1px 2px rgba(36,27,20,0.04); display: flex; flex-direction: column; justify-content: center; min-height: 64px; }
+.af-stat-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(11px, 3vw, 16px); overflow-wrap: break-word; }
 .af-stat-value.af-stat-warn { color: var(--wine); }
 .af-stat-label { font-size: 10.5px; color: var(--ink-soft); margin-top: 2px; }
 
@@ -5105,7 +5132,7 @@ const AZAFRAN_CSS = `
 .af-empty-title { font-weight: 600; color: var(--ink); }
 .af-empty-sub { font-size: 13px; margin-top: 4px; max-width: 260px; margin-left: auto; margin-right: auto; }
 
-.af-nav { position: sticky; bottom: 0; display: flex; background: var(--surface); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+.af-nav { position: fixed; left: 0; right: 0; bottom: 0; max-width: 560px; margin: 0 auto; z-index: 20; display: flex; background: var(--surface); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
 .af-nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; background: none; border: none; color: var(--ink-soft); font-size: 10.5px; font-weight: 600; transition: color 0.15s ease, transform 0.15s ease; }
 .af-nav-btn.active { color: var(--wine); }
 .af-nav-btn:active { transform: scale(0.92); }
@@ -5357,10 +5384,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-propina-mes-card { text-align: center; padding: 16px; background: var(--gold-soft); }
 .af-propina-mes-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 26px; color: var(--gold); margin-top: 2px; }
 
-.af-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.af-kpi-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
-.af-kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin-bottom: 5px; }
-.af-kpi-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 19px; color: var(--ink); }
+.af-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 10px; align-items: stretch; }
+.af-kpi-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); display: flex; flex-direction: column; justify-content: center; min-height: 76px; }
+.af-kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af-kpi-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(14px, 4vw, 19px); color: var(--ink); overflow-wrap: break-word; }
 .af-kpi-value.af-kpi-up { color: var(--olive); }
 .af-kpi-value.af-kpi-down { color: #E0524A; }
 
