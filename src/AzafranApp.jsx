@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
@@ -2338,7 +2338,20 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     reader.readAsText(file);
   };
 
-  useEffect(() => setDraft(config), [config]);
+  // El refresco de sincronización de fondo (cada pocos segundos) trae un
+  // config nuevo aunque nadie haya cambiado nada de verdad. Antes esto
+  // pisaba lo que se estuviera escribiendo aquí — se sentía como que "se
+  // regresaba solo" al editar. Ahora solo se trae lo nuevo si no hay
+  // cambios sin guardar (draft todavía coincide con el último config
+  // conocido); si se está editando algo, no se toca hasta que se guarde.
+  const draftRef = useRef(draft);
+  useEffect(() => { draftRef.current = draft; }, [draft]);
+  const configAnteriorRef = useRef(config);
+  useEffect(() => {
+    const sinCambiosSinGuardar = JSON.stringify(draftRef.current) === JSON.stringify(configAnteriorRef.current);
+    configAnteriorRef.current = config;
+    if (sinCambiosSinGuardar) setDraft(config);
+  }, [config]);
 
   const guardar = () => {
     const limpio = {
@@ -2709,7 +2722,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       )}
 
       {tab === "inventario" && (
-        <fieldset disabled={!esAdmin} className="af-fieldset-reset">
+        // A diferencia de Menú y Datos, Inventario lo puede editar cualquiera
+        // (no solo el admin) — aquí no hay riesgo de borrar sin querer un
+        // platillo del menú, y todos necesitan poder actualizar existencias.
+        <fieldset className="af-fieldset-reset">
           <div className="af-section-title">Ingredientes</div>
           <div className="af-hint mb-3">
             Dile a la app cómo COMPRAS cada ingrediente (ej. bolsa de 1.5 kilos) y cuánto USAS
