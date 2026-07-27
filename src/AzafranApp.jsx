@@ -5,7 +5,7 @@ import {
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet,
-  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote,
+  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
 import jsPDF from "jspdf";
@@ -1085,12 +1085,108 @@ function SaludoInicio({ nombre, saliendo }) {
 }
 
 /* ---------------------------------------------------------------------- */
+/*  Producción del día (compartido por Hoy y Agenda)                      */
+/* ---------------------------------------------------------------------- */
+
+// Lo que hay que cocinar/preparar para un día: kilos por paella, platillos,
+// paelleras que se van a necesitar e ingredientes marcados. Se usa igual en
+// Hoy (para lo de hoy) y en Agenda (para cada fecha de la lista).
+function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle }) {
+  const { paellasKg, platillos, ingredientesUso, sueltasPorPaella } = produccionDelDia(pedidosDelDia, config);
+  const conteoPaelleras = paellerasDelDia(pedidosDelDia, config.paelleras);
+  const hayProduccion =
+    Object.keys(paellasKg).length > 0 ||
+    Object.keys(platillos).length > 0 ||
+    Object.keys(sueltasPorPaella).length > 0 ||
+    Object.keys(conteoPaelleras).length > 0;
+  if (!hayProduccion) return null;
+
+  const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
+  const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
+  const unidadExtra = (id) => {
+    const ex = (config.extras || []).find((e) => e.id === id);
+    return ex && ex.piezasPorUnidad > 0 ? "piezas" : (ex?.unidad || "unidad");
+  };
+
+  return (
+    <div className="mb-3">
+      <button className="af-colapsable-btn" onClick={onToggle}>
+        <ChefHat size={15} /> Producción del día {abierto ? "▲" : "▼"}
+      </button>
+      {abierto && (
+        <div className="af-produccion-box">
+          {Object.entries(paellasKg).map(([paellaId, kg]) => (
+            <div key={paellaId} className="af-produccion-row">
+              <span className="af-produccion-nombre">{nombrePaella(paellaId)}</span>
+              <span className="af-produccion-puntos" />
+              <span className="af-produccion-valor">{fmtKg(kg)}</span>
+            </div>
+          ))}
+          {Object.entries(sueltasPorPaella).map(([paellaId, kg]) => (
+            <div key={"suelta-" + paellaId} className="af-produccion-row">
+              <span className="af-produccion-nombre">{nombrePaella(paellaId)} suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
+              <span className="af-produccion-puntos" />
+              <span className="af-produccion-valor">{fmtKg(kg)}</span>
+            </div>
+          ))}
+          {Object.entries(platillos).map(([extraId, cant]) => (
+            <div key={extraId} className="af-produccion-row">
+              <span className="af-produccion-nombre">{nombreExtra(extraId)}</span>
+              <span className="af-produccion-puntos" />
+              <span className="af-produccion-valor">{Math.round(cant * 10) / 10} {unidadExtra(extraId)}</span>
+            </div>
+          ))}
+          {Object.keys(conteoPaelleras).length > 0 && (
+            <>
+              <div className="af-produccion-subtitle">Paelleras necesarias</div>
+              {Object.entries(conteoPaelleras).map(([paelleraId, n]) => {
+                const t = (config.paelleras || []).find((x) => x.id === paelleraId);
+                if (!t) return null;
+                return (
+                  <div key={paelleraId} className="af-produccion-row">
+                    <span className="af-produccion-nombre">{nombrePaellera(t)}</span>
+                    <span className="af-produccion-puntos" />
+                    <span className="af-produccion-valor">{n} {n === 1 ? "paellera" : "paelleras"}</span>
+                  </div>
+                );
+              })}
+            </>
+          )}
+          {Object.keys(ingredientesUso).length > 0 && (
+            <>
+              <div className="af-produccion-subtitle">Ingredientes a preparar</div>
+              {Object.entries(ingredientesUso).map(([ingId, cant]) => {
+                const ing = (config.ingredientes || []).find((i) => i.id === ingId);
+                if (!ing) return null;
+                const info = UNIDAD_INFO[ing.usoUnidad] || { label: ing.usoUnidad, familia: "" };
+                const valor = info.familia === "piezas" ? Math.round(cant) : Math.round(cant * 10) / 10;
+                return (
+                  <div key={ingId} className="af-produccion-row">
+                    <span className="af-produccion-nombre">{ing.nombre}</span>
+                    <span className="af-produccion-puntos" />
+                    <span className="af-produccion-valor">{valor} {info.label}</span>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
 function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
+  const [verProduccion, setVerProduccion] = useState(false);
+  // Filtro por estado: se maneja aquí (y no en Agenda) porque estos son los
+  // pedidos que se están trabajando hoy.
+  const [estadoFiltro, setEstadoFiltro] = useState("todos");
 
   const total = pedidosHoy.reduce((a, p) => a + p.total, 0);
   // Solo lo que falta cobrar de HOY (lo de otros días se ve en Agenda).
@@ -1101,6 +1197,8 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   // En "Hoy" solo se trabaja lo que falta: los entregados se guardan colapsados.
   const activosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") !== "entregado");
   const entregadosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") === "entregado");
+  const activosFiltrados =
+    estadoFiltro === "todos" ? activosHoy : activosHoy.filter((p) => (p.estado || "pendiente") === estadoFiltro);
 
   // Paelleras por recoger: solo de pedidos YA ENTREGADOS (antes de eso,
   // la paellera sigue en la cocina y no hay nada que perseguir).
@@ -1156,16 +1254,55 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
         </div>
       )}
 
+      {pedidosHoy.length > 0 && (
+        <ProduccionDelDiaBox
+          pedidosDelDia={pedidosHoy}
+          config={config}
+          abierto={verProduccion}
+          onToggle={() => setVerProduccion((v) => !v)}
+        />
+      )}
+
       <div className="af-section-title mt-4">Por hacer hoy</div>
-      {activosHoy.length === 0 ? (
+
+      {activosHoy.length > 0 && (
+        <div className="af-category-pills mb-3">
+          <button className={"af-category-pill" + (estadoFiltro === "todos" ? " active" : "")} onClick={() => setEstadoFiltro("todos")}>
+            Todos
+          </button>
+          {ESTADOS_PEDIDO.filter((e) => e.id !== "entregado").map((e) => (
+            <button
+              key={e.id}
+              className={"af-category-pill" + (estadoFiltro === e.id ? " active" : "")}
+              onClick={() => setEstadoFiltro(e.id)}
+            >
+              {e.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activosFiltrados.length === 0 ? (
         <EmptyState
           icon={<ChefHat size={28} />}
-          title={entregadosHoy.length > 0 ? "¡Todo lo de hoy está entregado!" : "Todavía no hay pedidos hoy"}
-          subtitle={entregadosHoy.length > 0 ? "Buen trabajo. Los entregados están aquí abajo." : "Toca el botón + para registrar la primera llamada del día."}
+          title={
+            activosHoy.length > 0
+              ? `Nada en "${ESTADO_LABEL[estadoFiltro]}"`
+              : entregadosHoy.length > 0
+              ? "¡Todo lo de hoy está entregado!"
+              : "Todavía no hay pedidos hoy"
+          }
+          subtitle={
+            activosHoy.length > 0
+              ? 'Prueba con otro filtro o toca "Todos".'
+              : entregadosHoy.length > 0
+              ? "Buen trabajo. Los entregados están aquí abajo."
+              : "Toca el botón + para registrar la primera llamada del día."
+          }
         />
       ) : (
         <div className="af-card-grid">
-          {activosHoy
+          {activosFiltrados
             .slice()
             .sort((a, b) => a.hora.localeCompare(b.hora))
             .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
@@ -1216,14 +1353,6 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
   const [diaEntregados, setDiaEntregados] = useState(""); // "" = ver todos (por mes)
-  const [estadoFiltro, setEstadoFiltro] = useState("todos"); // "todos" | pendiente | preparacion | avisado
-
-  const nombrePaella = (id) => (config.paellas || []).find((p) => p.id === id)?.nombre || "Paella";
-  const nombreExtra = (id) => (config.extras || []).find((e) => e.id === id)?.nombre || "Platillo";
-  const unidadExtra = (id) => {
-    const ex = (config.extras || []).find((e) => e.id === id);
-    return ex && ex.piezasPorUnidad > 0 ? "piezas" : (ex?.unidad || "unidad");
-  };
 
   const cambiarMes = (delta) => {
     setMesSel((prev) => {
@@ -1233,9 +1362,10 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   };
   const claveMesSel = `${mesSel.a}-${String(mesSel.m + 1).padStart(2, "0")}`;
 
+  // El filtro por estado (pendiente/preparación/avisado) vive en Hoy: ahí es
+  // donde se trabajan los pedidos del día. Agenda es la vista de calendario.
   const pendientes = pedidos.filter((p) => (p.estado || "pendiente") !== "entregado");
-  const pendientesFiltrados =
-    estadoFiltro === "todos" ? pendientes : pendientes.filter((p) => (p.estado || "pendiente") === estadoFiltro);
+  const pendientesFiltrados = pendientes;
   const entregados = pedidos.filter((p) => (p.estado || "pendiente") === "entregado");
   const entregadosFiltrados = diaEntregados
     ? entregados.filter((p) => p.fecha === diaEntregados)
@@ -1274,23 +1404,6 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
           Entregados
         </button>
       </div>
-
-      {tab === "pendientes" && pendientes.length > 0 && (
-        <div className="af-category-pills mb-3">
-          <button className={"af-category-pill" + (estadoFiltro === "todos" ? " active" : "")} onClick={() => setEstadoFiltro("todos")}>
-            Todos
-          </button>
-          {ESTADOS_PEDIDO.filter((e) => e.id !== "entregado").map((e) => (
-            <button
-              key={e.id}
-              className={"af-category-pill" + (estadoFiltro === e.id ? " active" : "")}
-              onClick={() => setEstadoFiltro(e.id)}
-            >
-              {e.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {tab === "pendientes" && pendientes.length > 0 && (
         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -1334,12 +1447,8 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
         tab === "pendientes" ? (
           <EmptyState
             icon={<CalendarDays size={28} />}
-            title={estadoFiltro === "todos" ? "Nada pendiente por entregar" : `Nada en "${ESTADO_LABEL[estadoFiltro]}"`}
-            subtitle={
-              estadoFiltro === "todos"
-                ? "Los pedidos que registres aparecerán aquí, ordenados por fecha."
-                : "Prueba con otro filtro o toca \"Todos\"."
-            }
+            title="Nada pendiente por entregar"
+            subtitle="Los pedidos que registres aparecerán aquí, ordenados por fecha."
           />
         ) : (
           <EmptyState
@@ -1352,9 +1461,6 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 
       {fechas.map((fecha) => {
         const pedidosDelDia = grupos[fecha];
-        const { paellasKg, platillos, ingredientesUso, sueltasPorPaella } = produccionDelDia(pedidosDelDia, config);
-        const conteoPaelleras = paellerasDelDia(pedidosDelDia, config.paelleras);
-        const hayProduccion = Object.keys(paellasKg).length > 0 || Object.keys(platillos).length > 0 || Object.keys(sueltasPorPaella).length > 0 || Object.keys(conteoPaelleras).length > 0;
         return (
           <div key={fecha} className="mb-4">
             <div className="af-section-title">
@@ -1366,71 +1472,13 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
               {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong">Atrasado</span>}
             </div>
 
-            {tab === "pendientes" && hayProduccion && (
-              <div className="mb-3">
-                <button className="af-colapsable-btn" onClick={() => setVerProduccion((v) => ({ ...v, [fecha]: !v[fecha] }))}>
-                  <ChefHat size={15} /> Producción del día {verProduccion[fecha] ? "▲" : "▼"}
-                </button>
-                {verProduccion[fecha] && (
-                  <div className="af-produccion-box">
-                    {Object.entries(paellasKg).map(([paellaId, kg]) => (
-                      <div key={paellaId} className="af-produccion-row">
-                        <span className="af-produccion-nombre">{nombrePaella(paellaId)}</span>
-                        <span className="af-produccion-puntos" />
-                        <span className="af-produccion-valor">{fmtKg(kg)}</span>
-                      </div>
-                    ))}
-                    {Object.entries(sueltasPorPaella).map(([paellaId, kg]) => (
-                      <div key={"suelta-" + paellaId} className="af-produccion-row">
-                        <span className="af-produccion-nombre">{nombrePaella(paellaId)} suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
-                        <span className="af-produccion-puntos" />
-                        <span className="af-produccion-valor">{fmtKg(kg)}</span>
-                      </div>
-                    ))}
-                    {Object.entries(platillos).map(([extraId, cant]) => (
-                      <div key={extraId} className="af-produccion-row">
-                        <span className="af-produccion-nombre">{nombreExtra(extraId)}</span>
-                        <span className="af-produccion-puntos" />
-                        <span className="af-produccion-valor">{Math.round(cant * 10) / 10} {unidadExtra(extraId)}</span>
-                      </div>
-                    ))}
-                    {Object.keys(conteoPaelleras).length > 0 && (
-                      <>
-                        <div className="af-produccion-subtitle">Paelleras necesarias</div>
-                        {Object.entries(conteoPaelleras).map(([paelleraId, n]) => {
-                          const t = (config.paelleras || []).find((x) => x.id === paelleraId);
-                          if (!t) return null;
-                          return (
-                            <div key={paelleraId} className="af-produccion-row">
-                              <span className="af-produccion-nombre">{nombrePaellera(t)}</span>
-                              <span className="af-produccion-puntos" />
-                              <span className="af-produccion-valor">{n} {n === 1 ? "paellera" : "paelleras"}</span>
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                    {Object.keys(ingredientesUso).length > 0 && (
-                      <>
-                        <div className="af-produccion-subtitle">Ingredientes a preparar</div>
-                        {Object.entries(ingredientesUso).map(([ingId, cant]) => {
-                          const ing = (config.ingredientes || []).find((i) => i.id === ingId);
-                          if (!ing) return null;
-                          const info = UNIDAD_INFO[ing.usoUnidad] || { label: ing.usoUnidad, familia: "" };
-                          const valor = info.familia === "piezas" ? Math.round(cant) : Math.round(cant * 10) / 10;
-                          return (
-                            <div key={ingId} className="af-produccion-row">
-                              <span className="af-produccion-nombre">{ing.nombre}</span>
-                              <span className="af-produccion-puntos" />
-                              <span className="af-produccion-valor">{valor} {info.label}</span>
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+            {tab === "pendientes" && (
+              <ProduccionDelDiaBox
+                pedidosDelDia={pedidosDelDia}
+                config={config}
+                abierto={!!verProduccion[fecha]}
+                onToggle={() => setVerProduccion((v) => ({ ...v, [fecha]: !v[fecha] }))}
+              />
             )}
 
             <div className="af-card-grid">
@@ -1810,6 +1858,46 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Gas/Servicios", "Familiar/Personal", "Otros"];
 
+// Margen al que conviene apuntar en comida preparada: el costo de los
+// ingredientes no debería pasar del ~40% de lo que se cobra. Sirve para
+// sugerir un precio cuando un platillo se está vendiendo muy barato.
+const MARGEN_OBJETIVO = 0.6;
+
+// Clasifica qué tan sano es el margen de un producto y qué hacer al respecto.
+const veredictoMargen = (fila) => {
+  if (fila.sinCosto) {
+    return { nivel: "sin-dato", etiqueta: "Falta el costo", consejo: "Escribe cuánto te cuesta aprox. para saber si el precio deja utilidad." };
+  }
+  if (fila.precio <= 0) {
+    return { nivel: "malo", etiqueta: "Sin precio", consejo: "Este producto no tiene precio de venta en el menú." };
+  }
+  if (fila.margen >= 0.65) {
+    return { nivel: "excelente", etiqueta: "Excelente", consejo: "Muy buen margen. El precio está bien puesto." };
+  }
+  if (fila.margen >= 0.5) {
+    return { nivel: "bien", etiqueta: "Buena", consejo: "Margen sano, no hace falta mover el precio." };
+  }
+  if (fila.margen >= 0.35) {
+    return {
+      nivel: "ajustado",
+      etiqueta: "Ajustada",
+      consejo: `Va justo. A ${money(fila.precioSugerido)} llegarías al 60% de margen.`,
+    };
+  }
+  if (fila.margen > 0) {
+    return {
+      nivel: "malo",
+      etiqueta: "Baja",
+      consejo: `Te deja muy poco. Convendría subir a ${money(fila.precioSugerido)}.`,
+    };
+  }
+  return {
+    nivel: "malo",
+    etiqueta: "Pérdida",
+    consejo: `Estás vendiendo por debajo de lo que te cuesta. Deberías cobrar al menos ${money(fila.precioSugerido)}.`,
+  };
+};
+
 const COLOR_WINE = "#2F5FE0";
 const COLOR_GOLD = "#7C6FF0";
 const COLOR_AZUL = "#14B8A6";
@@ -1820,7 +1908,7 @@ const COLOR_INK_SOFT = "#64758F";
 const chartTooltipStyle = { borderRadius: 10, border: `1px solid ${COLOR_LINE_CHART}`, fontSize: 12, boxShadow: "0 4px 14px rgba(43,32,21,0.12)" };
 const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 
-function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil }) {
+function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig }) {
   const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("ventas");
   const [anio, setAnio] = useState(new Date().getFullYear());
@@ -1828,6 +1916,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [diaSel, setDiaSel] = useState(todayISO());
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
+  const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
 
   const claveMes = (a, m) => `${a}-${String(m + 1).padStart(2, "0")}`;
 
@@ -1920,6 +2009,100 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   };
   const eliminarGasto = (id) => onGuardarGastos(gastos.filter((g) => g.id !== id));
 
+  // Editar un gasto ya registrado, para no tener que borrarlo y volverlo a
+  // capturar cuando solo se equivocaron en un dato.
+  const abrirEdicionGasto = (g) => setGastoEditando({ ...g, monto: g.monto });
+  const guardarEdicionGasto = () => {
+    if (!gastoEditando || !gastoEditando.monto || gastoEditando.monto <= 0) return;
+    onGuardarGastos(
+      gastos.map((g) =>
+        g.id === gastoEditando.id
+          ? { ...g, fecha: gastoEditando.fecha, categoria: gastoEditando.categoria, descripcion: (gastoEditando.descripcion || "").trim(), monto: parseFloat(gastoEditando.monto) }
+          : g
+      )
+    );
+    setGastoEditando(null);
+  };
+
+  // --- Rentabilidad por producto ---
+  // Se junta lo VENDIDO del año (kilos/piezas e ingresos) contra el costo
+  // aproximado que capturó el usuario, para saber si cada precio deja margen.
+  const ventasPorProducto = {};
+  const acumular = (clave, campos) => {
+    if (!ventasPorProducto[clave]) ventasPorProducto[clave] = { volumen: 0, ingreso: 0 };
+    ventasPorProducto[clave].volumen += campos.volumen;
+    ventasPorProducto[clave].ingreso += campos.ingreso;
+  };
+  pedidos.forEach((p) => {
+    if (Number(p.fecha.split("-")[0]) !== anio) return;
+    (p.items || []).forEach((it) => {
+      if (it.tipo === "paella") {
+        // Solo la paella en sí: los extras (langosta, chorizo) se cobran aparte
+        // y tienen su propio costo, así no se ensucia el margen del platillo.
+        acumular("paella:" + it.paellaId, { volumen: it.kg || 0, ingreso: (it.kg || 0) * (it.precioKg || 0) });
+      } else if (it.tipo === "extra") {
+        acumular("extra:" + it.extraId, { volumen: it.cantidad || 0, ingreso: it.subtotal || 0 });
+      }
+    });
+  });
+
+  const filasRentabilidad = [
+    ...(config?.paellas || []).map((p) => ({
+      clave: "paella:" + p.id,
+      id: p.id,
+      tipo: "paella",
+      nombre: p.nombre,
+      unidad: "kg",
+      precio: p.precioKg || 0,
+      costo: p.costoKg || 0,
+    })),
+    ...(config?.extras || []).map((e) => ({
+      clave: "extra:" + e.id,
+      id: e.id,
+      tipo: "extra",
+      nombre: e.nombre,
+      unidad: e.piezasPorUnidad > 0 ? e.unidad || "orden" : e.unidad || "pieza",
+      precio: e.precio || 0,
+      costo: e.costo || 0,
+    })),
+  ].map((f) => {
+    const v = ventasPorProducto[f.clave] || { volumen: 0, ingreso: 0 };
+    const utilidadUnitaria = f.precio - f.costo;
+    const margen = f.precio > 0 ? utilidadUnitaria / f.precio : 0;
+    const costoTotal = v.volumen * f.costo;
+    return {
+      ...f,
+      volumen: v.volumen,
+      ingreso: v.ingreso,
+      costoTotal,
+      utilidadTotal: v.ingreso - costoTotal,
+      utilidadUnitaria,
+      margen,
+      sinCosto: !f.costo || f.costo <= 0,
+      precioSugerido: f.costo > 0 ? f.costo / (1 - MARGEN_OBJETIVO) : 0,
+    };
+  });
+
+  const filasOrdenadas = filasRentabilidad
+    .slice()
+    .sort((a, b) => b.utilidadTotal - a.utilidadTotal || b.ingreso - a.ingreso);
+
+  const conCosto = filasRentabilidad.filter((f) => !f.sinCosto);
+  const ingresoRent = conCosto.reduce((a, f) => a + f.ingreso, 0);
+  const costoRent = conCosto.reduce((a, f) => a + f.costoTotal, 0);
+  const utilidadRent = ingresoRent - costoRent;
+  const margenRent = ingresoRent > 0 ? utilidadRent / ingresoRent : 0;
+  const faltanCostos = filasRentabilidad.filter((f) => f.sinCosto).length;
+
+  const guardarCosto = (fila, valor) => {
+    if (!onGuardarConfig || !config) return;
+    if (fila.tipo === "paella") {
+      onGuardarConfig({ ...config, paellas: (config.paellas || []).map((p) => (p.id === fila.id ? { ...p, costoKg: valor } : p)) });
+    } else {
+      onGuardarConfig({ ...config, extras: (config.extras || []).map((e) => (e.id === fila.id ? { ...e, costo: valor } : e)) });
+    }
+  };
+
   const delDia = pedidos.filter((p) => p.fecha === diaSel);
   const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
   const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
@@ -1944,8 +2127,116 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     <div>
       <div className="af-subtabs mb-4">
         <button className={"af-subtab" + (tab === "ventas" ? " active" : "")} onClick={() => setTab("ventas")}>Ventas</button>
+        <button className={"af-subtab" + (tab === "rentabilidad" ? " active" : "")} onClick={() => setTab("rentabilidad")}>Rentabilidad</button>
         <button className={"af-subtab" + (tab === "finanzas" ? " active" : "")} onClick={() => setTab("finanzas")}>Finanzas</button>
       </div>
+
+      {tab === "rentabilidad" && (
+        <div>
+          <div className="af-year-switch">
+            <button className="af-icon-btn" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></button>
+            <span className="af-year-label">{anio}</span>
+            <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
+          </div>
+
+          <div className="af-rent-resumen mb-4">
+            <div className="af-rent-resumen-head">
+              <div>
+                <div className="af-rent-resumen-label">Utilidad bruta {anio}</div>
+                <div className="af-rent-resumen-valor">{money(utilidadRent)}</div>
+              </div>
+              <div className={"af-rent-margen-badge " + (margenRent >= 0.5 ? "bien" : margenRent >= 0.35 ? "ajustado" : "malo")}>
+                {Math.round(margenRent * 100)}% margen
+              </div>
+            </div>
+            <div className="af-rent-barra">
+              <div className="af-rent-barra-fill" style={{ width: `${Math.max(0, Math.min(100, margenRent * 100))}%` }} />
+            </div>
+            <div className="af-rent-resumen-pies">
+              <span>Vendido <strong>{money(ingresoRent)}</strong></span>
+              <span>Costo aprox. <strong>{money(costoRent)}</strong></span>
+            </div>
+          </div>
+
+          {faltanCostos > 0 && (
+            <div className="af-hint mb-3">
+              Faltan {faltanCostos} {faltanCostos === 1 ? "producto" : "productos"} por capturar su costo. Los de arriba solo consideran los que ya lo tienen.
+            </div>
+          )}
+
+          <div className="af-section-title">Producto por producto</div>
+          <div className="af-hint mb-3">
+            Escribe cuánto te cuesta aprox. producir cada uno (ingredientes, envase, gas). La app compara contra tu precio y te dice si conviene.
+          </div>
+
+          {filasOrdenadas.length === 0 ? (
+            <EmptyState
+              icon={<TrendingUp size={26} />}
+              title="Todavía no hay productos en el menú"
+              subtitle="Agrega paellas y platillos en Ajustes → Menú para poder analizar su rentabilidad."
+            />
+          ) : (
+            filasOrdenadas.map((f) => {
+              const v = veredictoMargen(f);
+              return (
+                <div key={f.clave} className="af-card af-rent-card mb-3">
+                  <div className="af-rent-card-head">
+                    <div className="min-w-0">
+                      <div className="af-rent-nombre">{f.nombre}</div>
+                      <div className="af-rent-sub">
+                        {f.volumen > 0
+                          ? `${f.tipo === "paella" ? fmtKg(f.volumen) : Math.round(f.volumen * 10) / 10 + " " + f.unidad} vendido${f.tipo === "paella" ? "s" : ""} en ${anio}`
+                          : `Sin ventas en ${anio}`}
+                      </div>
+                    </div>
+                    <span className={"af-rent-badge " + v.nivel}>{v.etiqueta}</span>
+                  </div>
+
+                  <div className="af-rent-cifras">
+                    <div className="af-rent-cifra">
+                      <span className="af-rent-cifra-label">Precio</span>
+                      <span className="af-rent-cifra-valor">{money(f.precio)}<small>/{f.unidad}</small></span>
+                    </div>
+                    <div className="af-rent-cifra">
+                      <span className="af-rent-cifra-label">Tu costo</span>
+                      <NumberField
+                        value={f.costo}
+                        min={0}
+                        className="af-input af-rent-input"
+                        disabled={!esAdmin}
+                        onChange={(valor) => guardarCosto(f, valor)}
+                      />
+                    </div>
+                    <div className="af-rent-cifra">
+                      <span className="af-rent-cifra-label">Te queda</span>
+                      <span className={"af-rent-cifra-valor " + (f.utilidadUnitaria >= 0 ? "af-kpi-up" : "af-kpi-down")}>
+                        {f.sinCosto ? "—" : money(f.utilidadUnitaria)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {!f.sinCosto && f.precio > 0 && (
+                    <>
+                      <div className="af-rent-barra af-rent-barra-sm">
+                        <div
+                          className={"af-rent-barra-fill " + v.nivel}
+                          style={{ width: `${Math.max(0, Math.min(100, f.margen * 100))}%` }}
+                        />
+                      </div>
+                      <div className="af-rent-margen-linea">
+                        <span>Margen <strong>{Math.round(f.margen * 100)}%</strong></span>
+                        {f.volumen > 0 && <span>Utilidad {anio}: <strong>{money(f.utilidadTotal)}</strong></span>}
+                      </div>
+                    </>
+                  )}
+
+                  <div className={"af-rent-consejo " + v.nivel}>{v.consejo}</div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
 
       {tab === "ventas" && (
       <div>
@@ -2212,10 +2503,44 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
                 <div className="af-gasto-monto">{money(g.monto)}</div>
                 {esAdmin && (
-                  <button className="af-icon-btn" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+                  <>
+                    <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
+                    <button className="af-icon-btn" title="Borrar" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+                  </>
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {gastoEditando && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setGastoEditando(null)}>
+            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-titulo mb-3">Editar gasto</div>
+              <div className="af-field">
+                <label>Fecha</label>
+                <input type="date" className="af-input" value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
+              </div>
+              <div className="af-field">
+                <label>Categoría</label>
+                <select className="af-input" value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
+                  {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {!CATEGORIAS_GASTO.includes(gastoEditando.categoria) && (
+                    <option value={gastoEditando.categoria}>{gastoEditando.categoria}</option>
+                  )}
+                </select>
+              </div>
+              <div className="af-field">
+                <label>Descripción (opcional)</label>
+                <input className="af-input" placeholder="Ej. Camarón, gasolina..." value={gastoEditando.descripcion || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value })} />
+              </div>
+              <div className="af-field">
+                <label>Monto</label>
+                <NumberField value={gastoEditando.monto} min={0} className="af-input" onChange={(v) => setGastoEditando({ ...gastoEditando, monto: v })} />
+              </div>
+              <button className="af-btn-primary w-full" onClick={guardarEdicionGasto} disabled={!gastoEditando.monto}>Guardar cambios</button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setGastoEditando(null)}>Cancelar</button>
+            </div>
           </div>
         )}
       </div>
@@ -4925,7 +5250,7 @@ export default function App() {
               avisosPendientes={avisosPendientes}
             />
           )}
-          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} />}
+          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} />}
           {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} />}
           {view === "ajustes" && (
             <AjustesView
@@ -5255,8 +5580,15 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-toggle-btn.active { background: var(--wine); border-color: var(--wine); color: white; }
 .af-toggle-btn:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
-.af-check-row { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; text-transform: none; font-weight: 500; font-size: 14.5px; color: var(--ink); cursor: pointer; }
-.af-check-row input { width: 18px; height: 18px; accent-color: var(--wine); }
+/* Ojo: se escribe con doble clase para ganarle a ".af-field label", que es
+   más específico y si no convierte la fila en bloque y en MAYÚSCULAS —
+   dejaba la casilla descuadrada arriba del texto. */
+.af-check-row, .af-field label.af-check-row {
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'Inter', sans-serif; text-transform: none; letter-spacing: 0;
+  font-weight: 500; font-size: 14.5px; color: var(--ink); cursor: pointer; margin-bottom: 0;
+}
+.af-check-row input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--wine); margin: 0; }
 
 .af-pago-box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 .af-pago-line { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 14px; }
@@ -5419,7 +5751,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-price-suffix { font-size: 11.5px; color: var(--ink-soft); white-space: nowrap; }
 
 .af-subtabs { display: flex; gap: 8px; }
-.af-subtab { flex: 1; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.af-subtab { flex: 1; min-width: 0; padding: 10px 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: clamp(11.5px, 3.2vw, 13px); color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
 .af-subtab.active { background: var(--wine); border-color: var(--wine); color: white; }
 
 .af-menu-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
@@ -5437,7 +5769,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-add-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 96px; border: 2px dashed var(--line); border-radius: 14px; background: none; color: var(--ink-soft); font-weight: 600; font-size: 13px; cursor: pointer; }
 .af-add-card:hover { border-color: var(--wine); color: var(--wine); }
 
-.af-check-row-small { font-size: 12.5px; gap: 6px; margin-top: 4px; }
+.af-check-row-small, .af-field label.af-check-row-small { font-size: 12.5px; gap: 6px; }
 .af-check-row-small input { width: 15px; height: 15px; }
 
 .af-dot { background: var(--wine); color: white; border-radius: 999px; font-size: 10px; padding: 1px 6px; }
@@ -5455,6 +5787,51 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-kpi-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(14px, 4vw, 19px); color: var(--ink); overflow-wrap: break-word; }
 .af-kpi-value.af-kpi-up { color: var(--olive); }
 .af-kpi-value.af-kpi-down { color: #E0524A; }
+
+/* Rentabilidad por producto */
+.af-rent-resumen { background: linear-gradient(135deg, var(--chrome-deep) 0%, var(--chrome) 100%); color: white; border-radius: 18px; padding: 18px 20px; box-shadow: 0 10px 26px -14px rgba(22,35,63,0.55); }
+.af-rent-resumen-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.af-rent-resumen-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
+.af-rent-resumen-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(22px, 6vw, 30px); margin-top: 2px; }
+.af-rent-margen-badge { flex-shrink: 0; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; background: rgba(255,255,255,0.18); }
+.af-rent-margen-badge.bien { background: rgba(31,169,113,0.9); }
+.af-rent-margen-badge.ajustado { background: rgba(212,160,23,0.95); }
+.af-rent-margen-badge.malo { background: rgba(224,82,74,0.95); }
+.af-rent-barra { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.22); overflow: hidden; margin: 14px 0 10px; }
+.af-rent-barra-fill { height: 100%; border-radius: 999px; background: white; transition: width 0.3s ease; }
+.af-rent-resumen-pies { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; opacity: 0.9; }
+.af-rent-resumen-pies strong { font-family: 'Space Grotesk', sans-serif; }
+
+.af-rent-card { padding: 15px 16px; }
+.af-rent-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.af-rent-nombre { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15.5px; }
+.af-rent-sub { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
+.af-rent-badge { flex-shrink: 0; padding: 5px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.af-rent-badge.excelente { background: var(--olive-soft); color: var(--olive); }
+.af-rent-badge.bien { background: var(--olive-soft); color: var(--olive); }
+.af-rent-badge.ajustado { background: var(--gold-soft); color: #8A6708; }
+.af-rent-badge.malo { background: #FDE7E5; color: #C0362E; }
+.af-rent-badge.sin-dato { background: var(--neutral-soft); color: var(--ink-soft); }
+
+.af-rent-cifras { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end; }
+.af-rent-cifra { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.af-rent-cifra-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); }
+.af-rent-cifra-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(13px, 3.4vw, 16px); }
+.af-rent-cifra-valor small { font-weight: 600; font-size: 11px; color: var(--ink-soft); }
+.af-rent-input { padding: 8px 10px !important; font-size: 14px !important; text-align: left; }
+
+.af-rent-barra-sm { height: 7px; background: var(--neutral-soft); margin: 13px 0 7px; }
+.af-rent-barra-fill.excelente, .af-rent-barra-fill.bien { background: var(--olive); }
+.af-rent-barra-fill.ajustado { background: var(--gold); }
+.af-rent-barra-fill.malo { background: #E0524A; }
+.af-rent-margen-linea { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--ink-soft); }
+.af-rent-margen-linea strong { color: var(--ink); font-family: 'Space Grotesk', sans-serif; }
+.af-rent-consejo { margin-top: 12px; padding: 9px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.45; background: var(--neutral-soft); color: var(--ink-soft); }
+.af-rent-consejo.excelente, .af-rent-consejo.bien { background: var(--olive-soft); color: #3F5B3A; }
+.af-rent-consejo.ajustado { background: var(--gold-soft); color: #7A5C07; }
+.af-rent-consejo.malo { background: #FDE7E5; color: #A82F27; }
+
+.af-editar-modal { background: var(--surface); border-radius: 20px; width: 360px; max-width: 92vw; max-height: 88vh; overflow-y: auto; padding: 22px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); }
 
 .af-gasto-row { display: flex; align-items: center; gap: 10px; }
 .af-gasto-monto { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; white-space: nowrap; color: #E0524A; }
@@ -5483,18 +5860,25 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-sidebar { display: none; }
   .af-topbar {
     display: flex; align-items: center; gap: 6px;
-    padding: 12px 32px;
+    padding: 12px 20px; max-width: 100%; overflow: hidden;
     background: var(--glass);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     border-bottom: 1px solid var(--line);
     position: sticky; top: 0; z-index: 30;
   }
-  .af-topbar-nav { display: flex; gap: 8px; flex: 1; padding-left: 12px; }
+  /* min-width:0 + scroll propio: si no, los 6 botones empujan la barra más
+     allá del ancho de la pantalla y aparece scroll horizontal en toda la app
+     (se notaba sobre todo en iPad vertical). */
+  .af-topbar-nav {
+    display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; padding-left: 8px;
+    overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .af-topbar-nav::-webkit-scrollbar { display: none; }
   .af-topbar-link {
-    padding: 9px 16px; border-radius: 999px; border: none; background: none;
-    font-size: 14px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
-    transition: all 0.18s ease; white-space: nowrap;
+    padding: 9px 12px; border-radius: 999px; border: none; background: none;
+    font-size: 13.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
+    transition: all 0.18s ease; white-space: nowrap; flex-shrink: 0;
   }
   .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); transform: scale(1.05); position: relative; z-index: 1; }
   .af-topbar-link.active { color: white; background: var(--wine); box-shadow: 0 3px 10px -3px rgba(47,95,224,0.5); }
@@ -5507,22 +5891,31 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-main { width: 100%; }
   .af-header, .af-content { padding-left: 40px; padding-right: 40px; }
   .af-content { padding-top: 16px; padding-bottom: 60px; max-width: 760px; margin: 0 auto; width: 100%; }
+
+  /* En tablet ya hay ancho de sobra: si estas rejillas se quedan en una sola
+     columna, cada tarjeta se estira a lo ancho de la pantalla y se ve
+     desproporcionada (un mes o un dato suelto ocupando 760px). */
+  .af-card-grid { grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  .af-menu-grid { grid-template-columns: 1fr 1fr; }
+  .af-kpi-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .af-rent-cifras { grid-template-columns: 1fr 1fr 1fr; }
 }
 
 /* Tablet horizontal, laptop: hay espacio de sobra para 2-3 columnas. */
 @media (min-width: 1000px) {
-  .af-topbar { padding: 12px 48px; }
+  .af-topbar { padding: 12px 48px; gap: 8px; }
+  .af-topbar-nav { gap: 8px; padding-left: 12px; }
+  .af-topbar-link { padding: 9px 16px; font-size: 14px; }
   .af-content { max-width: 980px; }
   .af-header, .af-content { padding-left: 48px; padding-right: 48px; }
-  .af-card-grid { grid-template-columns: 1fr 1fr; column-gap: 18px; }
-  .af-menu-grid { grid-template-columns: 1fr 1fr; }
-  .af-kpi-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .af-card-grid { column-gap: 18px; }
+  .af-menu-grid { grid-template-columns: 1fr 1fr 1fr; }
 }
 
 /* Pantallas grandes de escritorio: un poco más de aire y una tercera columna. */
 @media (min-width: 1440px) {
   .af-content { max-width: 1180px; }
-  .af-menu-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .af-menu-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
   .af-card-grid { grid-template-columns: 1fr 1fr 1fr; }
 }
 `;
