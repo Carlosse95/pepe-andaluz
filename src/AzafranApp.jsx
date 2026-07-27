@@ -1917,6 +1917,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
+  const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
 
   const claveMes = (a, m) => `${a}-${String(m + 1).padStart(2, "0")}`;
 
@@ -2054,7 +2055,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       nombre: p.nombre,
       unidad: "kg",
       precio: p.precioKg || 0,
-      costo: p.costoKg || 0,
+      costoManual: p.costoKg || 0,
+      costoIngredientes: p.costoIngredientes || {},
     })),
     ...(config?.extras || []).map((e) => ({
       clave: "extra:" + e.id,
@@ -2063,23 +2065,32 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       nombre: e.nombre,
       unidad: e.piezasPorUnidad > 0 ? e.unidad || "orden" : e.unidad || "pieza",
       precio: e.precio || 0,
-      costo: e.costo || 0,
+      costoManual: e.costo || 0,
+      costoIngredientes: e.costoIngredientes || {},
     })),
   ].map((f) => {
     const v = ventasPorProducto[f.clave] || { volumen: 0, ingreso: 0 };
-    const utilidadUnitaria = f.precio - f.costo;
+    // Si se capturó el desglose por ingredientes, ese manda; si no, se usa el
+    // costo escrito a mano (útil para lo que se compra ya hecho y se revende).
+    const costoDesglose = Object.values(f.costoIngredientes).reduce((a, n) => a + (parseFloat(n) || 0), 0);
+    const usaDesglose = costoDesglose > 0;
+    const costo = usaDesglose ? costoDesglose : f.costoManual;
+    const utilidadUnitaria = f.precio - costo;
     const margen = f.precio > 0 ? utilidadUnitaria / f.precio : 0;
-    const costoTotal = v.volumen * f.costo;
+    const costoTotal = v.volumen * costo;
     return {
       ...f,
+      costo,
+      costoDesglose,
+      usaDesglose,
       volumen: v.volumen,
       ingreso: v.ingreso,
       costoTotal,
       utilidadTotal: v.ingreso - costoTotal,
       utilidadUnitaria,
       margen,
-      sinCosto: !f.costo || f.costo <= 0,
-      precioSugerido: f.costo > 0 ? f.costo / (1 - MARGEN_OBJETIVO) : 0,
+      sinCosto: !costo || costo <= 0,
+      precioSugerido: costo > 0 ? costo / (1 - MARGEN_OBJETIVO) : 0,
     };
   });
 
@@ -2094,14 +2105,20 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const margenRent = ingresoRent > 0 ? utilidadRent / ingresoRent : 0;
   const faltanCostos = filasRentabilidad.filter((f) => f.sinCosto).length;
 
-  const guardarCosto = (fila, valor) => {
+  // Guarda cambios en un producto del menú (costo manual o desglose) sin tocar
+  // el resto de la configuración.
+  const actualizarProducto = (fila, cambios) => {
     if (!onGuardarConfig || !config) return;
     if (fila.tipo === "paella") {
-      onGuardarConfig({ ...config, paellas: (config.paellas || []).map((p) => (p.id === fila.id ? { ...p, costoKg: valor } : p)) });
+      onGuardarConfig({ ...config, paellas: (config.paellas || []).map((p) => (p.id === fila.id ? { ...p, ...cambios } : p)) });
     } else {
-      onGuardarConfig({ ...config, extras: (config.extras || []).map((e) => (e.id === fila.id ? { ...e, costo: valor } : e)) });
+      onGuardarConfig({ ...config, extras: (config.extras || []).map((e) => (e.id === fila.id ? { ...e, ...cambios } : e)) });
     }
   };
+  const guardarCosto = (fila, valor) =>
+    actualizarProducto(fila, fila.tipo === "paella" ? { costoKg: valor } : { costo: valor });
+  const guardarCostoIngrediente = (fila, ingId, valor) =>
+    actualizarProducto(fila, { costoIngredientes: { ...fila.costoIngredientes, [ingId]: valor } });
 
   const delDia = pedidos.filter((p) => p.fecha === diaSel);
   const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
@@ -2199,13 +2216,19 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </div>
                     <div className="af-rent-cifra">
                       <span className="af-rent-cifra-label">Tu costo</span>
-                      <NumberField
-                        value={f.costo}
-                        min={0}
-                        className="af-input af-rent-input"
-                        disabled={!esAdmin}
-                        onChange={(valor) => guardarCosto(f, valor)}
-                      />
+                      {f.usaDesglose ? (
+                        <span className="af-rent-cifra-valor af-rent-costo-calc" title="Sale del desglose por ingredientes">
+                          {money(f.costo)}
+                        </span>
+                      ) : (
+                        <NumberField
+                          value={f.costoManual}
+                          min={0}
+                          className="af-input af-rent-input"
+                          disabled={!esAdmin}
+                          onChange={(valor) => guardarCosto(f, valor)}
+                        />
+                      )}
                     </div>
                     <div className="af-rent-cifra">
                       <span className="af-rent-cifra-label">Te queda</span>
@@ -2231,6 +2254,50 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   )}
 
                   <div className={"af-rent-consejo " + v.nivel}>{v.consejo}</div>
+
+                  {esAdmin && (
+                    <>
+                      <button
+                        className="af-rent-desglose-btn"
+                        onClick={() => setRentAbierta((prev) => ({ ...prev, [f.clave]: !prev[f.clave] }))}
+                      >
+                        <PackageSearch size={14} />
+                        Desglosar por ingredientes
+                        {f.usaDesglose && <span className="af-rent-desglose-chip">{money(f.costoDesglose)}</span>}
+                        <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? "▲" : "▼"}</span>
+                      </button>
+
+                      {rentAbierta[f.clave] && (
+                        <div className="af-rent-desglose">
+                          <div className="af-rent-desglose-nota">
+                            Escribe cuánto te cuesta cada ingrediente {f.tipo === "paella" ? "por kilo de esta paella" : `por ${f.unidad}`}.
+                            Si llenas algo aquí, la suma reemplaza al costo de arriba; déjalo todo en cero para volver a capturarlo a mano.
+                          </div>
+                          {(config?.ingredientes || []).length === 0 ? (
+                            <div className="af-hint">Todavía no hay ingredientes. Agrégalos en Ajustes → Inventario.</div>
+                          ) : (
+                            <>
+                              {(config.ingredientes || []).map((ing) => (
+                                <div key={ing.id} className="af-rent-ing-row">
+                                  <span className="af-rent-ing-nombre">{ing.nombre}</span>
+                                  <NumberField
+                                    value={f.costoIngredientes[ing.id] || 0}
+                                    min={0}
+                                    className="af-input af-rent-ing-input"
+                                    onChange={(valor) => guardarCostoIngrediente(f, ing.id, valor)}
+                                  />
+                                </div>
+                              ))}
+                              <div className="af-rent-ing-total">
+                                <span>Costo por {f.unidad}</span>
+                                <strong>{money(f.costoDesglose)}</strong>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               );
             })
@@ -2240,37 +2307,57 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
       {tab === "ventas" && (
       <div>
-      <div className="af-section-title">¿Cuánto se hizo un día?</div>
-      <div className="af-card p-4 mb-5">
-        <input type="date" className="af-input mb-3" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
-        {delDia.length === 0 ? (
-          <div className="af-hint">Sin pedidos el {fmtDateHuman(diaSel)}.</div>
-        ) : (
-          <>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <StatPill label={`Pedido${delDia.length === 1 ? "" : "s"}`} value={delDia.length} />
-              <StatPill label="Vendido" value={money(vendidoDia)} />
-              <StatPill label="Cobrado" value={money(cobradoDia)} warn={cobradoDia < vendidoDia} />
+      <div className="af-report-grid mb-5">
+        <div className="af-panel">
+          <div className="af-panel-head">
+            <div className="min-w-0">
+              <div className="af-panel-titulo">Resumen del día</div>
+              <div className="af-panel-sub">{fmtDateHuman(diaSel)}</div>
             </div>
-            <div className="af-pago-box">
-              <div className="af-pago-line"><span>💵 Efectivo</span><span>{money(porMetodo.efectivo)}</span></div>
-              <div className="af-pago-line"><span>💳 Tarjeta</span><span>{money(porMetodo.tarjeta)}</span></div>
-              <div className="af-pago-line"><span>🏦 Transferencia</span><span>{money(porMetodo.transferencia)}</span></div>
-              {propinaDia > 0 && (
-                <div className="af-pago-line af-pago-propina"><span>🎉 Propinas</span><span>{money(propinaDia)}</span></div>
-              )}
-            </div>
-            {cobradoDia < vendidoDia && (
-              <div className="af-hint mt-2">Faltan {money(vendidoDia - cobradoDia)} por cobrar de ese día.</div>
-            )}
-          </>
-        )}
-      </div>
+            <input type="date" className="af-input af-panel-fecha" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
+          </div>
 
-      <div className="af-card af-propina-mes-card mb-5">
-        <div className="af-ink-soft text-sm">🎉 Propinas de {nombreMesSel} {mesDeDiaSel.split("-")[0]}</div>
-        <div className="af-propina-mes-total">{money(propinaMes)}</div>
-        <div className="af-hint">Elige cualquier día de otro mes arriba para ver el total de ese mes.</div>
+          {delDia.length === 0 ? (
+            <div className="af-hint">Sin pedidos ese día.</div>
+          ) : (
+            <>
+              <div className="af-kpi-inline">
+                <div className="af-kpi-inline-item">
+                  <span className="af-kpi-inline-label">{delDia.length === 1 ? "Pedido" : "Pedidos"}</span>
+                  <span className="af-kpi-inline-valor">{delDia.length}</span>
+                </div>
+                <div className="af-kpi-inline-item">
+                  <span className="af-kpi-inline-label">Vendido</span>
+                  <span className="af-kpi-inline-valor">{money(vendidoDia)}</span>
+                </div>
+                <div className="af-kpi-inline-item">
+                  <span className="af-kpi-inline-label">Cobrado</span>
+                  <span className={"af-kpi-inline-valor" + (cobradoDia < vendidoDia ? " af-kpi-down" : "")}>{money(cobradoDia)}</span>
+                </div>
+              </div>
+
+              <div className="af-tabla-montos">
+                <div className="af-tabla-row"><span>💵 Efectivo</span><span>{money(porMetodo.efectivo)}</span></div>
+                <div className="af-tabla-row"><span>💳 Tarjeta</span><span>{money(porMetodo.tarjeta)}</span></div>
+                <div className="af-tabla-row"><span>🏦 Transferencia</span><span>{money(porMetodo.transferencia)}</span></div>
+                {propinaDia > 0 && (
+                  <div className="af-tabla-row af-tabla-row-destacada"><span>🎉 Propinas</span><span>{money(propinaDia)}</span></div>
+                )}
+              </div>
+
+              {cobradoDia < vendidoDia && (
+                <div className="af-aviso-cobro">Faltan {money(vendidoDia - cobradoDia)} por cobrar de ese día.</div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="af-panel af-panel-propina">
+          <div className="af-panel-titulo">🎉 Propinas del mes</div>
+          <div className="af-panel-sub">{nombreMesSel} {mesDeDiaSel.split("-")[0]}</div>
+          <div className="af-propina-mes-total">{money(propinaMes)}</div>
+          <div className="af-hint">Elige un día de otro mes arriba para ver el total de ese mes.</div>
+        </div>
       </div>
 
       <div className="af-year-switch">
@@ -3971,7 +4058,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const editando = !!form.pedidoId;
 
   return (
-    <div>
+    <div className="af-form-wrap">
       {editando && modo === "pedido" && (
         <div className="af-field">
           <label>Estado del pedido</label>
@@ -5831,6 +5918,54 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-consejo.ajustado { background: var(--gold-soft); color: #7A5C07; }
 .af-rent-consejo.malo { background: #FDE7E5; color: #A82F27; }
 
+/* Paneles de Reportes: tarjetas con encabezado propio, para que cada bloque
+   se lea como una sección de un informe y no como una lista de recuadros. */
+.af-report-grid { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+.af-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
+.af-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.af-panel-titulo { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; }
+.af-panel-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 1px; }
+.af-panel-fecha { width: auto !important; min-width: 150px; padding: 8px 12px !important; font-size: 13.5px !important; }
+.af-panel-propina { text-align: center; background: var(--gold-soft); border-color: rgba(212,160,23,0.25); }
+
+/* Fila de indicadores separados por línea, estilo tablero */
+.af-kpi-inline { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 16px; }
+.af-kpi-inline-item { display: flex; flex-direction: column; gap: 3px; padding: 0 10px; min-width: 0; border-left: 1px solid var(--line); }
+.af-kpi-inline-item:first-child { border-left: none; padding-left: 0; }
+.af-kpi-inline-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
+.af-kpi-inline-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(15px, 4vw, 20px); font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+
+/* Tabla de montos: cifras alineadas a la derecha con ancho de dígito fijo */
+.af-tabla-montos { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.af-tabla-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; font-size: 14px; border-top: 1px solid var(--line); }
+.af-tabla-row:first-child { border-top: none; }
+.af-tabla-row span:last-child { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.af-tabla-row-destacada { background: var(--gold-soft); color: #7A5C07; }
+.af-tabla-row-destacada span:last-child { color: var(--gold); }
+.af-aviso-cobro { margin-top: 12px; padding: 9px 12px; border-radius: 10px; background: var(--wine-soft); color: var(--wine); font-size: 12.5px; font-weight: 600; }
+
+.af-rent-costo-calc { color: var(--wine); }
+.af-rent-desglose-btn {
+  display: flex; align-items: center; gap: 7px; width: 100%; margin-top: 10px;
+  padding: 9px 12px; border-radius: 10px; border: 1px dashed var(--line);
+  background: none; color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
+  font-family: 'Inter', sans-serif; cursor: pointer; transition: all 0.15s ease;
+}
+.af-rent-desglose-btn:hover { border-color: var(--wine); color: var(--wine); background: var(--wine-soft); }
+.af-rent-desglose-chip { background: var(--wine-soft); color: var(--wine); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; }
+.af-rent-desglose-flecha { margin-left: auto; font-size: 10px; }
+.af-rent-desglose { margin-top: 8px; padding: 12px 14px; border-radius: 12px; background: var(--neutral-soft); }
+.af-rent-desglose-nota { font-size: 12px; line-height: 1.45; color: var(--ink-soft); margin-bottom: 10px; }
+.af-rent-ing-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.af-rent-ing-nombre { flex: 1; min-width: 0; font-size: 13.5px; overflow-wrap: break-word; }
+.af-rent-ing-input { width: 108px !important; flex-shrink: 0; padding: 7px 10px !important; font-size: 13.5px !important; }
+.af-rent-ing-total {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 8px; padding-top: 9px; border-top: 1px dashed var(--line);
+  font-size: 13px; color: var(--ink-soft);
+}
+.af-rent-ing-total strong { font-family: 'Space Grotesk', sans-serif; font-size: 15px; color: var(--wine); }
+
 .af-editar-modal { background: var(--surface); border-radius: 20px; width: 360px; max-width: 92vw; max-height: 88vh; overflow-y: auto; padding: 22px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); }
 
 .af-gasto-row { display: flex; align-items: center; gap: 10px; }
@@ -5910,6 +6045,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-header, .af-content { padding-left: 48px; padding-right: 48px; }
   .af-card-grid { column-gap: 18px; }
   .af-menu-grid { grid-template-columns: 1fr 1fr 1fr; }
+  /* El resumen del día es lo que más se consulta, así que se lleva la
+     columna ancha y las propinas van al lado en vez de debajo. */
+  .af-report-grid { grid-template-columns: 1.7fr 1fr; gap: 18px; }
+  /* Un formulario de una sola columna estirado a 980px se lee fatal: los
+     campos cortos quedan larguísimos. Se limita a un ancho cómodo. */
+  .af-form-wrap { max-width: 780px; margin: 0 auto; }
 }
 
 /* Pantallas grandes de escritorio: un poco más de aire y una tercera columna. */
