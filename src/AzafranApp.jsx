@@ -1035,15 +1035,36 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
 }
 
 function PaelleraRow({ item, onMarcarDevuelta }) {
+  // Se pide confirmar antes de marcarla devuelta: un toque de más aquí
+  // (pantalla chica, dedos rápidos) y ya no hay forma fácil de deshacerlo.
+  const [confirmando, setConfirmando] = useState(false);
   return (
     <div className="af-card af-paellera-row p-3 mb-2">
       <div>
         <div className="af-cliente-nombre">{item.clienteNombre} <span className="af-ink-soft text-sm">· {item.paellaNombre}</span></div>
         <div className="af-fecha-sub">{fmtDateHuman(item.fecha)} · {item.hora}</div>
       </div>
-      <button className="af-btn-chip" onClick={() => onMarcarDevuelta(item.pedidoId, item.itemId)}>
+      <button className="af-btn-chip" onClick={() => setConfirmando(true)}>
         <Check size={14} /> Devuelta
       </button>
+      {confirmando && (
+        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmando(false)}>
+          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="af-alerta-icon"><ChefHat size={26} /></div>
+            <div className="af-alerta-titulo">¿Marcar paellera devuelta?</div>
+            <p className="af-alerta-texto">
+              {item.clienteNombre} · {item.paellaNombre}<br />{fmtDateHuman(item.fecha)} · {item.hora}
+            </p>
+            <button
+              className="af-btn-primary w-full"
+              onClick={() => { onMarcarDevuelta(item.pedidoId, item.itemId); setConfirmando(false); }}
+            >
+              Sí, ya se devolvió
+            </button>
+            <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmando(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
