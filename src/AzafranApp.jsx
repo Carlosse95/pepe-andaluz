@@ -4696,6 +4696,20 @@ export default function App() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const hayNuevaVersion = useNuevaVersion();
+
+  // Cuando hay versión nueva se actualiza sola, sin pedir nada. La única
+  // excepción es estar capturando un pedido: ahí se deja el aviso para no
+  // borrar lo que se esté escribiendo, y se actualiza al salir del formulario.
+  useEffect(() => {
+    if (!hayNuevaVersion || view === "nuevo") return;
+    // Cinturón de seguridad: si la detección fallara, que no se quede en un
+    // ciclo de recargas.
+    const ultima = Number(sessionStorage.getItem("pepe_ultima_recarga") || 0);
+    if (Date.now() - ultima < 120000) return;
+    sessionStorage.setItem("pepe_ultima_recarga", String(Date.now()));
+    window.location.replace(window.location.pathname + "?v=" + Date.now());
+  }, [hayNuevaVersion, view]);
+
   const [alertaFranja, setAlertaFranja] = useState(null); // { total, hora } o null
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
 
@@ -5527,7 +5541,7 @@ export default function App() {
             className="af-nueva-version"
             onClick={() => window.location.replace(window.location.pathname + "?v=" + Date.now())}
           >
-            <Download size={15} /> Hay una versión nueva — toca para actualizar
+            <Download size={15} /> Hay una versión nueva — toca para actualizar al terminar
           </button>
         )}
 
