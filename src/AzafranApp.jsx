@@ -603,6 +603,25 @@ function NumberField({ value, onChange, min, className, disabled }) {
   );
 }
 
+// Igual que NumberField pero para texto: guarda al salir del campo y no en
+// cada tecla, para no escribir en la nube con cada letra.
+function TextoField({ value, onChange, className, placeholder, list }) {
+  const [text, setText] = useState(value || "");
+  useEffect(() => { setText(value || ""); }, [value]);
+  return (
+    <input
+      type="text"
+      className={className}
+      placeholder={placeholder}
+      list={list}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => { if (text !== (value || "")) onChange(text); }}
+      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+    />
+  );
+}
+
 function Stepper({ value, onChange, min = 1, step = 1 }) {
   return (
     <div className="flex items-center gap-2">
@@ -1898,6 +1917,38 @@ const veredictoMargen = (fila) => {
   };
 };
 
+// Plural de una unidad para textos ("pieza" → "piezas"). Las abreviaturas y
+// las unidades de varias palabras ("ración de 6") se dejan tal cual.
+const pluralUnidad = (u) => {
+  if (!u || u.includes(" ")) return u || "";
+  if (["kg", "g", "l", "ml", "pza"].includes(u)) return u;
+  return /[aeiouáéíóú]$/i.test(u) ? u + "s" : u + "es";
+};
+
+// Costo por tanda. En vez de pedir cuánto cuesta cada ingrediente POR PIEZA
+// (que obliga a dividir a mano), se apunta lo que costó la compra completa y
+// cuánto salió de ella. Los ingredientes se escriben libres, así que sirve
+// igual para platillos de temporada que no están en el inventario fijo.
+const recetaDeProducto = (prod, config) => {
+  if (prod.receta) {
+    return { ingredientes: prod.receta.ingredientes || [], rendimiento: prod.receta.rendimiento || 0 };
+  }
+  // Formato anterior (costo de cada ingrediente ya por unidad): se conserva
+  // tal cual poniendo rendimiento 1, para no perder lo que ya se capturó.
+  const viejo = prod.costoIngredientes;
+  if (viejo && Object.keys(viejo).length > 0) {
+    const ingredientes = Object.entries(viejo)
+      .filter(([, monto]) => (parseFloat(monto) || 0) > 0)
+      .map(([ingId, monto]) => ({
+        id: ingId,
+        nombre: ((config?.ingredientes || []).find((i) => i.id === ingId) || {}).nombre || "Ingrediente",
+        costo: parseFloat(monto) || 0,
+      }));
+    if (ingredientes.length > 0) return { ingredientes, rendimiento: 1 };
+  }
+  return { ingredientes: [], rendimiento: 0 };
+};
+
 const COLOR_WINE = "#2F5FE0";
 const COLOR_GOLD = "#7C6FF0";
 const COLOR_AZUL = "#14B8A6";
@@ -2056,7 +2107,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       unidad: "kg",
       precio: p.precioKg || 0,
       costoManual: p.costoKg || 0,
-      costoIngredientes: p.costoIngredientes || {},
+      receta: recetaDeProducto(p, config),
     })),
     ...(config?.extras || []).map((e) => ({
       clave: "extra:" + e.id,
@@ -2066,23 +2117,29 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       unidad: e.piezasPorUnidad > 0 ? e.unidad || "orden" : e.unidad || "pieza",
       precio: e.precio || 0,
       costoManual: e.costo || 0,
-      costoIngredientes: e.costoIngredientes || {},
+      receta: recetaDeProducto(e, config),
     })),
   ].map((f) => {
     const v = ventasPorProducto[f.clave] || { volumen: 0, ingreso: 0 };
-    // Si se capturó el desglose por ingredientes, ese manda; si no, se usa el
-    // costo escrito a mano (útil para lo que se compra ya hecho y se revende).
-    const costoDesglose = Object.values(f.costoIngredientes).reduce((a, n) => a + (parseFloat(n) || 0), 0);
-    const usaDesglose = costoDesglose > 0;
-    const costo = usaDesglose ? costoDesglose : f.costoManual;
+    // Costo de una tanda: lo que se gastó en ingredientes entre lo que salió.
+    // Si no hay tanda capturada se usa el costo escrito a mano (útil para lo
+    // que se compra ya hecho y solo se revende).
+    const gastoTanda = (f.receta.ingredientes || []).reduce((a, ing) => a + (parseFloat(ing.costo) || 0), 0);
+    const rendimiento = parseFloat(f.receta.rendimiento) || 0;
+    const costoPorTanda = gastoTanda > 0 && rendimiento > 0 ? gastoTanda / rendimiento : 0;
+    const usaTanda = costoPorTanda > 0;
+    const costo = usaTanda ? costoPorTanda : f.costoManual;
     const utilidadUnitaria = f.precio - costo;
     const margen = f.precio > 0 ? utilidadUnitaria / f.precio : 0;
     const costoTotal = v.volumen * costo;
     return {
       ...f,
       costo,
-      costoDesglose,
-      usaDesglose,
+      gastoTanda,
+      rendimiento,
+      usaTanda,
+      // Falta el rendimiento para poder dividir: se avisa en la interfaz.
+      tandaIncompleta: gastoTanda > 0 && rendimiento <= 0,
       volumen: v.volumen,
       ingreso: v.ingreso,
       costoTotal,
@@ -2117,8 +2174,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   };
   const guardarCosto = (fila, valor) =>
     actualizarProducto(fila, fila.tipo === "paella" ? { costoKg: valor } : { costo: valor });
-  const guardarCostoIngrediente = (fila, ingId, valor) =>
-    actualizarProducto(fila, { costoIngredientes: { ...fila.costoIngredientes, [ingId]: valor } });
+  const guardarReceta = (fila, receta) => actualizarProducto(fila, { receta });
+  const agregarIngredienteReceta = (fila) =>
+    guardarReceta(fila, { ...fila.receta, ingredientes: [...fila.receta.ingredientes, { id: uid(), nombre: "", costo: 0 }] });
+  const actualizarIngredienteReceta = (fila, ingId, cambios) =>
+    guardarReceta(fila, { ...fila.receta, ingredientes: fila.receta.ingredientes.map((i) => (i.id === ingId ? { ...i, ...cambios } : i)) });
+  const quitarIngredienteReceta = (fila, ingId) =>
+    guardarReceta(fila, { ...fila.receta, ingredientes: fila.receta.ingredientes.filter((i) => i.id !== ingId) });
+  const guardarRendimiento = (fila, valor) => guardarReceta(fila, { ...fila.receta, rendimiento: valor });
 
   const delDia = pedidos.filter((p) => p.fecha === diaSel);
   const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
@@ -2181,6 +2244,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </div>
           )}
 
+          {/* Sugerencias al escribir un ingrediente: sirve de atajo para los que
+              ya están en el inventario, sin obligar a usarlos. */}
+          <datalist id="af-lista-ingredientes">
+            {(config?.ingredientes || []).map((ing) => <option key={ing.id} value={ing.nombre} />)}
+          </datalist>
+
           <div className="af-section-title">Producto por producto</div>
           <div className="af-hint mb-3">
             Escribe cuánto te cuesta aprox. producir cada uno (ingredientes, envase, gas). La app compara contra tu precio y te dice si conviene.
@@ -2216,8 +2285,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </div>
                     <div className="af-rent-cifra">
                       <span className="af-rent-cifra-label">Tu costo</span>
-                      {f.usaDesglose ? (
-                        <span className="af-rent-cifra-valor af-rent-costo-calc" title="Sale del desglose por ingredientes">
+                      {f.usaTanda ? (
+                        <span className="af-rent-cifra-valor af-rent-costo-calc" title="Sale de la tanda de ingredientes">
                           {money(f.costo)}
                         </span>
                       ) : (
@@ -2262,37 +2331,65 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         onClick={() => setRentAbierta((prev) => ({ ...prev, [f.clave]: !prev[f.clave] }))}
                       >
                         <PackageSearch size={14} />
-                        Desglosar por ingredientes
-                        {f.usaDesglose && <span className="af-rent-desglose-chip">{money(f.costoDesglose)}</span>}
+                        Sacar el costo con ingredientes
+                        {f.usaTanda && <span className="af-rent-desglose-chip">{money(f.costo)}/{f.unidad}</span>}
                         <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? "▲" : "▼"}</span>
                       </button>
 
                       {rentAbierta[f.clave] && (
                         <div className="af-rent-desglose">
                           <div className="af-rent-desglose-nota">
-                            Escribe cuánto te cuesta cada ingrediente {f.tipo === "paella" ? "por kilo de esta paella" : `por ${f.unidad}`}.
-                            Si llenas algo aquí, la suma reemplaza al costo de arriba; déjalo todo en cero para volver a capturarlo a mano.
+                            Apunta lo que gastaste en una tanda y cuánto salió de ella; la app saca sola el costo
+                            de cada {f.unidad}. Los ingredientes se escriben libres, no hace falta tenerlos en el inventario.
                           </div>
-                          {(config?.ingredientes || []).length === 0 ? (
-                            <div className="af-hint">Todavía no hay ingredientes. Agrégalos en Ajustes → Inventario.</div>
-                          ) : (
-                            <>
-                              {(config.ingredientes || []).map((ing) => (
-                                <div key={ing.id} className="af-rent-ing-row">
-                                  <span className="af-rent-ing-nombre">{ing.nombre}</span>
-                                  <NumberField
-                                    value={f.costoIngredientes[ing.id] || 0}
-                                    min={0}
-                                    className="af-input af-rent-ing-input"
-                                    onChange={(valor) => guardarCostoIngrediente(f, ing.id, valor)}
-                                  />
-                                </div>
-                              ))}
-                              <div className="af-rent-ing-total">
-                                <span>Costo por {f.unidad}</span>
-                                <strong>{money(f.costoDesglose)}</strong>
-                              </div>
-                            </>
+
+                          {f.receta.ingredientes.map((ing) => (
+                            <div key={ing.id} className="af-rent-ing-row">
+                              <TextoField
+                                value={ing.nombre}
+                                className="af-input af-rent-ing-nombre-input"
+                                placeholder="Ej. Carne molida"
+                                list="af-lista-ingredientes"
+                                onChange={(nombre) => actualizarIngredienteReceta(f, ing.id, { nombre })}
+                              />
+                              <NumberField
+                                value={ing.costo}
+                                min={0}
+                                className="af-input af-rent-ing-input"
+                                onChange={(costo) => actualizarIngredienteReceta(f, ing.id, { costo })}
+                              />
+                              <button className="af-icon-btn" title="Quitar" onClick={() => quitarIngredienteReceta(f, ing.id)}>
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          ))}
+
+                          <button className="af-rent-add-ing" onClick={() => agregarIngredienteReceta(f)}>
+                            <Plus size={14} /> Agregar ingrediente
+                          </button>
+
+                          <div className="af-rent-tanda-fila">
+                            <span>Gastaste en total</span>
+                            <strong>{money(f.gastoTanda)}</strong>
+                          </div>
+                          <div className="af-rent-tanda-fila">
+                            <span>¿Cuánto salió? ({pluralUnidad(f.unidad)})</span>
+                            <NumberField
+                              value={f.receta.rendimiento}
+                              min={0}
+                              className="af-input af-rent-ing-input"
+                              onChange={(valor) => guardarRendimiento(f, valor)}
+                            />
+                          </div>
+
+                          {f.tandaIncompleta && (
+                            <div className="af-hint mt-2">Falta poner cuántos salieron para poder sacar el costo de cada uno.</div>
+                          )}
+                          {f.usaTanda && (
+                            <div className="af-rent-ing-total">
+                              <span>Te cuesta cada {f.unidad}</span>
+                              <strong>{money(f.costo)}</strong>
+                            </div>
                           )}
                         </div>
                       )}
@@ -5956,15 +6053,27 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-desglose-flecha { margin-left: auto; font-size: 10px; }
 .af-rent-desglose { margin-top: 8px; padding: 12px 14px; border-radius: 12px; background: var(--neutral-soft); }
 .af-rent-desglose-nota { font-size: 12px; line-height: 1.45; color: var(--ink-soft); margin-bottom: 10px; }
-.af-rent-ing-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
-.af-rent-ing-nombre { flex: 1; min-width: 0; font-size: 13.5px; overflow-wrap: break-word; }
-.af-rent-ing-input { width: 108px !important; flex-shrink: 0; padding: 7px 10px !important; font-size: 13.5px !important; }
+.af-rent-ing-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.af-rent-ing-nombre-input { flex: 1; min-width: 0; padding: 7px 10px !important; font-size: 13.5px !important; }
+.af-rent-ing-input { width: 104px !important; flex-shrink: 0; padding: 7px 10px !important; font-size: 13.5px !important; text-align: right; }
+.af-rent-add-ing {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+  margin: 8px 0 12px; padding: 9px; border-radius: 10px; border: 1px dashed var(--wine);
+  background: none; color: var(--wine); font-size: 13px; font-weight: 700;
+  font-family: 'Inter', sans-serif; cursor: pointer;
+}
+.af-rent-add-ing:hover { background: var(--wine-soft); }
+.af-rent-tanda-fila {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 0; font-size: 13.5px; color: var(--ink);
+}
+.af-rent-tanda-fila strong { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-variant-numeric: tabular-nums; }
 .af-rent-ing-total {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin-top: 8px; padding-top: 9px; border-top: 1px dashed var(--line);
-  font-size: 13px; color: var(--ink-soft);
+  margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--line);
+  font-size: 13.5px; font-weight: 700; color: var(--ink);
 }
-.af-rent-ing-total strong { font-family: 'Space Grotesk', sans-serif; font-size: 15px; color: var(--wine); }
+.af-rent-ing-total strong { font-family: 'Space Grotesk', sans-serif; font-size: 18px; color: var(--wine); font-variant-numeric: tabular-nums; }
 
 .af-editar-modal { background: var(--surface); border-radius: 20px; width: 360px; max-width: 92vw; max-height: 88vh; overflow-y: auto; padding: 22px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); }
 
