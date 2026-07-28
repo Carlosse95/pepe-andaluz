@@ -4629,6 +4629,42 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
 let saludoInicialMostrado = false;
 
+// Avisa cuando ya se publicó una versión nueva de la app. Sin esto hay que
+// recargar a la fuerza para verla: el navegador se guarda el index.html un
+// rato y sigue pidiendo el archivo viejo aunque cierres y abras la app.
+function useNuevaVersion() {
+  const [hayNueva, setHayNueva] = useState(false);
+  useEffect(() => {
+    if (!import.meta.env.PROD) return;
+    const actual = (import.meta.url.match(/index-[^/]+\.js/) || [])[0];
+    if (!actual) return;
+    let cancelado = false;
+
+    const revisar = async () => {
+      if (document.visibilityState !== "visible" || cancelado) return;
+      try {
+        // cache: no-store para saltarse justamente el index.html guardado.
+        const r = await fetch(`./index.html?v=${Date.now()}`, { cache: "no-store" });
+        const html = await r.text();
+        const publicada = (html.match(/index-[^"']+\.js/) || [])[0];
+        if (!cancelado && publicada && publicada !== actual) setHayNueva(true);
+      } catch {
+        // Sin internet o error de red: se vuelve a intentar más tarde.
+      }
+    };
+
+    revisar();
+    const id = setInterval(revisar, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", revisar);
+    return () => {
+      cancelado = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", revisar);
+    };
+  }, []);
+  return hayNueva;
+}
+
 export default function App() {
   const [cargando, setCargando] = useState(true);
   const [pedidos, setPedidos] = useState([]);
@@ -4659,6 +4695,7 @@ export default function App() {
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
+  const hayNuevaVersion = useNuevaVersion();
   const [alertaFranja, setAlertaFranja] = useState(null); // { total, hora } o null
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
 
@@ -5485,6 +5522,15 @@ export default function App() {
           </div>
         )}
 
+        {hayNuevaVersion && (
+          <button
+            className="af-nueva-version"
+            onClick={() => window.location.replace(window.location.pathname + "?v=" + Date.now())}
+          >
+            <Download size={15} /> Hay una versión nueva — toca para actualizar
+          </button>
+        )}
+
         <Toast toast={toast} />
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
         <AvisoPendienteModal
@@ -6040,6 +6086,19 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-tabla-row-destacada { background: var(--gold-soft); color: #7A5C07; }
 .af-tabla-row-destacada span:last-child { color: var(--gold); }
 .af-aviso-cobro { margin-top: 12px; padding: 9px 12px; border-radius: 10px; background: var(--wine-soft); color: var(--wine); font-size: 12.5px; font-weight: 600; }
+
+/* Aviso de versión nueva: va fijo arriba para que se note aunque estés a
+   medio scroll, y por encima de la barra superior. */
+.af-nueva-version {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  border: none; width: 100%; cursor: pointer;
+  background: var(--wine); color: white;
+  font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 700;
+  box-shadow: 0 4px 14px rgba(22,35,63,0.25);
+}
+.af-nueva-version:hover { filter: brightness(1.08); }
 
 .af-rent-costo-calc { color: var(--wine); }
 .af-rent-desglose-btn {
