@@ -2124,9 +2124,22 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     // Costo de una tanda: lo que se gastó en ingredientes entre lo que salió.
     // Si no hay tanda capturada se usa el costo escrito a mano (útil para lo
     // que se compra ya hecho y solo se revende).
-    const gastoTanda = (f.receta.ingredientes || []).reduce((a, ing) => a + (parseFloat(ing.costo) || 0), 0);
+    // Cada ingrediente puede decir para cuántos kilos/piezas rinde su compra
+    // (una bolsa de camarón rinde para pocos kilos, una de arroz para muchos).
+    // Los que no lo digan usan el rendimiento general de la tanda.
     const rendimiento = parseFloat(f.receta.rendimiento) || 0;
-    const costoPorTanda = gastoTanda > 0 && rendimiento > 0 ? gastoTanda / rendimiento : 0;
+    const ingredientes = f.receta.ingredientes || [];
+    const gastoTanda = ingredientes.reduce((a, ing) => a + (parseFloat(ing.costo) || 0), 0);
+    const costoPorTanda = ingredientes.reduce((a, ing) => {
+      const costoIng = parseFloat(ing.costo) || 0;
+      const rinde = parseFloat(ing.rinde) || rendimiento;
+      return rinde > 0 ? a + costoIng / rinde : a;
+    }, 0);
+    // Ingredientes con costo pero sin saber para cuánto alcanzan: no se pueden
+    // repartir todavía, así que se avisa en la interfaz.
+    const faltaRinde = ingredientes.some(
+      (ing) => (parseFloat(ing.costo) || 0) > 0 && !(parseFloat(ing.rinde) || 0) && rendimiento <= 0
+    );
     const usaTanda = costoPorTanda > 0;
     const costo = usaTanda ? costoPorTanda : f.costoManual;
     const utilidadUnitaria = f.precio - costo;
@@ -2138,8 +2151,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       gastoTanda,
       rendimiento,
       usaTanda,
-      // Falta el rendimiento para poder dividir: se avisa en la interfaz.
-      tandaIncompleta: gastoTanda > 0 && rendimiento <= 0,
+      tandaIncompleta: faltaRinde,
       volumen: v.volumen,
       ingreso: v.ingreso,
       costoTotal,
@@ -2339,30 +2351,55 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       {rentAbierta[f.clave] && (
                         <div className="af-rent-desglose">
                           <div className="af-rent-desglose-nota">
-                            Apunta lo que gastaste en una tanda y cuánto salió de ella; la app saca sola el costo
-                            de cada {f.unidad}. Los ingredientes se escriben libres, no hace falta tenerlos en el inventario.
+                            Por cada ingrediente apunta lo que costó la compra y para cuántos {pluralUnidad(f.unidad)} te
+                            alcanza; la app saca sola el costo de cada {f.unidad}. Se escriben libres, no hace falta
+                            tenerlos en el inventario.
                           </div>
 
-                          {f.receta.ingredientes.map((ing) => (
-                            <div key={ing.id} className="af-rent-ing-row">
-                              <TextoField
-                                value={ing.nombre}
-                                className="af-input af-rent-ing-nombre-input"
-                                placeholder="Ej. Carne molida"
-                                list="af-lista-ingredientes"
-                                onChange={(nombre) => actualizarIngredienteReceta(f, ing.id, { nombre })}
-                              />
-                              <NumberField
-                                value={ing.costo}
-                                min={0}
-                                className="af-input af-rent-ing-input"
-                                onChange={(costo) => actualizarIngredienteReceta(f, ing.id, { costo })}
-                              />
-                              <button className="af-icon-btn" title="Quitar" onClick={() => quitarIngredienteReceta(f, ing.id)}>
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          ))}
+                          {f.receta.ingredientes.map((ing) => {
+                            const costoIng = parseFloat(ing.costo) || 0;
+                            const rindeIng = parseFloat(ing.rinde) || parseFloat(f.receta.rendimiento) || 0;
+                            const porUnidad = rindeIng > 0 ? costoIng / rindeIng : 0;
+                            return (
+                              <div key={ing.id} className="af-rent-ing-bloque">
+                                <div className="af-rent-ing-row">
+                                  <TextoField
+                                    value={ing.nombre}
+                                    className="af-input af-rent-ing-nombre-input"
+                                    placeholder="Ej. Bolsa de camarón"
+                                    list="af-lista-ingredientes"
+                                    onChange={(nombre) => actualizarIngredienteReceta(f, ing.id, { nombre })}
+                                  />
+                                  <button className="af-icon-btn" title="Quitar" onClick={() => quitarIngredienteReceta(f, ing.id)}>
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                                <div className="af-rent-ing-datos">
+                                  <label className="af-rent-ing-campo">
+                                    <span>Costó</span>
+                                    <NumberField
+                                      value={ing.costo}
+                                      min={0}
+                                      className="af-input af-rent-ing-input"
+                                      onChange={(costo) => actualizarIngredienteReceta(f, ing.id, { costo })}
+                                    />
+                                  </label>
+                                  <label className="af-rent-ing-campo">
+                                    <span>Rinde para ({pluralUnidad(f.unidad)})</span>
+                                    <NumberField
+                                      value={ing.rinde || 0}
+                                      min={0}
+                                      className="af-input af-rent-ing-input"
+                                      onChange={(rinde) => actualizarIngredienteReceta(f, ing.id, { rinde })}
+                                    />
+                                  </label>
+                                  <span className="af-rent-ing-unitario">
+                                    {porUnidad > 0 ? `${money(porUnidad)}/${f.unidad}` : "—"}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
 
                           <button className="af-rent-add-ing" onClick={() => agregarIngredienteReceta(f)}>
                             <Plus size={14} /> Agregar ingrediente
@@ -2372,18 +2409,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                             <span>Gastaste en total</span>
                             <strong>{money(f.gastoTanda)}</strong>
                           </div>
-                          <div className="af-rent-tanda-fila">
-                            <span>¿Cuánto salió? ({pluralUnidad(f.unidad)})</span>
-                            <NumberField
-                              value={f.receta.rendimiento}
-                              min={0}
-                              className="af-input af-rent-ing-input"
-                              onChange={(valor) => guardarRendimiento(f, valor)}
-                            />
-                          </div>
+
+                          {/* Atajo para cuando todos los ingredientes rinden lo mismo (una tanda
+                              de chiles en nogada, por ejemplo): se pone una sola vez aquí. */}
+                          {f.receta.ingredientes.some((ing) => !(parseFloat(ing.rinde) || 0)) && (
+                            <div className="af-rent-tanda-fila">
+                              <span>A los que no puse cuánto rinden, alcanzan para ({pluralUnidad(f.unidad)})</span>
+                              <NumberField
+                                value={f.receta.rendimiento}
+                                min={0}
+                                className="af-input af-rent-ing-input"
+                                onChange={(valor) => guardarRendimiento(f, valor)}
+                              />
+                            </div>
+                          )}
 
                           {f.tandaIncompleta && (
-                            <div className="af-hint mt-2">Falta poner cuántos salieron para poder sacar el costo de cada uno.</div>
+                            <div className="af-hint mt-2">
+                              Hay ingredientes sin decir para cuántos {pluralUnidad(f.unidad)} alcanzan, así que todavía no
+                              se pueden repartir.
+                            </div>
                           )}
                           {f.usaTanda && (
                             <div className="af-rent-ing-total">
@@ -5998,11 +6043,17 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-subtab { flex: 1; min-width: 0; padding: 10px 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: clamp(11.5px, 3.2vw, 13px); color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
 .af-subtab.active { background: var(--wine); border-color: var(--wine); color: white; }
 
-.af-menu-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.af-menu-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 13px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); display: flex; flex-direction: column; gap: 8px; }
-.af-menu-card-top { display: flex; align-items: center; gap: 8px; }
+/* Columnas automáticas: caben las que quepan con un ancho mínimo decente, en
+   vez de fijar cuántas por tamaño de pantalla. Antes, en iPad horizontal, se
+   forzaban 3 columnas más angostas que las tarjetas y la última se cortaba. */
+.af-menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+/* min-width:0 es lo que permite que la tarjeta se encoja hasta el ancho de su
+   columna; sin esto crece hasta el mínimo de su contenido y se desborda. */
+.af-menu-card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 13px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); display: flex; flex-direction: column; gap: 8px; }
+.af-menu-card select, .af-menu-card input, .af-menu-card textarea { max-width: 100%; }
+.af-menu-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .af-menu-name { flex: 1; font-weight: 600; }
-.af-menu-card-row { display: flex; align-items: center; gap: 8px; }
+.af-menu-card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .af-menu-price { width: 90px; text-align: right; flex-shrink: 0; }
 .af-menu-kgrange { width: 56px; text-align: center; flex-shrink: 0; padding: 9px 6px; }
 .af-mini-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin-bottom: 3px; }
@@ -6126,8 +6177,17 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-desglose-flecha { margin-left: auto; font-size: 10px; }
 .af-rent-desglose { margin-top: 8px; padding: 12px 14px; border-radius: 12px; background: var(--neutral-soft); }
 .af-rent-desglose-nota { font-size: 12px; line-height: 1.45; color: var(--ink-soft); margin-bottom: 10px; }
-.af-rent-ing-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.af-rent-ing-bloque { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.af-rent-ing-row { display: flex; align-items: center; gap: 8px; }
 .af-rent-ing-nombre-input { flex: 1; min-width: 0; padding: 7px 10px !important; font-size: 13.5px !important; }
+.af-rent-ing-datos { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.af-rent-ing-campo { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.af-rent-ing-campo > span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); }
+.af-rent-ing-unitario {
+  margin-left: auto; padding-bottom: 8px; white-space: nowrap;
+  font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13.5px; color: var(--wine);
+  font-variant-numeric: tabular-nums;
+}
 .af-rent-ing-input { width: 104px !important; flex-shrink: 0; padding: 7px 10px !important; font-size: 13.5px !important; text-align: right; }
 .af-rent-add-ing {
   display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
@@ -6213,7 +6273,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
      columna, cada tarjeta se estira a lo ancho de la pantalla y se ve
      desproporcionada (un mes o un dato suelto ocupando 760px). */
   .af-card-grid { grid-template-columns: 1fr 1fr; column-gap: 16px; }
-  .af-menu-grid { grid-template-columns: 1fr 1fr; }
   .af-kpi-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
   .af-rent-cifras { grid-template-columns: 1fr 1fr 1fr; }
 }
@@ -6226,7 +6285,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-content { max-width: 980px; }
   .af-header, .af-content { padding-left: 48px; padding-right: 48px; }
   .af-card-grid { column-gap: 18px; }
-  .af-menu-grid { grid-template-columns: 1fr 1fr 1fr; }
   /* El resumen del día es lo que más se consulta, así que se lleva la
      columna ancha y las propinas van al lado en vez de debajo. */
   .af-report-grid { grid-template-columns: 1.7fr 1fr; gap: 18px; }
@@ -6238,7 +6296,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Pantallas grandes de escritorio: un poco más de aire y una tercera columna. */
 @media (min-width: 1440px) {
   .af-content { max-width: 1180px; }
-  .af-menu-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
   .af-card-grid { grid-template-columns: 1fr 1fr 1fr; }
 }
 `;
