@@ -4907,6 +4907,32 @@ export default function App() {
     setTimeout(() => setToast((t) => (t && Date.now() - t.id >= 2400 ? null : t)), 2600);
   };
 
+
+  useEffect(() => {
+    if (!nubeActiva) return;
+    let cancelado = false;
+    obtenerSesion().then(async (s) => {
+      if (cancelado) return;
+      setSesion(s);
+      if (s) {
+        try { setPerfil(await obtenerMiPerfil(s.user.id)); } catch { setPerfil(null); }
+      }
+      setCargandoSesion(false);
+    });
+    const off = alCambiarSesion(async (s) => {
+      if (cancelado) return;
+      setSesion(s);
+      if (s) {
+        try { setPerfil(await obtenerMiPerfil(s.user.id)); } catch { setPerfil(null); }
+      } else {
+        setPerfil(null);
+      }
+    });
+    return () => { cancelado = true; off(); };
+  }, []);
+
+  const puedeUsarDatos = !nubeActiva || (sesion && perfil && perfil.activo);
+
   /* ---------------- Bandeja de WhatsApp ---------------- */
   const [conversaciones, setConversaciones] = useState([]);
   const [chatAbierto, setChatAbierto] = useState(null);
@@ -4979,31 +5005,6 @@ export default function App() {
     return () => { desuscribir(); clearInterval(id); };
     // eslint-disable-next-line
   }, [puedeUsarDatos]);
-
-  useEffect(() => {
-    if (!nubeActiva) return;
-    let cancelado = false;
-    obtenerSesion().then(async (s) => {
-      if (cancelado) return;
-      setSesion(s);
-      if (s) {
-        try { setPerfil(await obtenerMiPerfil(s.user.id)); } catch { setPerfil(null); }
-      }
-      setCargandoSesion(false);
-    });
-    const off = alCambiarSesion(async (s) => {
-      if (cancelado) return;
-      setSesion(s);
-      if (s) {
-        try { setPerfil(await obtenerMiPerfil(s.user.id)); } catch { setPerfil(null); }
-      } else {
-        setPerfil(null);
-      }
-    });
-    return () => { cancelado = true; off(); };
-  }, []);
-
-  const puedeUsarDatos = !nubeActiva || (sesion && perfil && perfil.activo);
 
   // Aplica el valor crudo (JSON string) de una clave del almacén al estado.
   const aplicarClave = (clave, raw) => {
