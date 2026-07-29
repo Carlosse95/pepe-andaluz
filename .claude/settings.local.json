@@ -83,7 +83,8 @@
       "WebSearch",
       "Bash(curl -s \"https://carlosse95.github.io/pepe-andaluz/index.html?x=$\\(date +%s\\)\")",
       "Bash(curl -s -H \"Cache-Control: no-cache\" \"https://carlosse95.github.io/pepe-andaluz/index.html?x=$\\(date +%s\\)\")",
-      "Bash(grep '^index-.*\\\\.js$')"
+      "Bash(grep '^index-.*\\\\.js$')",
+      "Bash(curl -s -o /dev/null -w \"whatsapp-enviar: HTTP %{http_code}\\\\n\" -X OPTIONS \"https://sykfhnznbneuipibatmx.supabase.co/functions/v1/whatsapp-enviar\")"
     ]
   }
 }

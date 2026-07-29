@@ -930,6 +930,78 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
   );
 }
 
+// Campo de texto con sugerencias propias.
+//
+// Sustituye al <datalist> del navegador: en Safari de iPhone y iPad ese
+// desplegable falla seguido — a veces sale vacío y no deja elegir nada.
+// Este se dibuja con HTML normal, así que se comporta igual en todos lados.
+function CampoConSugerencias({ value, onChange, sugerencias = [], className = "af-input", placeholder, onBlur }) {
+  const [abierto, setAbierto] = useState(false);
+  const [resaltado, setResaltado] = useState(-1);
+  const contenedorRef = useRef(null);
+
+  const escrito = (value || "").trim().toLowerCase();
+  const opciones = sugerencias
+    .filter((s) => s && (!escrito || s.toLowerCase().includes(escrito)) && s.toLowerCase() !== escrito)
+    .slice(0, 8);
+
+  // Al tocar fuera se cierra, igual que un desplegable de verdad.
+  useEffect(() => {
+    if (!abierto) return;
+    const alTocarFuera = (e) => {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target)) setAbierto(false);
+    };
+    document.addEventListener("mousedown", alTocarFuera);
+    document.addEventListener("touchstart", alTocarFuera);
+    return () => {
+      document.removeEventListener("mousedown", alTocarFuera);
+      document.removeEventListener("touchstart", alTocarFuera);
+    };
+  }, [abierto]);
+
+  const elegir = (texto) => {
+    onChange(texto);
+    setAbierto(false);
+    setResaltado(-1);
+  };
+
+  return (
+    <div className="af-sug-wrap" ref={contenedorRef}>
+      <input
+        className={className}
+        value={value || ""}
+        placeholder={placeholder}
+        onChange={(e) => { onChange(e.target.value); setAbierto(true); setResaltado(-1); }}
+        onFocus={() => setAbierto(true)}
+        onBlur={onBlur}
+        onKeyDown={(e) => {
+          if (!abierto || !opciones.length) return;
+          if (e.key === "ArrowDown") { e.preventDefault(); setResaltado((i) => (i + 1) % opciones.length); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setResaltado((i) => (i <= 0 ? opciones.length : i) - 1); }
+          else if (e.key === "Enter" && resaltado >= 0) { e.preventDefault(); elegir(opciones[resaltado]); }
+          else if (e.key === "Escape") setAbierto(false);
+        }}
+      />
+      {abierto && opciones.length > 0 && (
+        <div className="af-sug-lista">
+          {opciones.map((s, i) => (
+            <button
+              key={s}
+              type="button"
+              className={"af-sug-item" + (i === resaltado ? " activo" : "")}
+              // onMouseDown y no onClick: si no, el blur del input cierra la
+              // lista antes de que el clic llegue a registrarse.
+              onMouseDown={(e) => { e.preventDefault(); elegir(s); }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmptyState({ icon, title, subtitle }) {
   return (
     <div className="af-empty">
@@ -1736,6 +1808,10 @@ function PresupuestosView({ presupuestos, onAbrir, onAceptar }) {
 function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [q, setQ] = useState("");
   const term = normNombre(q);
+  // Los dígitos sueltos, para buscar por teléfono aunque se escriba con
+  // espacios o guiones: antes "999 279" no encontraba nada porque el teléfono
+  // guardado no trae los espacios en el mismo lugar.
+  const soloNumeros = q.replace(/\D/g, "");
 
   const resultados =
     term.length === 0
@@ -1744,14 +1820,22 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
           const enProductos = p.items.some((it) =>
             normNombre(it.tipo === "paella" ? it.paellaNombre : it.nombre).includes(term)
           );
+          const telPedido = (p.clienteTelefono || "").replace(/\D/g, "");
           return (
             normNombre(p.clienteNombre).includes(term) ||
-            (p.clienteTelefono || "").includes(term) ||
+            (soloNumeros.length >= 3 && telPedido.includes(soloNumeros)) ||
             p.fecha.includes(term) ||
             normNombre(fmtDateHuman(p.fecha)).includes(term) ||
+            // También por folio, que es como se refieren a un pedido concreto.
+            (p.folio && (fmtFolio(p.folio).toLowerCase().includes(term) || String(p.folio) === soloNumeros)) ||
             enProductos
           );
         });
+
+  const ordenados = resultados
+    .slice()
+    .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1));
+  const totalResultados = ordenados.reduce((a, p) => a + (p.total || 0), 0);
 
   return (
     <div>
@@ -1770,17 +1854,25 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
         <EmptyState icon={<Search size={28} />} title="Busca cualquier pedido" subtitle="Por cliente, teléfono, fecha o tipo de paella." />
       )}
 
-      {term.length > 0 && resultados.length === 0 && (
-        <EmptyState icon={<Search size={28} />} title="Sin resultados" subtitle="Prueba con otra palabra." />
+      {term.length > 0 && ordenados.length === 0 && (
+        <EmptyState
+          icon={<Search size={28} />}
+          title="Sin resultados"
+          subtitle="Prueba con el nombre, el teléfono, el folio, una fecha o el platillo."
+        />
+      )}
+
+      {/* Cuántos salieron y por cuánto: útil al buscar un cliente o un mes. */}
+      {ordenados.length > 0 && (
+        <div className="af-hint mb-3">
+          {ordenados.length} {ordenados.length === 1 ? "pedido" : "pedidos"} · {money(totalResultados)}
+        </div>
       )}
 
       <div className="af-card-grid">
-        {resultados
-          .slice()
-          .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1))
-          .map((p) => (
-            <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
-          ))}
+        {ordenados.map((p) => (
+          <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
+        ))}
       </div>
     </div>
   );
@@ -2016,6 +2108,59 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Gas/Servicios", "Familiar/Personal", "Otros"];
 
+// Deja el nombre de un gasto en su forma "de comparación": sin acentos, sin
+// mayúsculas y sin espacios de más. Sirve para darse cuenta de que
+// "Chedraui", "chedragui" y "CHEDRAUI " son el mismo lugar.
+const normalizarNombreGasto = (texto) =>
+  (texto || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+// Cuántos cambios de letra hay entre dos palabras. Sirve para caer en la
+// cuenta de que "chedragui" y "chedraui" son el mismo lugar escrito de dos
+// formas (una sola letra de diferencia).
+const distanciaTexto = (a, b) => {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let fila = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const anterior = fila;
+    fila = [i];
+    for (let j = 1; j <= b.length; j++) {
+      fila[j] = Math.min(
+        anterior[j] + 1,
+        fila[j - 1] + 1,
+        anterior[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return fila[b.length];
+};
+
+// Dos nombres de gasto son "el mismo" si se escriben casi igual. Se pide que
+// sean largos y que se parezcan mucho, para no confundir palabras distintas
+// que por casualidad se parecen (como "renta" y "venta").
+const sonElMismoNombre = (a, b) => {
+  const x = normalizarNombreGasto(a);
+  const y = normalizarNombreGasto(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const largo = Math.max(x.length, y.length);
+  if (largo < 6) return false; // palabras cortas: solo si son idénticas
+  const d = distanciaTexto(x, y);
+  // Una letra de diferencia siempre; dos solo en nombres ya largos.
+  return d === 1 || (d === 2 && largo >= 9);
+};
+
+// Lo que se fuma el negocio al día. Se registra una vez al mes en lugar de
+// día por día, para no llenar la lista de renglones de $270.
+const GASTO_CIGARROS_DIARIO = 270;
+const ETIQUETA_CIGARROS = "Cigarros del mes";
+
 // Margen al que conviene apuntar en comida preparada: el costo de los
 // ingredientes no debería pasar del ~40% de lo que se cobra. Sirve para
 // sugerir un precio cuando un platillo se está vendiendo muy barato.
@@ -2105,6 +2250,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [mesComparar, setMesComparar] = useState(new Date().getMonth());
   const [diaSel, setDiaSel] = useState(todayISO());
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
+  const [buscaGasto, setBuscaGasto] = useState("");
+  const [mesesPlegados, setMesesPlegados] = useState({});
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
@@ -2190,7 +2337,121 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const gastosFiltrados = gastosAnio
     .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
+    .filter((g) => {
+      const q = buscaGasto.trim().toLowerCase();
+      if (!q) return true;
+      // Se busca por lo que uno tiene en la cabeza: el nombre, la categoría,
+      // el monto o la fecha.
+      return [g.descripcion, g.categoria, String(g.monto), fmtDateHuman(g.fecha), g.fecha]
+        .some((campo) => (campo || "").toString().toLowerCase().includes(q));
+    })
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+
+  // Cuánto se lleva gastado en cada categoría, para verlo sin sacar cuentas.
+  const totalPorCategoria = {};
+  CATEGORIAS_GASTO.forEach((c) => { totalPorCategoria[c] = 0; });
+  gastosAnio.forEach((g) => {
+    const cat = CATEGORIAS_GASTO.includes(g.categoria) ? g.categoria : "Otros";
+    totalPorCategoria[cat] = (totalPorCategoria[cat] || 0) + (parseFloat(g.monto) || 0);
+  });
+  const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
+
+  // La lista se parte por mes: de corrido se hace larguísima y no se encuentra
+  // nada. Cada mes se puede plegar, y arriba trae su total.
+  const gastosPorMes = [];
+  gastosFiltrados.forEach((g) => {
+    const mesIdx = Number(g.fecha.split("-")[1]) - 1;
+    let grupo = gastosPorMes.find((m) => m.mesIdx === mesIdx);
+    if (!grupo) {
+      grupo = { mesIdx, nombre: MESES[mesIdx] || "Sin fecha", lista: [], total: 0 };
+      gastosPorMes.push(grupo);
+    }
+    grupo.lista.push(g);
+    grupo.total += parseFloat(g.monto) || 0;
+  });
+
+  const alternarMes = (mesIdx) =>
+    setMesesPlegados((prev) => ({ ...prev, [mesIdx]: !prev[mesIdx] }));
+
+  // Los cigarros son gasto de todos los días. Para no capturar $270 diarios a
+  // mano, se registra solo una vez al mes, con lo que suman los días de ese mes.
+  // Se lleva apunte de los meses ya generados: si alguien borra el renglón a
+  // propósito, no se vuelve a crear solo.
+  useEffect(() => {
+    if (!esAdmin) return;
+    const hoy = new Date();
+    const anioHoy = hoy.getFullYear();
+    const mesHoy = hoy.getMonth();
+    // Se empezó a contar en julio de 2026; los meses de antes no se tocan.
+    if (anioHoy < 2026 || (anioHoy === 2026 && mesHoy < 6)) return;
+
+    const claveMes = `${anioHoy}-${String(mesHoy + 1).padStart(2, "0")}`;
+    const yaGenerados = config?.cigarrosGenerados || [];
+    if (yaGenerados.includes(claveMes)) return;
+    if (gastos.some((g) => g.esCigarros && (g.fecha || "").startsWith(claveMes))) return;
+
+    const diasDelMes = new Date(anioHoy, mesHoy + 1, 0).getDate();
+    const nuevo = {
+      id: uid(),
+      fecha: `${claveMes}-01`,
+      categoria: "Familiar/Personal",
+      descripcion: ETIQUETA_CIGARROS,
+      monto: GASTO_CIGARROS_DIARIO * diasDelMes,
+      esCigarros: true,
+    };
+    onGuardarGastos([nuevo, ...gastos]);
+    onGuardarConfig({ ...config, cigarrosGenerados: [...yaGenerados, claveMes] });
+    // eslint-disable-next-line
+  }, [esAdmin, config?.cigarrosGenerados]);
+
+  // Nombres que ya se han usado, para ofrecerlos al escribir y que no acaben
+  // cinco variantes del mismo lugar ("Chedraui", "chedragui", "CHEDRAUI"...).
+  const usosPorNombre = (() => {
+    const vistos = new Map();
+    gastos.forEach((g) => {
+      const n = (g.descripcion || "").trim();
+      if (!n) return;
+      const clave = normalizarNombreGasto(n);
+      const actual = vistos.get(clave);
+      if (!actual) vistos.set(clave, { texto: n, veces: 1 });
+      else { actual.veces += 1; if (n.length > actual.texto.length) actual.texto = n; }
+    });
+    return [...vistos.values()].sort((a, b) => b.veces - a.veces);
+  })();
+  const nombresUsados = usosPorNombre.map((v) => v.texto);
+
+  // Grupos de nombres que se escriben casi igual y seguramente son lo mismo.
+  // No se tocan solos: se le muestran a quien lleva las cuentas para que
+  // decida, porque solo él sabe si de verdad son el mismo gasto.
+  const gruposParecidos = (() => {
+    const pendientes = [...usosPorNombre];
+    const grupos = [];
+    while (pendientes.length) {
+      const base = pendientes.shift();
+      const juntos = [base];
+      for (let i = pendientes.length - 1; i >= 0; i--) {
+        if (sonElMismoNombre(base.texto, pendientes[i].texto)) {
+          juntos.push(pendientes.splice(i, 1)[0]);
+        }
+      }
+      if (juntos.length > 1) {
+        // Se propone el que más se ha usado; a igualdad, el más largo.
+        const preferido = juntos.slice().sort((a, b) => b.veces - a.veces || b.texto.length - a.texto.length)[0];
+        grupos.push({ preferido: preferido.texto, variantes: juntos.map((j) => j.texto) });
+      }
+    }
+    return grupos;
+  })();
+
+  const unificarNombres = (grupo) => {
+    onGuardarGastos(
+      gastos.map((g) =>
+        grupo.variantes.some((v) => normalizarNombreGasto(v) === normalizarNombreGasto(g.descripcion || ""))
+          ? { ...g, descripcion: grupo.preferido }
+          : g
+      )
+    );
+  };
 
   const agregarGasto = () => {
     if (!nuevoGasto.monto || nuevoGasto.monto <= 0) return;
@@ -2302,6 +2563,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     };
   });
 
+  // Nombres del inventario para sugerir al capturar los ingredientes de una receta.
+  const nombresIngredientes = (config?.ingredientes || [])
+    .map((ing) => ing.nombre)
+    .filter(Boolean);
+
   const filasOrdenadas = filasRentabilidad
     .slice()
     .sort((a, b) => b.utilidadTotal - a.utilidadTotal || b.ingreso - a.ingreso);
@@ -2394,12 +2660,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               Faltan {faltanCostos} {faltanCostos === 1 ? "producto" : "productos"} por capturar su costo. Los de arriba solo consideran los que ya lo tienen.
             </div>
           )}
-
-          {/* Sugerencias al escribir un ingrediente: sirve de atajo para los que
-              ya están en el inventario, sin obligar a usarlos. */}
-          <datalist id="af-lista-ingredientes">
-            {(config?.ingredientes || []).map((ing) => <option key={ing.id} value={ing.nombre} />)}
-          </datalist>
 
           <div className="af-section-title">Producto por producto</div>
           <div className="af-hint mb-3">
@@ -2502,11 +2762,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                             return (
                               <div key={ing.id} className="af-rent-ing-bloque">
                                 <div className="af-rent-ing-row">
-                                  <TextoField
+                                  {/* Sugerencias de los ingredientes que ya
+                                      están en el inventario, sin obligar a
+                                      usarlos: sirve para platillos de temporada. */}
+                                  <CampoConSugerencias
                                     value={ing.nombre}
                                     className="af-input af-rent-ing-nombre-input"
                                     placeholder="Ej. Bolsa de camarón"
-                                    list="af-lista-ingredientes"
+                                    sugerencias={nombresIngredientes}
                                     onChange={(nombre) => actualizarIngredienteReceta(f, ing.id, { nombre })}
                                   />
                                   <button className="af-icon-btn" title="Quitar" onClick={() => quitarIngredienteReceta(f, ing.id)}>
@@ -2796,7 +3059,19 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
-              <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(47,95,224,0.06)" }} />
+              {/* Al tocar una barra se ve también lo que quedó ese mes, que es
+                  el dato que de verdad importa. */}
+              <Tooltip
+                contentStyle={chartTooltipStyle}
+                cursor={{ fill: "rgba(47,95,224,0.06)" }}
+                formatter={(v, nombre) => [money(v), nombre]}
+                labelFormatter={(mes) => {
+                  const d = datosFinanzasMensual.find((x) => x.mes === mes);
+                  if (!d) return mes;
+                  const queda = (d.ingreso || 0) - (d.gasto || 0);
+                  return `${mes} · quedan ${money(queda)}`;
+                }}
+              />
               <Bar dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
               <Bar dataKey="gasto" name="Gastos" fill={COLOR_GASTO} radius={[6, 6, 0, 0]} />
             </BarChart>
@@ -2804,6 +3079,23 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <div className="af-chart-legend">
             <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Ingresos</span>
             <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos</span>
+          </div>
+
+          {/* La diferencia, mes por mes, sin tener que tocar la gráfica. */}
+          <div className="af-diferencia-lista">
+            {datosFinanzasMensual
+              .filter((d) => (d.ingreso || 0) > 0 || (d.gasto || 0) > 0)
+              .map((d) => {
+                const queda = (d.ingreso || 0) - (d.gasto || 0);
+                return (
+                  <div key={d.mes} className="af-diferencia-row">
+                    <span className="af-diferencia-mes">{d.mes}</span>
+                    <span className={"af-diferencia-monto" + (queda >= 0 ? " positivo" : " negativo")}>
+                      {queda >= 0 ? "Quedan " : "Faltan "}{money(Math.abs(queda))}
+                    </span>
+                  </div>
+                );
+              })}
           </div>
         </div>
 
@@ -2836,7 +3128,25 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
           <div className="af-field">
             <label>Descripción (opcional)</label>
-            <input className="af-input" placeholder="Ej. Camarón, gasolina..." value={nuevoGasto.descripcion} onChange={(e) => setNuevoGasto({ ...nuevoGasto, descripcion: e.target.value })} />
+            {/* Ofrece los nombres ya usados: así "Chedraui" se escribe igual
+                todas las veces y no acaba escrito de tres formas distintas. */}
+            <CampoConSugerencias
+              value={nuevoGasto.descripcion}
+              placeholder="Ej. Camarón, gasolina..."
+              sugerencias={nombresUsados}
+              onChange={(descripcion) => setNuevoGasto({ ...nuevoGasto, descripcion })}
+              onBlur={() => {
+                // Al salir del campo, si lo escrito es el mismo nombre que uno
+                // ya usado (aunque sea con otra ortografía), se deja el que ya
+                // existía para que en los reportes cuenten como uno solo.
+                const escrito = normalizarNombreGasto(nuevoGasto.descripcion);
+                if (!escrito) return;
+                const igual = nombresUsados.find((n) => normalizarNombreGasto(n) === escrito);
+                if (igual && igual !== nuevoGasto.descripcion) {
+                  setNuevoGasto((prev) => ({ ...prev, descripcion: igual }));
+                }
+              }}
+            />
           </div>
           <div className="af-field">
             <label>Monto</label>
@@ -2848,36 +3158,99 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         )}
 
         <div className="af-section-title">Gastos de {anio}</div>
+
+        {/* Cada categoría trae su total, para no tener que sacar la cuenta. */}
         <div className="af-mes-pills mb-3">
-          <button className={"af-mes-pill" + (filtroCategoria === "todos" ? " active" : "")} onClick={() => setFiltroCategoria("todos")}>Todos</button>
+          <button className={"af-mes-pill" + (filtroCategoria === "todos" ? " active" : "")} onClick={() => setFiltroCategoria("todos")}>
+            Todos <span className="af-pill-total">{money(totalGastosAnio)}</span>
+          </button>
           {CATEGORIAS_GASTO.map((c) => (
-            <button key={c} className={"af-mes-pill" + (filtroCategoria === c ? " active" : "")} onClick={() => setFiltroCategoria(c)}>{c}</button>
+            <button key={c} className={"af-mes-pill" + (filtroCategoria === c ? " active" : "")} onClick={() => setFiltroCategoria(c)}>
+              {c} <span className="af-pill-total">{money(totalPorCategoria[c] || 0)}</span>
+            </button>
           ))}
         </div>
+
+        {/* Nombres escritos de varias formas. Se avisa, pero se junta solo si
+            quien lleva las cuentas dice que sí: a veces se parecen y no son
+            lo mismo. */}
+        {esAdmin && gruposParecidos.length > 0 && (
+          <div className="af-parecidos mb-3">
+            <div className="af-parecidos-titulo">
+              <AlertTriangle size={15} /> Nombres que parecen repetidos
+            </div>
+            {gruposParecidos.map((grupo) => (
+              <div key={grupo.preferido} className="af-parecidos-row">
+                <div className="af-parecidos-txt">
+                  {grupo.variantes.join(" · ")}
+                  <span className="af-parecidos-hacia"> → {grupo.preferido}</span>
+                </div>
+                <button className="af-btn-chip" onClick={() => unificarNombres(grupo)}>Juntar</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="af-buscador-gastos mb-3">
+          <Search size={16} />
+          <input
+            className="af-input"
+            placeholder="Buscar por nombre, monto o fecha…"
+            value={buscaGasto}
+            onChange={(e) => setBuscaGasto(e.target.value)}
+          />
+          {buscaGasto && (
+            <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscaGasto("")}><X size={16} /></button>
+          )}
+        </div>
+
+        {buscaGasto.trim() && (
+          <div className="af-hint mb-3">
+            {gastosFiltrados.length === 0
+              ? "No hay gastos que coincidan."
+              : `${gastosFiltrados.length} ${gastosFiltrados.length === 1 ? "gasto" : "gastos"} · ${money(totalFiltrado)}`}
+          </div>
+        )}
 
         {gastosFiltrados.length === 0 ? (
           <EmptyState
             icon={<Receipt size={26} />}
-            title="Sin gastos registrados"
-            subtitle="Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."
+            title={buscaGasto.trim() ? "Sin resultados" : "Sin gastos registrados"}
+            subtitle={buscaGasto.trim()
+              ? "Prueba con otra palabra, o limpia la búsqueda."
+              : "Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."}
           />
         ) : (
           <div className="mb-4">
-            {gastosFiltrados.map((g) => (
-              <div key={g.id} className="af-card p-3 mb-2 af-gasto-row">
-                <div className="flex-1 min-w-0">
-                  <div className="af-cliente-nombre">{g.categoria}{g.descripcion ? ` · ${g.descripcion}` : ""}</div>
-                  <div className="af-ink-soft text-sm">{fmtDateHuman(g.fecha)}</div>
+            {gastosPorMes.map((grupo) => {
+              const plegado = mesesPlegados[grupo.mesIdx];
+              return (
+                <div key={grupo.mesIdx} className="af-mes-grupo">
+                  <button className="af-mes-cabecera" onClick={() => alternarMes(grupo.mesIdx)}>
+                    <ChevronRight size={16} className={"af-mes-flecha" + (plegado ? "" : " abierta")} />
+                    <span className="af-mes-nombre">{grupo.nombre}</span>
+                    <span className="af-mes-cuenta">{grupo.lista.length}</span>
+                    <span className="af-mes-total">{money(grupo.total)}</span>
+                  </button>
+
+                  {!plegado && grupo.lista.map((g) => (
+                    <div key={g.id} className="af-card p-3 mb-2 af-gasto-row">
+                      <div className="flex-1 min-w-0">
+                        <div className="af-cliente-nombre">{g.categoria}{g.descripcion ? ` · ${g.descripcion}` : ""}</div>
+                        <div className="af-ink-soft text-sm">{fmtDateHuman(g.fecha)}</div>
+                      </div>
+                      <div className="af-gasto-monto">{money(g.monto)}</div>
+                      {esAdmin && (
+                        <>
+                          <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
+                          <button className="af-icon-btn" title="Borrar" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+                        </>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className="af-gasto-monto">{money(g.monto)}</div>
-                {esAdmin && (
-                  <>
-                    <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
-                    <button className="af-icon-btn" title="Borrar" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
-                  </>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -6118,6 +6491,39 @@ const AZAFRAN_CSS = `
 .af-nav-btn svg { transition: transform 0.15s ease; }
 .af-nav-btn.active svg { transform: translateY(-1px) scale(1.08); }
 .af-nav-icono { position: relative; display: inline-flex; }
+
+/* ---- Sugerencias al escribir (sustituye al datalist, que falla en Safari) ---- */
+.af-sug-wrap { position: relative; flex: 1; min-width: 0; }
+.af-sug-lista { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); max-height: 216px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+.af-sug-item { display: block; width: 100%; text-align: left; padding: 9px 13px; background: none; border: none; color: var(--ink); font-size: 13.5px; }
+.af-sug-item:hover, .af-sug-item.activo { background: color-mix(in srgb, var(--wine) 10%, transparent); }
+
+/* ---- Gastos: totales por categoría, buscador y meses plegables ---- */
+.af-pill-total { margin-left: 5px; opacity: 0.75; font-weight: 700; font-size: 10.5px; }
+.af-buscador-gastos { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); }
+.af-buscador-gastos .af-input { flex: 1; }
+.af-mes-grupo { margin-bottom: 10px; }
+.af-mes-cabecera { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; margin-bottom: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; text-align: left; }
+.af-mes-flecha { flex-shrink: 0; color: var(--ink-soft); transition: transform 0.15s ease; }
+.af-mes-flecha.abierta { transform: rotate(90deg); }
+.af-mes-nombre { flex: 1; font-weight: 700; font-size: 13.5px; color: var(--ink); }
+.af-mes-cuenta { font-size: 11px; color: var(--ink-soft); background: color-mix(in srgb, var(--ink-soft) 12%, transparent); padding: 1px 7px; border-radius: 8px; }
+.af-mes-total { font-weight: 700; font-size: 13px; color: var(--gasto, #c0392b); }
+
+/* ---- Aviso de nombres de gasto escritos de varias formas ---- */
+.af-parecidos { background: color-mix(in srgb, var(--wine) 7%, transparent); border: 1px solid color-mix(in srgb, var(--wine) 25%, transparent); border-radius: 12px; padding: 11px 13px; }
+.af-parecidos-titulo { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--wine); margin-bottom: 8px; }
+.af-parecidos-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.af-parecidos-txt { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink); }
+.af-parecidos-hacia { color: var(--ink-soft); font-weight: 600; }
+
+/* ---- Diferencia mes a mes bajo la gráfica de ingresos y gastos ---- */
+.af-diferencia-lista { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.af-diferencia-row { display: flex; align-items: baseline; justify-content: space-between; font-size: 12.5px; }
+.af-diferencia-mes { color: var(--ink-soft); text-transform: capitalize; }
+.af-diferencia-monto { font-weight: 700; }
+.af-diferencia-monto.positivo { color: var(--ok, #1fa971); }
+.af-diferencia-monto.negativo { color: var(--gasto, #c0392b); }
 
 /* Aviso de conversaciones esperando respuesta de Pepe. */
 .af-badge { position: absolute; top: -5px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--wine); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 16px; text-align: center; }
