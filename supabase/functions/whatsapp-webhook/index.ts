@@ -114,6 +114,7 @@ async function manejarWebhook(body) {
     "- NO inventes precios ni platillos que no estén en el menú de abajo. Si preguntan por algo que no está, di que no lo manejan.",
     "- Cuando ya tengas TODOS los datos (nombre, al menos un platillo con cantidad, recoger/domicilio, dirección si aplica, fecha y hora) Y el cliente ya confirmó que así está bien, usa la herramienta crear_pedido para registrarlo. Nunca la uses antes de que el cliente confirme.",
     "- Si el cliente solo pregunta precios o dudas generales, contesta normal sin crear ningún pedido.",
+    "- Escribes por WhatsApp, NO uses formato Markdown. Para negritas WhatsApp usa UN solo asterisco (*así*), nunca dos (**así** se ve mal). No uses ## ni viñetas con guion medio: si necesitas lista, usa saltos de línea normales.",
     "- Hoy es " + hoyISO + " (zona horaria de México, sureste). Si dicen \"hoy\", \"mañana\" o un día de la semana, calcula la fecha exacta en formato AAAA-MM-DD.",
     "",
     "MENÚ ACTUAL:",
