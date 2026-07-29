@@ -190,6 +190,8 @@ async function manejarWebhook(body) {
     }
   }
 
+  console.log("Respuesta de la IA: " + JSON.stringify(textoRespuesta));
+
   // Mensaje personal: no se contesta ni se guarda el historial, para no
   // ensuciar el contexto de futuros pedidos con conversaciones privadas.
   if (!bloqueHerramienta && textoRespuesta.trim().indexOf(MARCA_IGNORAR) !== -1) {
