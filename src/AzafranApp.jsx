@@ -13,6 +13,7 @@ import {
   nubeActiva, almacen, suscribirAlmacen,
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
   obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil,
+  reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
 } from "./nube.js";
 
 /* ---------------------------------------------------------------------- */
@@ -4865,10 +4866,72 @@ export default function App() {
       }
     };
 
-    cargarTodo(true);
+    // Pasa a la lista los pedidos que el bot de WhatsApp dejó en su buzón.
+    // El bot no escribe la lista de pedidos directamente: tendría que
+    // reescribirla completa y borraría los que la app aún no conocía.
+    const incorporarPedidosWhatsApp = async () => {
+      if (!nubeActiva || cancelado) return;
+      let reclamados = [];
+      try {
+        reclamados = await reclamarPedidosWhatsApp();
+      } catch {
+        return; // sin conexión: se reintenta en el siguiente ciclo
+      }
+      if (!reclamados.length || cancelado) return;
+
+      try {
+        // Se relee lo que hay en la nube AHORA (no lo que tenga esta pantalla
+        // en memoria, que puede estar viejo) para no borrar nada de nadie.
+        const [rp, rc] = await Promise.all([almacen.get("pedidos"), almacen.get("clientes")]);
+        const pedidosNube = JSON.parse(rp.value) || [];
+        const clientesNube = JSON.parse(rc.value) || [];
+
+        const pedidosNuevos = [];
+        const clientesNuevos = [];
+        for (const fila of reclamados) {
+          const pedido = fila.pedido;
+          if (!pedido || pedidosNube.some((p) => p.id === pedido.id)) continue;
+          // Si ya existe un cliente con ese teléfono se reutiliza; si no, se da de alta.
+          const tel = telWhatsApp(pedido.clienteTelefono);
+          let cliente = tel
+            ? [...clientesNuevos, ...clientesNube].find((c) => telWhatsApp(c.telefono).slice(-10) === tel.slice(-10))
+            : null;
+          if (!cliente && fila.cliente) {
+            cliente = fila.cliente;
+            clientesNuevos.push(cliente);
+          }
+          pedidosNuevos.push(cliente ? { ...pedido, clienteId: cliente.id } : pedido);
+        }
+
+        if (clientesNuevos.length) {
+          const lista = [...clientesNuevos, ...clientesNube];
+          await almacen.set("clientes", JSON.stringify(lista));
+          aplicarClave("clientes", JSON.stringify(lista));
+        }
+        if (pedidosNuevos.length) {
+          const lista = [...pedidosNuevos, ...pedidosNube];
+          await almacen.set("pedidos", JSON.stringify(lista));
+          aplicarClave("pedidos", JSON.stringify(lista));
+          showToast(
+            pedidosNuevos.length === 1
+              ? "Llegó un pedido nuevo por WhatsApp"
+              : `Llegaron ${pedidosNuevos.length} pedidos por WhatsApp`,
+            "ok"
+          );
+        }
+      } catch (e) {
+        console.error("Error incorporando pedidos de WhatsApp", e);
+        // No se pudo guardar: se devuelven al buzón para reintentarlo luego,
+        // en vez de darlos por perdidos.
+        reclamados.forEach((fila) => devolverPedidoWhatsApp(fila.id).catch(() => {}));
+      }
+    };
+
+    cargarTodo(true).then(incorporarPedidosWhatsApp);
 
     // Tiempo real: si alguien más guarda desde otro dispositivo, se refleja aquí.
     const desuscribir = suscribirAlmacen((clave, raw) => aplicarClave(clave, raw));
+    const desuscribirWhatsApp = suscribirPedidosWhatsApp(incorporarPedidosWhatsApp);
 
     // En celular (sobre todo iOS) la conexión en tiempo real se corta cuando
     // la app pasa a segundo plano o se bloquea la pantalla, y no se reconecta
@@ -4876,7 +4939,9 @@ export default function App() {
     // falta cerrar y volver a abrir la app para ver lo nuevo. Al regresar a
     // la pestaña/app se vuelve a pedir todo (en silencio) para ponerse al día.
     const alVolverVisible = () => {
-      if (document.visibilityState === "visible") cargarTodo(false);
+      if (document.visibilityState !== "visible") return;
+      cargarTodo(false);
+      incorporarPedidosWhatsApp();
     };
     document.addEventListener("visibilitychange", alVolverVisible);
 
@@ -4890,11 +4955,21 @@ export default function App() {
       if (document.visibilityState === "visible") cargarTodo(false);
     }, 3000);
 
+    // Respaldo del tiempo real para el buzón de WhatsApp: se revisa cada
+    // minuto por si el aviso instantáneo no llegó (misma razón que arriba).
+    // No hace falta cada 3s: son pedidos que el negocio atiende con horas
+    // de anticipación, y así no se consultan de más.
+    const intervaloWhatsApp = setInterval(() => {
+      if (document.visibilityState === "visible") incorporarPedidosWhatsApp();
+    }, 60000);
+
     return () => {
       cancelado = true;
       desuscribir();
+      desuscribirWhatsApp();
       document.removeEventListener("visibilitychange", alVolverVisible);
       clearInterval(intervalo);
+      clearInterval(intervaloWhatsApp);
     };
     // eslint-disable-next-line
   }, [puedeUsarDatos]);

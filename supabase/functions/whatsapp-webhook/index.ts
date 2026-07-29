@@ -267,23 +267,17 @@ async function crearPedido(input, telefono, nombreContacto, paellas, extras) {
 
   const total = items.reduce((a, it) => a + it.subtotal, 0);
 
-  // Se reutiliza un cliente existente con el mismo teléfono si ya existe,
-  // igual que hace la app al buscar coincidencias por nombre.
-  const { data: clientesRow } = await supabase.from("almacen").select("valor").eq("clave", "clientes").maybeSingle();
-  const clientes = (clientesRow && clientesRow.valor) || [];
-  let cliente = clientes.find((c) => (c.telefono || "").replace(/\D/g, "").slice(-10) === telefono.replace(/\D/g, "").slice(-10));
-  if (!cliente) {
-    cliente = {
-      id: crypto.randomUUID(),
-      nombre: input.clienteNombre || nombreContacto || "Cliente WhatsApp",
-      telefono,
-      direccion: input.entrega ? (input.direccion || "") : "",
-      ubicacion: "",
-      createdAt: new Date().toISOString(),
-    };
-    const { error } = await supabase.from("almacen").upsert({ clave: "clientes", valor: [cliente, ...clientes], updated_at: new Date().toISOString() });
-    if (error) console.error("Error guardando cliente:", JSON.stringify(error));
-  }
+  // Ficha del cliente por si es nuevo. La app decide si lo da de alta o lo
+  // vincula con uno que ya exista con el mismo teléfono: aquí no se toca la
+  // lista de clientes para no pisar lo que el negocio tenga guardado.
+  const cliente = {
+    id: crypto.randomUUID(),
+    nombre: input.clienteNombre || nombreContacto || "Cliente WhatsApp",
+    telefono,
+    direccion: input.entrega ? (input.direccion || "") : "",
+    ubicacion: "",
+    createdAt: new Date().toISOString(),
+  };
 
   const pedidoObj = {
     id: crypto.randomUUID(),
@@ -309,18 +303,18 @@ async function crearPedido(input, telefono, nombreContacto, paellas, extras) {
     createdAt: Date.now(),
   };
 
-  const { data: pedidosRow } = await supabase.from("almacen").select("valor").eq("clave", "pedidos").maybeSingle();
-  const pedidosActuales = (pedidosRow && pedidosRow.valor) || [];
-  const { error } = await supabase.from("almacen").upsert({
-    clave: "pedidos",
-    valor: [pedidoObj, ...pedidosActuales],
-    updated_at: new Date().toISOString(),
+  // El pedido se deja en el buzón, en su propia fila. La app lo recoge de
+  // ahí y lo pasa a la lista. Así el bot nunca puede borrar pedidos del
+  // negocio, y si algo falla el pedido se queda esperando en vez de perderse.
+  const { error } = await supabase.from("pedidos_whatsapp").insert({
+    pedido: pedidoObj,
+    cliente,
   });
   if (error) {
-    console.error("ERROR guardando pedido:", JSON.stringify(error));
+    console.error("ERROR dejando el pedido en el buzon:", JSON.stringify(error));
     return null;
   }
-  console.log("Pedido guardado. Total: " + total);
+  console.log("Pedido dejado en el buzon. Total: " + total);
   return pedidoObj;
 }
 

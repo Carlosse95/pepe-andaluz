@@ -50,6 +50,43 @@ export const suscribirAlmacen = (callback) => {
   return () => supabase.removeChannel(canal);
 };
 
+/* ------------- Pedidos que llegan por WhatsApp (bot de IA) ------------- */
+// El bot NUNCA escribe en `almacen`. Si lo hiciera tendría que reescribir la
+// lista entera de pedidos y borraría los que la app todavía no conocía (ya
+// pasó una vez). En vez de eso deja cada pedido en su propia fila, aquí, y
+// la app los va pasando a la lista.
+
+// Reclama los pedidos pendientes. El `update ... where incorporado = false`
+// hace que, aunque haya varios dispositivos abiertos, cada pedido se lo
+// quede uno solo: los demás reciben la lista vacía y no lo duplican.
+export const reclamarPedidosWhatsApp = async () => {
+  if (!nubeActiva) return [];
+  const { data, error } = await supabase
+    .from("pedidos_whatsapp")
+    .update({ incorporado: true })
+    .eq("incorporado", false)
+    .select();
+  if (error) throw error;
+  return data || [];
+};
+
+// Si la app no alcanzó a guardarlo, el pedido se devuelve al buzón para
+// reintentarlo más tarde en vez de perderse.
+export const devolverPedidoWhatsApp = async (id) => {
+  if (!nubeActiva) return;
+  await supabase.from("pedidos_whatsapp").update({ incorporado: false }).eq("id", id);
+};
+
+// Avisa cuando el bot deja un pedido nuevo, para recogerlo al instante.
+export const suscribirPedidosWhatsApp = (callback) => {
+  if (!nubeActiva) return () => {};
+  const canal = supabase
+    .channel("pedidos-whatsapp-nuevos")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "pedidos_whatsapp" }, () => callback())
+    .subscribe();
+  return () => supabase.removeChannel(canal);
+};
+
 /* ----------------------------- Sesión ----------------------------- */
 
 export const obtenerSesion = async () => {

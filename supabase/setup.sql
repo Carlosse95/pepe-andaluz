@@ -112,3 +112,32 @@ begin
   alter publication supabase_realtime add table public.almacen;
 exception when duplicate_object then null;
 end $$;
+
+-- ---------- Buzón de pedidos que llegan por WhatsApp ----------
+-- El bot de WhatsApp NO escribe en `almacen`: si lo hiciera tendría que
+-- reescribir la lista completa de pedidos y podría borrar los que la app
+-- todavía no conocía (ya pasó una vez). En vez de eso deja cada pedido
+-- aquí, en su propia fila, y la app los va pasando a la lista.
+
+create table if not exists public.pedidos_whatsapp (
+  id          uuid primary key default gen_random_uuid(),
+  pedido      jsonb not null,
+  cliente     jsonb,
+  incorporado boolean not null default false,
+  creado_at   timestamptz not null default now()
+);
+
+alter table public.pedidos_whatsapp enable row level security;
+
+-- Los usuarios activos solo leen y marcan como incorporados.
+-- Insertar es exclusivo del bot, que usa la llave de servicio.
+drop policy if exists "pedidos whatsapp leer"   on public.pedidos_whatsapp;
+drop policy if exists "pedidos whatsapp editar" on public.pedidos_whatsapp;
+create policy "pedidos whatsapp leer"   on public.pedidos_whatsapp for select using (public.es_usuario_activo());
+create policy "pedidos whatsapp editar" on public.pedidos_whatsapp for update using (public.es_usuario_activo());
+
+do $$
+begin
+  alter publication supabase_realtime add table public.pedidos_whatsapp;
+exception when duplicate_object then null;
+end $$;
