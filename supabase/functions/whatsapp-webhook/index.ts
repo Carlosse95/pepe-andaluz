@@ -108,7 +108,21 @@ async function manejarWebhook(body) {
     "Si tienes duda de si es del negocio o no, prefiere responder " + MARCA_IGNORAR + " y dejar que el dueño conteste.",
     "Un simple \"hola\" o \"buenos días\" sin más contexto NO es suficiente para asumir que es un pedido: en ese caso responde " + MARCA_IGNORAR + ".",
     "",
-    "Cuando el mensaje SÍ es del negocio, tu trabajo es:",
+    "QUIÉN ERES Y HASTA DÓNDE LLEGAS — esto es lo más importante de todo:",
+    "El trato personal con Pepe, el dueño, es justamente lo que la gente valora de este negocio. Tú NO vienes a reemplazarlo.",
+    "Eres solo una ayuda para lo rutinario: apuntar pedidos claros y dar precios y horarios. Nada más.",
+    "NUNCA te hagas pasar por Pepe ni por un familiar. Si te preguntan si eres una persona, di con naturalidad que eres el asistente que apunta los pedidos y que Pepe contesta personalmente.",
+    "En cuanto la conversación se salga de lo rutinario, usa la herramienta avisar_a_pepe y deja que él conteste. Eso incluye:",
+    "  · quejas, reclamos o algo que salió mal",
+    "  · eventos grandes, bodas, banquetes o cotizaciones especiales",
+    "  · cambios raros al menú, alergias, o peticiones fuera de lo normal",
+    "  · cuando pidan un descuento o negociar el precio",
+    "  · cuando el cliente pida hablar con Pepe o con una persona",
+    "  · cuando no estés seguro de la respuesta",
+    "Al usar avisar_a_pepe, dile al cliente algo breve y cálido, sin inventar tiempos exactos: que Pepe le contesta personalmente en cuanto pueda, y que si es urgente puede marcar a este mismo número.",
+    "Es mejor pasarle un mensaje de más a Pepe que contestar tú algo que no te toca.",
+    "",
+    "Cuando el mensaje SÍ es del negocio y es de lo rutinario, tu trabajo es:",
     "- Ser amable, breve y claro, como alguien del negocio contestando el WhatsApp — no muy formal, sin inventar cosas.",
     "- Ayudar al cliente a armar su pedido: qué paella o platillo, cuántos kilos (paellas) o piezas/órdenes (otros platillos), si es para recoger o a domicilio (si es a domicilio, pedir la dirección), su nombre completo, y la fecha y hora en que lo quiere.",
     "- NO inventes precios ni platillos que no estén en el menú de abajo. Si preguntan por algo que no está, di que no lo manejan.",
@@ -150,6 +164,21 @@ async function manejarWebhook(body) {
         required: ["clienteNombre", "fecha", "hora", "entrega", "items"],
       },
     },
+    {
+      name: "avisar_a_pepe",
+      description:
+        "Marca la conversación para que Pepe, el dueño, la conteste él mismo. Se usa cuando el asunto se sale de apuntar un pedido rutinario: quejas, eventos grandes, peticiones especiales, descuentos, o cuando el cliente pide hablar con una persona.",
+      input_schema: {
+        type: "object",
+        properties: {
+          motivo: {
+            type: "string",
+            description: "En una línea, qué necesita el cliente, para que Pepe sepa de qué se trata sin leer todo el chat.",
+          },
+        },
+        required: ["motivo"],
+      },
+    },
   ];
 
   const mensajesClaude = historial.map((m) => ({ role: m.role, content: m.content }));
@@ -179,15 +208,34 @@ async function manejarWebhook(body) {
   }
 
   let textoRespuesta = "";
-  let bloqueHerramienta = null;
+  const resultadosHerramienta = [];
   let pedidoCreado = null;
+  let motivoParaPepe = "";
 
   for (const bloque of data.content || []) {
     if (bloque.type === "text") textoRespuesta += bloque.text;
-    if (bloque.type === "tool_use" && bloque.name === "crear_pedido") {
-      bloqueHerramienta = bloque;
+    if (bloque.type !== "tool_use") continue;
+
+    if (bloque.name === "crear_pedido") {
       console.log("Claude pidio crear pedido: " + JSON.stringify(bloque.input));
       pedidoCreado = await crearPedido(bloque.input, telefono, nombreContacto, paellas, extras);
+      resultadosHerramienta.push({
+        type: "tool_result",
+        tool_use_id: bloque.id,
+        content: pedidoCreado
+          ? "Pedido registrado con exito. Total: $" + pedidoCreado.total.toFixed(2)
+          : "No se pudo registrar el pedido.",
+      });
+    }
+
+    if (bloque.name === "avisar_a_pepe") {
+      motivoParaPepe = (bloque.input && bloque.input.motivo) || "El cliente necesita atencion personal";
+      console.log("La IA pide que conteste Pepe: " + motivoParaPepe);
+      resultadosHerramienta.push({
+        type: "tool_result",
+        tool_use_id: bloque.id,
+        content: "Avisado. Pepe vera esta conversacion en la app.",
+      });
     }
   }
 
@@ -195,24 +243,19 @@ async function manejarWebhook(body) {
 
   // Mensaje personal: no se contesta ni se guarda el historial, para no
   // ensuciar el contexto de futuros pedidos con conversaciones privadas.
-  if (!bloqueHerramienta && textoRespuesta.trim().indexOf(MARCA_IGNORAR) !== -1) {
+  if (!resultadosHerramienta.length && textoRespuesta.trim().indexOf(MARCA_IGNORAR) !== -1) {
     console.log("Mensaje ajeno al negocio. No se contesta.");
     return;
   }
 
+  // A partir de aquí ya se sabe que el mensaje es del negocio, así que se
+  // guarda para la bandeja. Los mensajes personales nunca se guardan.
+  await guardarMensaje(telefono, "cliente", texto);
+
   historial.push({ role: "assistant", content: data.content });
 
-  if (bloqueHerramienta) {
-    historial.push({
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: bloqueHerramienta.id,
-          content: pedidoCreado ? "Pedido registrado con exito. Total: $" + pedidoCreado.total.toFixed(2) : "No se pudo registrar el pedido.",
-        },
-      ],
-    });
+  if (resultadosHerramienta.length) {
+    historial.push({ role: "user", content: resultadosHerramienta });
     if (!textoRespuesta.trim() && pedidoCreado) {
       textoRespuesta = "¡Listo! Registré tu pedido 🥘 Total: $" + pedidoCreado.total.toFixed(2) + ". En un ratito te confirmamos por aquí los detalles.";
     }
@@ -220,7 +263,11 @@ async function manejarWebhook(body) {
 
   if (textoRespuesta.trim()) {
     await enviarWhatsApp(telefono, textoRespuesta.trim());
+    await guardarMensaje(telefono, "bot", textoRespuesta.trim());
   }
+
+  // La conversación se marca para que Pepe la vea en la app.
+  await actualizarConversacion(telefono, nombreContacto, textoRespuesta.trim() || texto, motivoParaPepe);
 
   const { error: errGuardar } = await supabase.from("whatsapp_chats").upsert({
     telefono,
@@ -228,6 +275,31 @@ async function manejarWebhook(body) {
     actualizado_at: new Date().toISOString(),
   });
   if (errGuardar) console.error("Error guardando historial:", JSON.stringify(errGuardar));
+}
+
+// Cada mensaje se guarda suelto (uno por fila) para que la app pueda
+// mostrar la conversación como un chat normal. El historial de
+// `whatsapp_chats` es el contexto técnico de la IA, no sirve para leerlo.
+async function guardarMensaje(telefono, de, texto) {
+  const { error } = await supabase.from("whatsapp_mensajes").insert({ telefono, de, texto });
+  if (error) console.error("Error guardando mensaje:", JSON.stringify(error));
+}
+
+// Mantiene al día la lista de conversaciones de la bandeja. `necesita_pepe`
+// se prende cuando la IA pide ayuda y solo lo apaga Pepe desde la app.
+async function actualizarConversacion(telefono, nombreContacto, ultimoTexto, motivoParaPepe) {
+  const fila = {
+    telefono,
+    ultimo_texto: (ultimoTexto || "").slice(0, 300),
+    ultimo_at: new Date().toISOString(),
+  };
+  if (nombreContacto) fila.nombre = nombreContacto;
+  if (motivoParaPepe) {
+    fila.necesita_pepe = true;
+    fila.motivo_pepe = motivoParaPepe;
+  }
+  const { error } = await supabase.from("whatsapp_conversaciones").upsert(fila);
+  if (error) console.error("Error actualizando conversacion:", JSON.stringify(error));
 }
 
 async function crearPedido(input, telefono, nombreContacto, paellas, extras) {

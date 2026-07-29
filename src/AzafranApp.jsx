@@ -14,6 +14,8 @@ import {
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
   obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil,
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
+  listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
+  marcarConversacionLeida, suscribirBandejaWhatsApp,
 } from "./nube.js";
 
 /* ---------------------------------------------------------------------- */
@@ -178,6 +180,26 @@ const estadoPagoDe = (pagado, total) => {
 // Folio consecutivo: busca el mayor folio existente en la lista y suma 1.
 const siguienteFolio = (lista) => lista.reduce((max, x) => Math.max(max, x.folio || 0), 0) + 1;
 const fmtFolio = (n, prefijo = "") => (n ? `${prefijo}${String(n).padStart(4, "0")}` : "");
+
+// Muestra el teléfono legible: del formato de WhatsApp (5219991234567) saca
+// los últimos 10 dígitos y los separa como se leen aquí.
+const fmtTel = (tel) => {
+  const d = (tel || "").replace(/\D/g, "").slice(-10);
+  if (d.length !== 10) return tel || "";
+  return `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
+};
+
+// Hora del mensaje: solo la hora si es de hoy, y el día si es más viejo.
+const fmtHoraCorta = (iso) => {
+  if (!iso) return "";
+  const f = new Date(iso);
+  if (isNaN(f)) return "";
+  const hoy = new Date();
+  const mismoDia = f.toDateString() === hoy.toDateString();
+  return f.toLocaleString("es-MX", mismoDia
+    ? { hour: "numeric", minute: "2-digit" }
+    : { day: "numeric", month: "short" });
+};
 
 // Normaliza un teléfono para WhatsApp: solo dígitos; si son 10 (México), antepone 52.
 const telWhatsApp = (tel) => {
@@ -795,6 +817,119 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
   );
 }
 
+/* ------------------------- Bandeja de WhatsApp ------------------------- */
+// El bot solo apunta pedidos rutinarios. Todo lo demás — dudas raras, quejas,
+// eventos, o cuando el cliente pide hablar con una persona — llega aquí para
+// que Pepe conteste él mismo, que es lo que la gente busca del negocio.
+
+function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat, onEnviar, onVolver }) {
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const finRef = useRef(null);
+
+  // Al abrir un chat o al llegar un mensaje, se baja hasta lo último.
+  useEffect(() => {
+    if (finRef.current) finRef.current.scrollIntoView({ block: "end" });
+  }, [mensajes, abierta]);
+
+  const enviar = async () => {
+    const limpio = texto.trim();
+    if (!limpio || enviando) return;
+    setEnviando(true);
+    const ok = await onEnviar(abierta.telefono, limpio);
+    setEnviando(false);
+    if (ok) setTexto("");
+  };
+
+  if (abierta) {
+    const nombre = abierta.nombre || fmtTel(abierta.telefono);
+    return (
+      <div className="af-chat">
+        <div className="af-chat-head">
+          <button className="af-icon-btn" onClick={onVolver} title="Volver a la lista">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="af-chat-head-txt">
+            <div className="af-chat-head-nombre">{nombre}</div>
+            <div className="af-chat-head-tel">{fmtTel(abierta.telefono)}</div>
+          </div>
+          <a className="af-icon-btn" href={`tel:+${abierta.telefono}`} title="Marcarle">
+            <MessageCircle size={18} />
+          </a>
+        </div>
+
+        {abierta.motivo_pepe && (
+          <div className="af-chat-motivo">
+            <AlertTriangle size={14} /> {abierta.motivo_pepe}
+          </div>
+        )}
+
+        <div className="af-chat-cuerpo">
+          {cargandoChat ? (
+            <div className="af-chat-vacio">Cargando la conversación…</div>
+          ) : mensajes.length === 0 ? (
+            <div className="af-chat-vacio">Todavía no hay mensajes en este chat.</div>
+          ) : (
+            mensajes.map((m) => (
+              <div key={m.id} className={"af-burbuja af-burbuja-" + m.de}>
+                {m.de === "bot" && <div className="af-burbuja-quien">Contestó el asistente</div>}
+                <div className="af-burbuja-txt">{m.texto}</div>
+                <div className="af-burbuja-hora">{fmtHoraCorta(m.creado_at)}</div>
+              </div>
+            ))
+          )}
+          <div ref={finRef} />
+        </div>
+
+        <div className="af-chat-pie">
+          <textarea
+            className="af-chat-input"
+            rows={1}
+            placeholder="Escríbele…"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
+            }}
+          />
+          <button className="af-chat-enviar" onClick={enviar} disabled={!texto.trim() || enviando}>
+            {enviando ? "…" : <ArrowRightCircle size={20} />}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!conversaciones.length) {
+    return (
+      <EmptyState
+        icon={<MessageCircle size={30} />}
+        title="Sin conversaciones todavía"
+        subtitle="Aquí aparecerán los clientes que escriban por WhatsApp."
+      />
+    );
+  }
+
+  return (
+    <div>
+      {conversaciones.map((c) => (
+        <button key={c.telefono} className={"af-conv" + (c.necesita_pepe ? " pendiente" : "")} onClick={() => onAbrir(c)}>
+          <div className="af-conv-top">
+            <span className="af-conv-nombre">{c.nombre || fmtTel(c.telefono)}</span>
+            <span className="af-conv-hora">{fmtHoraCorta(c.ultimo_at)}</span>
+          </div>
+          <div className="af-conv-txt">{c.ultimo_texto}</div>
+          {c.necesita_pepe && (
+            <div className="af-conv-aviso">
+              <AlertTriangle size={13} /> {c.motivo_pepe || "Te toca contestar a ti"}
+            </div>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function EmptyState({ icon, title, subtitle }) {
   return (
     <div className="af-empty">
@@ -930,10 +1065,13 @@ function AvisoPendienteModal({ aviso, onEnviar, onCerrar }) {
   );
 }
 
-function NavButton({ active, icon, label, onClick }) {
+function NavButton({ active, icon, label, onClick, badge }) {
   return (
     <button className={"af-nav-btn" + (active ? " active" : "")} onClick={onClick}>
-      {icon}
+      <span className="af-nav-icono">
+        {icon}
+        {badge > 0 && <span className="af-badge">{badge > 9 ? "9+" : badge}</span>}
+      </span>
       <span>{label}</span>
     </button>
   );
@@ -4769,6 +4907,79 @@ export default function App() {
     setTimeout(() => setToast((t) => (t && Date.now() - t.id >= 2400 ? null : t)), 2600);
   };
 
+  /* ---------------- Bandeja de WhatsApp ---------------- */
+  const [conversaciones, setConversaciones] = useState([]);
+  const [chatAbierto, setChatAbierto] = useState(null);
+  const [mensajesChat, setMensajesChat] = useState([]);
+  const [cargandoChat, setCargandoChat] = useState(false);
+  const chatAbiertoRef = useRef(null);
+  chatAbiertoRef.current = chatAbierto;
+
+  const pendientesWhatsApp = conversaciones.filter((c) => c.necesita_pepe).length;
+
+  const refrescarBandeja = async () => {
+    if (!nubeActiva) return;
+    try {
+      const lista = await listarConversaciones();
+      setConversaciones(lista);
+      // Si hay un chat abierto, se recargan sus mensajes por si llegó algo.
+      const abierto = chatAbiertoRef.current;
+      if (abierto) {
+        setMensajesChat(await listarMensajes(abierto.telefono));
+        const actualizada = lista.find((c) => c.telefono === abierto.telefono);
+        if (actualizada) setChatAbierto(actualizada);
+      }
+    } catch (e) {
+      console.error("Error cargando la bandeja de WhatsApp", e);
+    }
+  };
+
+  const abrirChat = async (conv) => {
+    setChatAbierto(conv);
+    setCargandoChat(true);
+    try {
+      setMensajesChat(await listarMensajes(conv.telefono));
+      if (conv.necesita_pepe) {
+        await marcarConversacionLeida(conv.telefono);
+        setConversaciones((prev) =>
+          prev.map((c) => (c.telefono === conv.telefono ? { ...c, necesita_pepe: false } : c))
+        );
+      }
+    } catch (e) {
+      console.error("Error abriendo el chat", e);
+      showToast("No se pudo abrir la conversación", "error");
+    } finally {
+      setCargandoChat(false);
+    }
+  };
+
+  const responderWhatsApp = async (telefono, texto) => {
+    try {
+      await enviarMensajeWhatsApp(telefono, texto);
+      setMensajesChat((prev) => [
+        ...prev,
+        { id: "tmp-" + Date.now(), telefono, de: "pepe", texto, creado_at: new Date().toISOString() },
+      ]);
+      refrescarBandeja();
+      return true;
+    } catch (e) {
+      showToast(e.message || "No se pudo enviar el mensaje", "error");
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!puedeUsarDatos || !nubeActiva) return;
+    refrescarBandeja();
+    const desuscribir = suscribirBandejaWhatsApp(refrescarBandeja);
+    // Respaldo por si el aviso instantáneo no llega (celular en segundo plano).
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") refrescarBandeja();
+    }, 20000);
+    return () => { desuscribir(); clearInterval(id); };
+    // eslint-disable-next-line
+  }, [puedeUsarDatos]);
+
   useEffect(() => {
     if (!nubeActiva) return;
     let cancelado = false;
@@ -5523,6 +5734,7 @@ export default function App() {
   const navItems = [
     { key: "hoy", icon: <Home size={20} />, label: "Hoy" },
     { key: "agenda", icon: <CalendarDays size={20} />, label: "Agenda" },
+    { key: "mensajes", icon: <MessageCircle size={20} />, label: "Mensajes", badge: pendientesWhatsApp },
     { key: "presupuestos", icon: <FileText size={20} />, label: "Presupuestos" },
     { key: "clientes", icon: <Users size={20} />, label: "Clientes" },
     { key: "reportes", icon: <TrendingUp size={20} />, label: "Reportes" },
@@ -5539,6 +5751,7 @@ export default function App() {
           {navItems.map((n) => (
             <button key={n.key} className={"af-topbar-link" + (view === n.key ? " active" : "")} onClick={() => irAVista(n.key)}>
               {n.label}
+              {n.badge > 0 && <span className="af-badge af-badge-topbar">{n.badge > 9 ? "9+" : n.badge}</span>}
             </button>
           ))}
         </nav>
@@ -5591,6 +5804,17 @@ export default function App() {
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
+          {view === "mensajes" && (
+            <MensajesView
+              conversaciones={conversaciones}
+              abierta={chatAbierto}
+              mensajes={mensajesChat}
+              cargandoChat={cargandoChat}
+              onAbrir={abrirChat}
+              onEnviar={responderWhatsApp}
+              onVolver={() => { setChatAbierto(null); setMensajesChat([]); }}
+            />
+          )}
           {view === "clientes" && (
             <ClientesView
               clientes={clientes}
@@ -5651,7 +5875,7 @@ export default function App() {
         {view !== "nuevo" && (
           <div className="af-nav">
             {navItems.map((n) => (
-              <NavButton key={n.key} active={view === n.key} icon={n.icon} label={n.label} onClick={() => irAVista(n.key)} />
+              <NavButton key={n.key} active={view === n.key} icon={n.icon} label={n.label} badge={n.badge} onClick={() => irAVista(n.key)} />
             ))}
           </div>
         )}
@@ -5892,6 +6116,45 @@ const AZAFRAN_CSS = `
 .af-nav-btn:active { transform: scale(0.92); }
 .af-nav-btn svg { transition: transform 0.15s ease; }
 .af-nav-btn.active svg { transform: translateY(-1px) scale(1.08); }
+.af-nav-icono { position: relative; display: inline-flex; }
+
+/* Aviso de conversaciones esperando respuesta de Pepe. */
+.af-badge { position: absolute; top: -5px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--wine); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 16px; text-align: center; }
+.af-badge-topbar { position: static; margin-left: 6px; display: inline-block; }
+
+/* ---------------- Bandeja de WhatsApp ---------------- */
+.af-conv { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.af-conv:active { transform: scale(0.99); }
+.af-conv.pendiente { border-color: var(--wine); box-shadow: 0 0 0 1px var(--wine) inset; }
+.af-conv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.af-conv-nombre { font-weight: 700; font-size: 14.5px; color: var(--ink); }
+.af-conv-hora { font-size: 11px; color: var(--ink-soft); flex-shrink: 0; }
+.af-conv-txt { margin-top: 3px; font-size: 13px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-conv-aviso { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: 11.5px; font-weight: 600; color: var(--wine); }
+
+.af-chat { display: flex; flex-direction: column; height: calc(100vh - 190px); min-height: 340px; }
+.af-chat-head { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.af-chat-head-txt { flex: 1; min-width: 0; }
+.af-chat-head-nombre { font-weight: 700; font-size: 15px; color: var(--ink); }
+.af-chat-head-tel { font-size: 11.5px; color: var(--ink-soft); }
+.af-chat-motivo { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 11px; border-radius: 10px; background: color-mix(in srgb, var(--wine) 10%, transparent); color: var(--wine); font-size: 12px; font-weight: 600; }
+.af-chat-cuerpo { flex: 1; overflow-y: auto; padding: 14px 2px; display: flex; flex-direction: column; gap: 8px; }
+.af-chat-vacio { margin: auto; color: var(--ink-soft); font-size: 13px; text-align: center; }
+
+.af-burbuja { max-width: 78%; padding: 8px 12px; border-radius: 14px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+/* El cliente a la izquierda; el negocio (bot o Pepe) a la derecha. */
+.af-burbuja-cliente { align-self: flex-start; background: var(--surface-2, #f1f0ee); color: var(--ink); border-bottom-left-radius: 4px; }
+.af-burbuja-bot, .af-burbuja-pepe { align-self: flex-end; background: var(--wine); color: #fff; border-bottom-right-radius: 4px; }
+/* El asistente se distingue del dueño: importa saber quién contestó. */
+.af-burbuja-bot { background: color-mix(in srgb, var(--wine) 62%, #fff); }
+.af-burbuja-quien { font-size: 10px; font-weight: 700; opacity: 0.85; margin-bottom: 2px; }
+.af-burbuja-hora { font-size: 9.5px; opacity: 0.7; margin-top: 3px; text-align: right; }
+
+.af-chat-pie { display: flex; align-items: flex-end; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.af-chat-input { flex: 1; resize: none; max-height: 110px; padding: 10px 13px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); font-size: 14px; font-family: inherit; line-height: 1.4; }
+.af-chat-input:focus { outline: none; border-color: var(--wine); }
+.af-chat-enviar { flex-shrink: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: var(--wine); color: #fff; }
+.af-chat-enviar:disabled { opacity: 0.4; }
 
 .af-fab { position: absolute; bottom: 78px; right: 20px; background: var(--wine); color: white; width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 6px 16px rgba(193,66,31,0.35); z-index: 10; transition: transform 0.18s ease, box-shadow 0.18s ease; cursor: pointer; }
 .af-fab:hover { transform: scale(1.07); box-shadow: 0 8px 22px rgba(193,90,52,0.45); }

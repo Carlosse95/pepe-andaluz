@@ -87,6 +87,73 @@ export const suscribirPedidosWhatsApp = (callback) => {
   return () => supabase.removeChannel(canal);
 };
 
+/* ------------- Bandeja de WhatsApp (conversaciones con clientes) ------------- */
+// El bot solo apunta pedidos rutinarios; lo demás lo contesta Pepe desde
+// aquí, porque el trato con él es lo que la gente busca del negocio.
+
+export const listarConversaciones = async () => {
+  if (!nubeActiva) return [];
+  const { data, error } = await supabase
+    .from("whatsapp_conversaciones")
+    .select("*")
+    .order("ultimo_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return data || [];
+};
+
+export const listarMensajes = async (telefono) => {
+  if (!nubeActiva) return [];
+  const { data, error } = await supabase
+    .from("whatsapp_mensajes")
+    .select("*")
+    .eq("telefono", telefono)
+    .order("creado_at")
+    .limit(300);
+  if (error) throw error;
+  return data || [];
+};
+
+// El envío pasa por el servidor: el token de WhatsApp no puede estar en la
+// app, o cualquiera podría escribir a nombre del negocio.
+export const enviarMensajeWhatsApp = async (telefono, texto) => {
+  const { data } = await supabase.auth.getSession();
+  const jwt = data && data.session && data.session.access_token;
+  if (!jwt) throw new Error("Necesitas iniciar sesión para contestar.");
+
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-enviar`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      apikey: SUPABASE_ANON_KEY,
+      authorization: `Bearer ${jwt}`,
+    },
+    body: JSON.stringify({ telefono, texto }),
+  });
+  const cuerpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(cuerpo.error || "No se pudo enviar el mensaje.");
+  return true;
+};
+
+// Marca la conversación como vista para que deje de aparecer pendiente.
+export const marcarConversacionLeida = async (telefono) => {
+  if (!nubeActiva) return;
+  await supabase
+    .from("whatsapp_conversaciones")
+    .update({ necesita_pepe: false, leido_at: new Date().toISOString() })
+    .eq("telefono", telefono);
+};
+
+export const suscribirBandejaWhatsApp = (callback) => {
+  if (!nubeActiva) return () => {};
+  const canal = supabase
+    .channel("bandeja-whatsapp")
+    .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_mensajes" }, () => callback())
+    .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_conversaciones" }, () => callback())
+    .subscribe();
+  return () => supabase.removeChannel(canal);
+};
+
 /* ----------------------------- Sesión ----------------------------- */
 
 export const obtenerSesion = async () => {

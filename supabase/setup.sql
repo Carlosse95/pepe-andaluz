@@ -141,3 +141,56 @@ begin
   alter publication supabase_realtime add table public.pedidos_whatsapp;
 exception when duplicate_object then null;
 end $$;
+
+-- ---------- Bandeja de entrada de WhatsApp ----------
+-- Para que Pepe conteste desde la app lo que el bot no debe contestar:
+-- el trato personal con él es lo que la gente busca del negocio.
+-- `whatsapp_chats` guarda el contexto técnico de la IA (no se puede leer);
+-- estas dos tablas guardan la conversación como un chat normal.
+
+create table if not exists public.whatsapp_mensajes (
+  id        bigserial primary key,
+  telefono  text not null,
+  de        text not null,          -- 'cliente' | 'bot' | 'pepe'
+  texto     text not null,
+  creado_at timestamptz not null default now()
+);
+
+create index if not exists whatsapp_mensajes_chat_idx
+  on public.whatsapp_mensajes (telefono, creado_at);
+
+create table if not exists public.whatsapp_conversaciones (
+  telefono     text primary key,
+  nombre       text not null default '',
+  ultimo_texto text not null default '',
+  ultimo_at    timestamptz not null default now(),
+  -- Se prende cuando la IA pide que conteste Pepe; solo él lo apaga.
+  necesita_pepe boolean not null default false,
+  motivo_pepe   text not null default '',
+  leido_at      timestamptz
+);
+
+alter table public.whatsapp_mensajes       enable row level security;
+alter table public.whatsapp_conversaciones enable row level security;
+
+-- Los usuarios activos leen todo y escriben sus respuestas.
+drop policy if exists "wa mensajes leer"      on public.whatsapp_mensajes;
+drop policy if exists "wa mensajes insertar"  on public.whatsapp_mensajes;
+drop policy if exists "wa conversa leer"      on public.whatsapp_conversaciones;
+drop policy if exists "wa conversa editar"    on public.whatsapp_conversaciones;
+create policy "wa mensajes leer"     on public.whatsapp_mensajes       for select using (public.es_usuario_activo());
+create policy "wa mensajes insertar" on public.whatsapp_mensajes       for insert with check (public.es_usuario_activo());
+create policy "wa conversa leer"     on public.whatsapp_conversaciones for select using (public.es_usuario_activo());
+create policy "wa conversa editar"   on public.whatsapp_conversaciones for update using (public.es_usuario_activo());
+
+do $$
+begin
+  alter publication supabase_realtime add table public.whatsapp_mensajes;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.whatsapp_conversaciones;
+exception when duplicate_object then null;
+end $$;
