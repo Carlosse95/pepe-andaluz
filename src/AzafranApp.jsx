@@ -7,7 +7,7 @@ import {
   PackageSearch, MessageCircle, Copy, Wallet,
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil,
 } from "lucide-react";
-import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import jsPDF from "jspdf";
 import {
   nubeActiva, almacen, suscribirAlmacen,
@@ -2251,7 +2251,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [diaSel, setDiaSel] = useState(todayISO());
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
   const [buscaGasto, setBuscaGasto] = useState("");
+  const [mesGasto, setMesGasto] = useState("todos");
   const [mesesPlegados, setMesesPlegados] = useState({});
+  const [posibleDuplicado, setPosibleDuplicado] = useState(null);
+  const [duplicadosRevisados, setDuplicadosRevisados] = useState(false);
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
@@ -2337,15 +2340,29 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const gastosFiltrados = gastosAnio
     .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
+    // El mes va aparte del texto: antes todo iba junto en un solo campo y
+    // buscar "julio" o "7" daba resultados raros.
+    .filter((g) => mesGasto === "todos" || Number(g.fecha.split("-")[1]) - 1 === Number(mesGasto))
     .filter((g) => {
-      const q = buscaGasto.trim().toLowerCase();
+      const q = normalizarNombreGasto(buscaGasto);
       if (!q) return true;
-      // Se busca por lo que uno tiene en la cabeza: el nombre, la categoría,
-      // el monto o la fecha.
-      return [g.descripcion, g.categoria, String(g.monto), fmtDateHuman(g.fecha), g.fecha]
-        .some((campo) => (campo || "").toString().toLowerCase().includes(q));
+      // Solo por lo que uno recuerda del gasto: cómo se llama, de qué es, o
+      // cuánto costó. La fecha ya se filtra con el mes de arriba.
+      const montoTexto = String(parseFloat(g.monto) || 0);
+      return (
+        normalizarNombreGasto(g.descripcion).includes(q) ||
+        normalizarNombreGasto(g.categoria).includes(q) ||
+        montoTexto.startsWith(q.replace(/\D/g, "") || " ")
+      );
     })
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+
+  // Meses que de verdad tienen gastos, para no ofrecer los doce vacíos.
+  const mesesConGastos = [...new Set(
+    gastosAnio
+      .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
+      .map((g) => Number(g.fecha.split("-")[1]) - 1)
+  )].sort((a, b) => a - b);
 
   // Cuánto se lleva gastado en cada categoría, para verlo sin sacar cuentas.
   const totalPorCategoria = {};
@@ -2372,6 +2389,63 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const alternarMes = (mesIdx) =>
     setMesesPlegados((prev) => ({ ...prev, [mesIdx]: !prev[mesIdx] }));
+
+  // Reparto del año para la dona: de lo que entró, cuánto se fue en gastos y
+  // cuánto sobró. Si se gastó de más, la dona muestra solo el gasto y el
+  // centro avisa que faltó.
+  const repartoAnual = utilidadAnio >= 0
+    ? [
+        { nombre: "Se fue en gastos", valor: totalGastosAnio, color: COLOR_GASTO },
+        { nombre: "Quedó", valor: utilidadAnio, color: COLOR_WINE },
+      ].filter((r) => r.valor > 0)
+    : [{ nombre: "Se fue en gastos", valor: totalGastosAnio, color: COLOR_GASTO }];
+
+  const mesesConMovimiento = datosFinanzasMensual.filter(
+    (d) => (d.ingreso || 0) > 0 || (d.gasto || 0) > 0
+  );
+
+  // Gastos que parecen capturados dos veces. Se miran los que caen cerca en
+  // el tiempo y se parecen en monto y en nombre: así se pesca tanto el
+  // "le di dos veces a guardar" como el "lo apuntamos los dos".
+  const seParecenGastos = (a, b) => {
+    const diaA = new Date(a.fecha + "T00:00:00").getTime();
+    const diaB = new Date(b.fecha + "T00:00:00").getTime();
+    const diasAparte = Math.abs(diaA - diaB) / 86400000;
+    if (isNaN(diasAparte) || diasAparte > 3) return false;
+
+    const montoA = parseFloat(a.monto) || 0;
+    const montoB = parseFloat(b.monto) || 0;
+    if (montoA <= 0 || montoB <= 0) return false;
+    const dif = Math.abs(montoA - montoB) / Math.max(montoA, montoB);
+    // Igual, o a menos del 5% de diferencia (por si uno lo apuntó redondeado).
+    if (dif > 0.05) return false;
+
+    const nomA = (a.descripcion || "").trim();
+    const nomB = (b.descripcion || "").trim();
+    const mismaCategoria = a.categoria === b.categoria;
+    // Sin nombre, basta con la categoría; con nombre, que se parezca.
+    if (!nomA || !nomB) return mismaCategoria;
+    return sonElMismoNombre(nomA, nomB) || (mismaCategoria && dif === 0);
+  };
+
+  // Parejas ya registradas que parecen repetidas, para avisarlas.
+  const duplicadosExistentes = (() => {
+    const parejas = [];
+    const ordenados = [...gastos].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+    for (let i = 0; i < ordenados.length; i++) {
+      for (let j = i + 1; j < ordenados.length; j++) {
+        // Van ordenados por fecha: al pasarse de 3 días ya no hay nada que ver.
+        const dias = Math.abs(
+          new Date(ordenados[j].fecha + "T00:00:00") - new Date(ordenados[i].fecha + "T00:00:00")
+        ) / 86400000;
+        if (dias > 3) break;
+        if (seParecenGastos(ordenados[i], ordenados[j])) {
+          parejas.push([ordenados[i], ordenados[j]]);
+        }
+      }
+    }
+    return parejas.slice(0, 12);
+  })();
 
   // Los cigarros son gasto de todos los días. Para no capturar $270 diarios a
   // mano, se registra solo una vez al mes, con lo que suman los días de ese mes.
@@ -2453,11 +2527,29 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     );
   };
 
-  const agregarGasto = () => {
-    if (!nuevoGasto.monto || nuevoGasto.monto <= 0) return;
-    const g = { id: uid(), fecha: nuevoGasto.fecha, categoria: nuevoGasto.categoria, descripcion: nuevoGasto.descripcion.trim(), monto: parseFloat(nuevoGasto.monto) };
+  const guardarGastoNuevo = (g) => {
     onGuardarGastos([g, ...gastos]);
     setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
+    setPosibleDuplicado(null);
+  };
+
+  const agregarGasto = () => {
+    if (!nuevoGasto.monto || nuevoGasto.monto <= 0) return;
+    const g = {
+      id: uid(),
+      fecha: nuevoGasto.fecha,
+      categoria: nuevoGasto.categoria,
+      descripcion: nuevoGasto.descripcion.trim(),
+      monto: parseFloat(nuevoGasto.monto),
+    };
+    // Antes de guardar se avisa si ya hay uno igual o muy parecido: es fácil
+    // apuntar dos veces el mismo gasto, sobre todo si lo capturan dos personas.
+    const parecidos = gastos.filter((viejo) => seParecenGastos(g, viejo));
+    if (parecidos.length) {
+      setPosibleDuplicado({ nuevo: g, parecidos });
+      return;
+    }
+    guardarGastoNuevo(g);
   };
   const eliminarGasto = (id) => onGuardarGastos(gastos.filter((g) => g.id !== id));
 
@@ -3081,21 +3173,59 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos</span>
           </div>
 
-          {/* La diferencia, mes por mes, sin tener que tocar la gráfica. */}
-          <div className="af-diferencia-lista">
-            {datosFinanzasMensual
-              .filter((d) => (d.ingreso || 0) > 0 || (d.gasto || 0) > 0)
-              .map((d) => {
-                const queda = (d.ingreso || 0) - (d.gasto || 0);
-                return (
-                  <div key={d.mes} className="af-diferencia-row">
-                    <span className="af-diferencia-mes">{d.mes}</span>
-                    <span className={"af-diferencia-monto" + (queda >= 0 ? " positivo" : " negativo")}>
-                      {queda >= 0 ? "Quedan " : "Faltan "}{money(Math.abs(queda))}
-                    </span>
-                  </div>
-                );
-              })}
+        </div>
+
+        {/* De cada peso que entró, cuánto se fue y cuánto quedó. En dona
+            porque de un vistazo se ve la proporción, que es lo que importa;
+            al lado, el mes a mes en fichas para no hacer una lista larga. */}
+        <div className="af-card p-4 mb-5 af-chart-card">
+          <div className="af-chart-title">A dónde se fue el dinero — {anio}</div>
+          <div className="af-dona-wrap">
+            <div className="af-dona-grafica">
+              <ResponsiveContainer width="100%" height={190}>
+                <PieChart>
+                  <Pie
+                    data={repartoAnual}
+                    dataKey="valor"
+                    nameKey="nombre"
+                    innerRadius={60}
+                    outerRadius={82}
+                    paddingAngle={2}
+                    stroke="none"
+                  >
+                    {repartoAnual.map((r) => <Cell key={r.nombre} fill={r.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, n) => [money(v), n]} contentStyle={chartTooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="af-dona-centro">
+                <div className="af-dona-centro-label">{utilidadAnio >= 0 ? "Quedó" : "Faltó"}</div>
+                <div className={"af-dona-centro-monto" + (utilidadAnio >= 0 ? " positivo" : " negativo")}>
+                  {money(Math.abs(utilidadAnio))}
+                </div>
+                {totalAnio > 0 && utilidadAnio >= 0 && (
+                  <div className="af-dona-centro-pct">{Math.round((utilidadAnio / totalAnio) * 100)}% de lo que entró</div>
+                )}
+              </div>
+            </div>
+
+            <div className="af-dona-meses">
+              {mesesConMovimiento.length === 0 ? (
+                <div className="af-hint">Todavía no hay movimientos este año.</div>
+              ) : (
+                mesesConMovimiento.map((d) => {
+                  const queda = (d.ingreso || 0) - (d.gasto || 0);
+                  return (
+                    <div key={d.mes} className={"af-mes-ficha" + (queda >= 0 ? " positiva" : " negativa")}>
+                      <span className="af-mes-ficha-mes">{d.mes}</span>
+                      <span className="af-mes-ficha-monto">
+                        {queda >= 0 ? "+" : "−"}{money(Math.abs(queda))}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
 
@@ -3191,11 +3321,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
         )}
 
+        {/* El mes se elige aparte del texto: así queda claro qué filtra cada
+            cosa, en vez de un solo campo que buscaba en todo a la vez. */}
+        {mesesConGastos.length > 1 && (
+          <div className="af-mes-pills mb-3">
+            <button className={"af-mes-pill" + (mesGasto === "todos" ? " active" : "")} onClick={() => setMesGasto("todos")}>
+              Todo el año
+            </button>
+            {mesesConGastos.map((m) => (
+              <button key={m} className={"af-mes-pill" + (String(mesGasto) === String(m) ? " active" : "")} onClick={() => setMesGasto(m)}>
+                {MESES[m].slice(0, 3)}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="af-buscador-gastos mb-3">
           <Search size={16} />
           <input
             className="af-input"
-            placeholder="Buscar por nombre, monto o fecha…"
+            placeholder="Nombre del gasto o monto…"
             value={buscaGasto}
             onChange={(e) => setBuscaGasto(e.target.value)}
           />
@@ -3204,11 +3349,32 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           )}
         </div>
 
-        {buscaGasto.trim() && (
+        {(buscaGasto.trim() || mesGasto !== "todos") && (
           <div className="af-hint mb-3">
             {gastosFiltrados.length === 0
               ? "No hay gastos que coincidan."
               : `${gastosFiltrados.length} ${gastosFiltrados.length === 1 ? "gasto" : "gastos"} · ${money(totalFiltrado)}`}
+          </div>
+        )}
+
+        {/* Gastos que ya estaban capturados dos veces. */}
+        {esAdmin && !duplicadosRevisados && duplicadosExistentes.length > 0 && (
+          <div className="af-parecidos mb-3">
+            <div className="af-parecidos-titulo">
+              <AlertTriangle size={15} /> Parecen apuntados dos veces
+            </div>
+            {duplicadosExistentes.map(([a, b]) => (
+              <div key={a.id + b.id} className="af-parecidos-row">
+                <div className="af-parecidos-txt">
+                  <strong>{a.descripcion || a.categoria}</strong> · {money(a.monto)} el {fmtDateHuman(a.fecha)}
+                  <span className="af-parecidos-hacia"> y {money(b.monto)} el {fmtDateHuman(b.fecha)}</span>
+                </div>
+                <button className="af-btn-chip" onClick={() => eliminarGasto(b.id)}>Borrar el 2º</button>
+              </div>
+            ))}
+            <button className="af-btn-ghost w-full" onClick={() => setDuplicadosRevisados(true)}>
+              Están bien, no son repetidos
+            </button>
           </div>
         )}
 
@@ -3251,6 +3417,34 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Aviso antes de guardar algo que parece ya estar apuntado. */}
+        {posibleDuplicado && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setPosibleDuplicado(null)}>
+            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
+              <div className="af-alerta-titulo">¿No lo apuntaste ya?</div>
+              <div className="af-alerta-texto mb-3">
+                Vas a guardar <strong>{posibleDuplicado.nuevo.descripcion || posibleDuplicado.nuevo.categoria}</strong> por{" "}
+                <strong>{money(posibleDuplicado.nuevo.monto)}</strong>, y ya hay algo muy parecido:
+              </div>
+              <div className="af-dup-lista mb-3">
+                {posibleDuplicado.parecidos.map((p) => (
+                  <div key={p.id} className="af-dup-item">
+                    <span>{p.descripcion || p.categoria}</span>
+                    <span className="af-dup-monto">{money(p.monto)} · {fmtDateHuman(p.fecha)}</span>
+                  </div>
+                ))}
+              </div>
+              <button className="af-btn-primary w-full" onClick={() => setPosibleDuplicado(null)}>
+                Mejor no, ya estaba
+              </button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo)}>
+                Sí es otro, guárdalo
+              </button>
+            </div>
           </div>
         )}
 
@@ -6517,13 +6711,32 @@ const AZAFRAN_CSS = `
 .af-parecidos-txt { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink); }
 .af-parecidos-hacia { color: var(--ink-soft); font-weight: 600; }
 
-/* ---- Diferencia mes a mes bajo la gráfica de ingresos y gastos ---- */
-.af-diferencia-lista { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
-.af-diferencia-row { display: flex; align-items: baseline; justify-content: space-between; font-size: 12.5px; }
-.af-diferencia-mes { color: var(--ink-soft); text-transform: capitalize; }
-.af-diferencia-monto { font-weight: 700; }
-.af-diferencia-monto.positivo { color: var(--ok, #1fa971); }
-.af-diferencia-monto.negativo { color: var(--gasto, #c0392b); }
+/* ---- Dona de a dónde se fue el dinero, con el mes a mes al lado ---- */
+.af-dona-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.af-dona-grafica { position: relative; flex: 1 1 200px; min-width: 190px; }
+/* El texto va encima del hueco de la dona, sin tapar los clics. */
+.af-dona-centro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center; }
+.af-dona-centro-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+/* Se ajusta al hueco de la dona: si el monto es largo, encoge en vez de salirse. */
+.af-dona-centro-monto { font-size: clamp(13px, 4.2vw, 17px); font-weight: 800; line-height: 1.15; max-width: 116px; }
+.af-dona-centro-monto.positivo { color: var(--ok, #1fa971); }
+.af-dona-centro-monto.negativo { color: var(--gasto, #c0392b); }
+.af-dona-centro-pct { font-size: 10px; color: var(--ink-soft); margin-top: 2px; }
+
+.af-dona-meses { flex: 1 1 200px; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; align-content: center; }
+.af-mes-ficha { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border-radius: 10px; border: 1px solid var(--line); }
+.af-mes-ficha.positiva { background: color-mix(in srgb, var(--ok, #1fa971) 9%, transparent); border-color: color-mix(in srgb, var(--ok, #1fa971) 28%, transparent); }
+.af-mes-ficha.negativa { background: color-mix(in srgb, var(--gasto, #c0392b) 8%, transparent); border-color: color-mix(in srgb, var(--gasto, #c0392b) 26%, transparent); }
+.af-mes-ficha-mes { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); }
+.af-mes-ficha-monto { font-size: 12.5px; font-weight: 800; color: var(--ink); }
+.af-mes-ficha.positiva .af-mes-ficha-monto { color: var(--ok, #1fa971); }
+.af-mes-ficha.negativa .af-mes-ficha-monto { color: var(--gasto, #c0392b); }
+
+/* ---- Aviso de gasto repetido ---- */
+.af-alerta-icon-aviso { background: color-mix(in srgb, var(--wine) 12%, transparent); color: var(--wine); }
+.af-dup-lista { display: flex; flex-direction: column; gap: 6px; }
+.af-dup-item { display: flex; flex-direction: column; gap: 1px; padding: 8px 11px; border-radius: 10px; background: color-mix(in srgb, var(--ink-soft) 8%, transparent); font-size: 12.5px; text-align: left; }
+.af-dup-monto { font-size: 11.5px; color: var(--ink-soft); }
 
 /* Aviso de conversaciones esperando respuesta de Pepe. */
 .af-badge { position: absolute; top: -5px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--wine); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 16px; text-align: center; }
