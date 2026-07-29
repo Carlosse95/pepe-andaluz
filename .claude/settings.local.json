@@ -84,7 +84,11 @@
       "Bash(curl -s \"https://carlosse95.github.io/pepe-andaluz/index.html?x=$\\(date +%s\\)\")",
       "Bash(curl -s -H \"Cache-Control: no-cache\" \"https://carlosse95.github.io/pepe-andaluz/index.html?x=$\\(date +%s\\)\")",
       "Bash(grep '^index-.*\\\\.js$')",
-      "Bash(curl -s -o /dev/null -w \"whatsapp-enviar: HTTP %{http_code}\\\\n\" -X OPTIONS \"https://sykfhnznbneuipibatmx.supabase.co/functions/v1/whatsapp-enviar\")"
+      "Bash(curl -s -o /dev/null -w \"whatsapp-enviar: HTTP %{http_code}\\\\n\" -X OPTIONS \"https://sykfhnznbneuipibatmx.supabase.co/functions/v1/whatsapp-enviar\")",
+      "Bash(/usr/bin/grep -n \"Gas/Servicios\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'else if \\(clave === \"gastos\"\\) setGastos' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -iE \"error|✓ built\")",
+      "Bash(/usr/bin/tail -2 src/config.js)"
     ]
   }
 }

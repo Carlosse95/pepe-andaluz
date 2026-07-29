@@ -2106,7 +2106,15 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
 /* ---------------------------------------------------------------------- */
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Gas/Servicios", "Familiar/Personal", "Otros"];
+const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Familiar/Personal", "Otros"];
+
+// La categoría se llamaba "Gas/Servicios". Los gastos viejos se leen con el
+// nombre nuevo para que no queden fuera de los totales de su categoría.
+const CATEGORIAS_RENOMBRADAS = { "Gas/Servicios": "Servicios" };
+const migrarGasto = (g) => {
+  const nueva = CATEGORIAS_RENOMBRADAS[g?.categoria];
+  return nueva ? { ...g, categoria: nueva } : g;
+};
 
 // Deja el nombre de un gasto en su forma "de comparación": sin acentos, sin
 // mayúsculas y sin espacios de más. Sirve para darse cuenta de que
@@ -2252,9 +2260,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
   const [buscaGasto, setBuscaGasto] = useState("");
   const [mesGasto, setMesGasto] = useState("todos");
+  const [diaGasto, setDiaGasto] = useState("");
+  const [sectorDona, setSectorDona] = useState(null);
   const [mesesPlegados, setMesesPlegados] = useState({});
   const [posibleDuplicado, setPosibleDuplicado] = useState(null);
-  const [duplicadosRevisados, setDuplicadosRevisados] = useState(false);
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
@@ -2340,9 +2349,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const gastosFiltrados = gastosAnio
     .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
-    // El mes va aparte del texto: antes todo iba junto en un solo campo y
-    // buscar "julio" o "7" daba resultados raros.
-    .filter((g) => mesGasto === "todos" || Number(g.fecha.split("-")[1]) - 1 === Number(mesGasto))
+    // El día manda sobre el mes: si se eligió una fecha exacta, se muestra
+    // solo ese día. Va aparte del texto porque son dos búsquedas distintas.
+    .filter((g) => (diaGasto ? g.fecha === diaGasto : true))
+    .filter((g) => diaGasto || mesGasto === "todos" || Number(g.fecha.split("-")[1]) - 1 === Number(mesGasto))
     .filter((g) => {
       const q = normalizarNombreGasto(buscaGasto);
       if (!q) return true;
@@ -2372,6 +2382,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     totalPorCategoria[cat] = (totalPorCategoria[cat] || 0) + (parseFloat(g.monto) || 0);
   });
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
+  // Si hay algún filtro puesto, "no hay nada" significa "no encontré", no
+  // "todavía no capturas gastos".
+  const hayFiltro = Boolean(buscaGasto.trim() || diaGasto || mesGasto !== "todos" || filtroCategoria !== "todos");
 
   // La lista se parte por mes: de corrido se hace larguísima y no se encuentra
   // nada. Cada mes se puede plegar, y arriba trae su total.
@@ -2428,6 +2441,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     return sonElMismoNombre(nomA, nomB) || (mismaCategoria && dif === 0);
   };
 
+  // Parejas que ya se revisaron y resultaron no ser repetidas. Se guardan en
+  // la configuración (no en la pantalla) para que no vuelvan a salir cada vez
+  // que se entra, ni en los otros dispositivos.
+  const omitidos = config?.duplicadosOmitidos || [];
+  const clavePareja = (a, b) => [a.id, b.id].sort().join("|");
+
+  const omitirPareja = (a, b) => {
+    const clave = clavePareja(a, b);
+    if (omitidos.includes(clave)) return;
+    onGuardarConfig({ ...config, duplicadosOmitidos: [...omitidos, clave] });
+  };
+
+  const omitirTodasLasParejas = () => {
+    const nuevas = duplicadosExistentes.map(([a, b]) => clavePareja(a, b));
+    onGuardarConfig({
+      ...config,
+      duplicadosOmitidos: [...new Set([...omitidos, ...nuevas])],
+    });
+  };
+
   // Parejas ya registradas que parecen repetidas, para avisarlas.
   const duplicadosExistentes = (() => {
     const parejas = [];
@@ -2439,7 +2472,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           new Date(ordenados[j].fecha + "T00:00:00") - new Date(ordenados[i].fecha + "T00:00:00")
         ) / 86400000;
         if (dias > 3) break;
-        if (seParecenGastos(ordenados[i], ordenados[j])) {
+        if (
+          seParecenGastos(ordenados[i], ordenados[j]) &&
+          !omitidos.includes(clavePareja(ordenados[i], ordenados[j]))
+        ) {
           parejas.push([ordenados[i], ordenados[j]]);
         }
       }
@@ -3192,21 +3228,55 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     outerRadius={82}
                     paddingAngle={2}
                     stroke="none"
+                    // El detalle se muestra en el centro de la dona, no en un
+                    // globo flotante: así no tapa el número de en medio.
+                    onMouseEnter={(_, i) => setSectorDona(i)}
+                    onMouseLeave={() => setSectorDona(null)}
                   >
-                    {repartoAnual.map((r) => <Cell key={r.nombre} fill={r.color} />)}
+                    {repartoAnual.map((r, i) => (
+                      <Cell
+                        key={r.nombre}
+                        fill={r.color}
+                        opacity={sectorDona === null || sectorDona === i ? 1 : 0.35}
+                      />
+                    ))}
                   </Pie>
-                  <Tooltip formatter={(v, n) => [money(v), n]} contentStyle={chartTooltipStyle} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="af-dona-centro">
-                <div className="af-dona-centro-label">{utilidadAnio >= 0 ? "Quedó" : "Faltó"}</div>
-                <div className={"af-dona-centro-monto" + (utilidadAnio >= 0 ? " positivo" : " negativo")}>
-                  {money(Math.abs(utilidadAnio))}
-                </div>
-                {totalAnio > 0 && utilidadAnio >= 0 && (
-                  <div className="af-dona-centro-pct">{Math.round((utilidadAnio / totalAnio) * 100)}% de lo que entró</div>
+                {sectorDona !== null && repartoAnual[sectorDona] ? (
+                  <>
+                    <div className="af-dona-centro-label">{repartoAnual[sectorDona].nombre}</div>
+                    <div className="af-dona-centro-monto" style={{ color: repartoAnual[sectorDona].color }}>
+                      {money(repartoAnual[sectorDona].valor)}
+                    </div>
+                    {totalAnio > 0 && (
+                      <div className="af-dona-centro-pct">
+                        {Math.round((repartoAnual[sectorDona].valor / totalAnio) * 100)}% de lo que entró
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="af-dona-centro-label">{utilidadAnio >= 0 ? "Quedó" : "Faltó"}</div>
+                    <div className={"af-dona-centro-monto" + (utilidadAnio >= 0 ? " positivo" : " negativo")}>
+                      {money(Math.abs(utilidadAnio))}
+                    </div>
+                    {totalAnio > 0 && utilidadAnio >= 0 && (
+                      <div className="af-dona-centro-pct">{Math.round((utilidadAnio / totalAnio) * 100)}% de lo que entró</div>
+                    )}
+                  </>
                 )}
               </div>
+            </div>
+
+            {/* Qué es cada color, ya que el detalle sale en el centro. */}
+            <div className="af-dona-leyenda">
+              {repartoAnual.map((r) => (
+                <span key={r.nombre}>
+                  <span className="af-legend-dot" style={{ background: r.color }} /> {r.nombre}
+                </span>
+              ))}
             </div>
 
             <div className="af-dona-meses">
@@ -3336,7 +3406,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
         )}
 
-        <div className="af-buscador-gastos mb-3">
+        <div className="af-buscador-gastos mb-2">
           <Search size={16} />
           <input
             className="af-input"
@@ -3349,7 +3419,21 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           )}
         </div>
 
-        {(buscaGasto.trim() || mesGasto !== "todos") && (
+        {/* Un día exacto, para cuando se busca "lo del martes pasado". */}
+        <div className="af-buscador-gastos mb-3">
+          <CalendarDays size={16} />
+          <input
+            type="date"
+            className="af-input"
+            value={diaGasto}
+            onChange={(e) => setDiaGasto(e.target.value)}
+          />
+          {diaGasto && (
+            <button className="af-icon-btn" title="Ver todos los días" onClick={() => setDiaGasto("")}><X size={16} /></button>
+          )}
+        </div>
+
+        {hayFiltro && (
           <div className="af-hint mb-3">
             {gastosFiltrados.length === 0
               ? "No hay gastos que coincidan."
@@ -3358,22 +3442,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         )}
 
         {/* Gastos que ya estaban capturados dos veces. */}
-        {esAdmin && !duplicadosRevisados && duplicadosExistentes.length > 0 && (
+        {esAdmin && duplicadosExistentes.length > 0 && (
           <div className="af-parecidos mb-3">
             <div className="af-parecidos-titulo">
               <AlertTriangle size={15} /> Parecen apuntados dos veces
             </div>
             {duplicadosExistentes.map(([a, b]) => (
-              <div key={a.id + b.id} className="af-parecidos-row">
+              <div key={clavePareja(a, b)} className="af-parecidos-row">
                 <div className="af-parecidos-txt">
                   <strong>{a.descripcion || a.categoria}</strong> · {money(a.monto)} el {fmtDateHuman(a.fecha)}
                   <span className="af-parecidos-hacia"> y {money(b.monto)} el {fmtDateHuman(b.fecha)}</span>
                 </div>
-                <button className="af-btn-chip" onClick={() => eliminarGasto(b.id)}>Borrar el 2º</button>
+                <div className="af-parecidos-botones">
+                  <button className="af-btn-chip" onClick={() => eliminarGasto(b.id)}>Borrar el 2º</button>
+                  {/* Este par en concreto no es repetido: se deja de avisar solo de él. */}
+                  <button className="af-btn-ghost af-btn-chico" onClick={() => omitirPareja(a, b)}>No es repetido</button>
+                </div>
               </div>
             ))}
-            <button className="af-btn-ghost w-full" onClick={() => setDuplicadosRevisados(true)}>
-              Están bien, no son repetidos
+            <button className="af-btn-ghost w-full" onClick={omitirTodasLasParejas}>
+              Están bien todos, no me vuelvas a avisar
             </button>
           </div>
         )}
@@ -3381,9 +3469,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {gastosFiltrados.length === 0 ? (
           <EmptyState
             icon={<Receipt size={26} />}
-            title={buscaGasto.trim() ? "Sin resultados" : "Sin gastos registrados"}
-            subtitle={buscaGasto.trim()
-              ? "Prueba con otra palabra, o limpia la búsqueda."
+            title={hayFiltro ? "Sin resultados" : "Sin gastos registrados"}
+            subtitle={hayFiltro
+              ? "Prueba con otra palabra, otro día, o quita los filtros."
               : "Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."}
           />
         ) : (
@@ -5601,7 +5689,7 @@ export default function App() {
       else if (clave === "historico-mensual") setHistorico(valor);
       else if (clave === "presupuestos") setPresupuestos(asignarFolios(valor));
       else if (clave === "avatares") setAvatares(valor || {});
-      else if (clave === "gastos") setGastos(valor || []);
+      else if (clave === "gastos") setGastos((valor || []).map(migrarGasto));
     } catch (e) {
       console.error("Error aplicando " + clave, e);
     }
@@ -6707,8 +6795,10 @@ const AZAFRAN_CSS = `
 /* ---- Aviso de nombres de gasto escritos de varias formas ---- */
 .af-parecidos { background: color-mix(in srgb, var(--wine) 7%, transparent); border: 1px solid color-mix(in srgb, var(--wine) 25%, transparent); border-radius: 12px; padding: 11px 13px; }
 .af-parecidos-titulo { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--wine); margin-bottom: 8px; }
-.af-parecidos-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
-.af-parecidos-txt { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink); }
+.af-parecidos-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
+.af-parecidos-txt { flex: 1; min-width: 140px; font-size: 12.5px; color: var(--ink); }
+.af-parecidos-botones { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.af-btn-chico { padding: 4px 9px; font-size: 11.5px; }
 .af-parecidos-hacia { color: var(--ink-soft); font-weight: 600; }
 
 /* ---- Dona de a dónde se fue el dinero, con el mes a mes al lado ---- */
@@ -6723,6 +6813,7 @@ const AZAFRAN_CSS = `
 .af-dona-centro-monto.negativo { color: var(--gasto, #c0392b); }
 .af-dona-centro-pct { font-size: 10px; color: var(--ink-soft); margin-top: 2px; }
 
+.af-dona-leyenda { flex: 1 1 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; font-size: 11.5px; color: var(--ink-soft); order: 3; }
 .af-dona-meses { flex: 1 1 200px; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; align-content: center; }
 .af-mes-ficha { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border-radius: 10px; border: 1px solid var(--line); }
 .af-mes-ficha.positiva { background: color-mix(in srgb, var(--ok, #1fa971) 9%, transparent); border-color: color-mix(in srgb, var(--ok, #1fa971) 28%, transparent); }
