@@ -80,7 +80,10 @@
       "Bash(curl -s -X POST https://sykfhnznbneuipibatmx.supabase.co/functions/v1/whatsapp-webhook -H 'Content-Type: application/json' -H 'apikey: sb_publishable_A5eYAl9lvTnFJkzVJShH-A_2GhS7n_e' -H 'Authorization: Bearer sb_publishable_A5eYAl9lvTnFJkzVJShH-A_2GhS7n_e' -d '{\"entry\":[{\"changes\":[{\"value\":{\"contacts\":[{\"profile\":{\"name\":\"Carlos Prueba\"}}],\"messages\":[{\"from\":\"5219993554861\",\"text\":{\"body\":\"Buenas! Soy Carlos Segura. Quiero 3 kg de paella negra, 6 kg de paella de mariscos, 5 raciones de croquetas de jamon y 2 aliolis. Paso yo a recogerlo el 30 de julio a las 2 de la tarde. Ya con eso, registralo por favor, confirmo que asi esta correcto.\"}}]}}]}]}')",
       "Bash(curl -s -X POST https://sykfhnznbneuipibatmx.supabase.co/functions/v1/whatsapp-webhook -H 'Content-Type: application/json' -H 'apikey: sb_publishable_A5eYAl9lvTnFJkzVJShH-A_2GhS7n_e' -H 'Authorization: Bearer sb_publishable_A5eYAl9lvTnFJkzVJShH-A_2GhS7n_e' -d '{\"entry\":[{\"changes\":[{\"value\":{\"contacts\":[{\"profile\":{\"name\":\"Carlos Prueba\"}}],\"messages\":[{\"from\":\"5219993554861\",\"text\":{\"body\":\"Buenas! Soy Carlos Segura. Quiero 3 kg de paella negra, 6 kg de paella de mariscos, 5 raciones de croquetas de jamon y 2 aliolis. Paso yo a recogerlo el 30 de julio a las 2 de la tarde. Ya con eso registralo por favor, confirmo que asi esta correcto.\"}}]}}]}]}')",
       "WebFetch(domain:developers.facebook.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(curl -s \"https://carlosse95.github.io/pepe-andaluz/index.html?x=$\\(date +%s\\)\")",
+      "Bash(curl -s -H \"Cache-Control: no-cache\" \"https://carlosse95.github.io/pepe-andaluz/index.html?x=$\\(date +%s\\)\")",
+      "Bash(grep '^index-.*\\\\.js$')"
     ]
   }
 }

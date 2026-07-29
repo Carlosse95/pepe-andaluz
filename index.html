@@ -4,6 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
     <title>Pepe Andaluz</title>
+    <script>
+      // Red de seguridad contra la pantalla en blanco.
+      //
+      // Safari (sobre todo en iPhone y iPad) se guarda este index.html y sigue
+      // pidiendo el archivo de la app viejo aunque ya haya uno nuevo publicado.
+      // Si esa versión guardada truena al arrancar, la app se queda en blanco y
+      // no se puede recuperar sola: el aviso de "hay versión nueva" vive DENTRO
+      // de la app, y si la app no arranca, ese código nunca corre.
+      //
+      // Por eso este pedacito va aquí, suelto en la página: es lo único que
+      // sigue funcionando cuando lo demás falla. Si a los 10 segundos la app no
+      // se dibujó, recarga pidiendo los archivos de nuevo.
+      (function () {
+        var MARCA = "pepe_rescate";
+        // Si esta carga YA es el reintento, no volver a intentar: así nunca
+        // se queda dando vueltas recargando.
+        if (location.search.indexOf("r=") !== -1) {
+          try { sessionStorage.setItem(MARCA, "1"); } catch (e) {}
+          return;
+        }
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || root.childElementCount > 0) return; // la app sí arrancó
+          try {
+            if (sessionStorage.getItem(MARCA)) return; // ya se intentó
+            sessionStorage.setItem(MARCA, "1");
+          } catch (e) {}
+          location.replace(location.pathname + "?r=" + Date.now());
+        }, 10000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
