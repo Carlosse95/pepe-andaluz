@@ -90,7 +90,15 @@
       "Bash(/usr/bin/grep -iE \"error|✓ built\")",
       "Bash(/usr/bin/tail -2 src/config.js)",
       "Bash(/usr/bin/grep -n \"function OrderCard\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/tail -1 src/config.js)"
+      "Bash(/usr/bin/tail -1 src/config.js)",
+      "Bash(/usr/bin/grep -n \"af-row-2\\\\|af-form-row\\\\|grid-template-columns\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-grid-2\\\\|af-fecha-hora\\\\|af-2col\\\\|display: flex.*gap.*fecha\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'label>Fecha<\\\\|label>Hora<' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^\\\\.af-topbar\\\\|^\\\\.af-topbar-nav\\\\|^\\\\.af-topbar-link\\\\|^\\\\.af-main\\\\|^\\\\.af-app\\\\|^\\\\.af-avatar-btn\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-topbar\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -v \"className\")",
+      "Bash(/usr/bin/grep -n -- \"--glass:\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^\\\\.af-field\\\\b\\\\|^\\\\.af-field {\\\\|^\\\\.af-input {\" src/AzafranApp.jsx)"
     ]
   }
 }

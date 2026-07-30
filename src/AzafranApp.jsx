@@ -6595,6 +6595,8 @@ const AZAFRAN_CSS = `
   --neutral-soft: #EAF0FB;
   --line: #D7E3F5;
   --glass: rgba(255,255,255,0.7);
+  /* Para barras fijas: casi opaco, para que nada se lea por detrás al deslizar. */
+  --glass-solido: rgba(255,255,255,0.94);
 
   font-family: 'Inter', sans-serif;
   background: var(--bg);
@@ -6887,10 +6889,26 @@ const AZAFRAN_CSS = `
 .af-fab:hover { transform: scale(1.07); box-shadow: 0 8px 22px rgba(193,90,52,0.45); }
 .af-fab:active { transform: scale(0.96); }
 
-.af-field { margin-bottom: 16px; }
+/* min-width:0 para que el campo pueda encogerse dentro de una rejilla. Sin
+   esto, en Safari de iPad y iPhone los campos de fecha y hora (que traen un
+   ancho propio grande) no cabían en su columna y se montaban uno sobre otro. */
+.af-field { margin-bottom: 16px; min-width: 0; }
 .af-field label { display: block; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin-bottom: 6px; }
 
-.af-input { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; font-size: 14.5px; font-family: 'Inter', sans-serif; color: var(--ink); outline: none; }
+.af-input { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; font-size: 14.5px; font-family: 'Inter', sans-serif; color: var(--ink); outline: none; }
+
+/* Safari de iOS le pone a los campos de fecha y hora un tamaño propio que no
+   respeta el ancho de su columna: se salían de la tarjeta y se traslapaban.
+   Quitándoles la apariencia nativa ya se comportan como cualquier campo. */
+.af-input[type="date"], .af-input[type="time"], .af-input[type="datetime-local"] {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; min-height: 44px;
+}
+/* El iconito del calendario/reloj se queda a la derecha sin empujar el texto. */
+.af-input[type="date"]::-webkit-date-and-time-value,
+.af-input[type="time"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+.af-input[type="date"]::-webkit-calendar-picker-indicator,
+.af-input[type="time"]::-webkit-calendar-picker-indicator { margin-left: auto; flex-shrink: 0; }
 .af-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
 /* Bug conocido de iOS Safari: el valor de <input type="date"> no queda
    centrado verticalmente dentro del campo a menos que se fuerce esto. */
@@ -7302,19 +7320,34 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-sidebar { display: none; }
   .af-topbar {
     display: flex; align-items: center; gap: 6px;
-    padding: 12px 20px; max-width: 100%; overflow: hidden;
-    background: var(--glass);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    padding: 12px 20px; max-width: 100%;
+    /* Fondo casi sólido: en Safari de iPad y iPhone el desenfoque a veces no
+       se aplica y con el fondo translúcido se veía el contenido pasar por
+       detrás de la barra al deslizar. */
+    background: var(--surface);
     border-bottom: 1px solid var(--line);
     position: sticky; top: 0; z-index: 30;
+  }
+  /* El desenfoque solo donde funciona, y aun así con el fondo casi opaco: en
+     Safari de iPad el desenfoque falla en barras pegadas al deslizar, y con
+     el 70% de antes se alcanzaba a leer el contenido pasando por detrás. */
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .af-topbar {
+      background: var(--glass-solido);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+    }
   }
   /* min-width:0 + scroll propio: si no, los 6 botones empujan la barra más
      allá del ancho de la pantalla y aparece scroll horizontal en toda la app
      (se notaba sobre todo en iPad vertical). */
+  /* El padding vertical deja respirar a la píldora del botón activo y a su
+     sombra: con el scroll horizontal pegado al borde se cortaban por arriba
+     y por abajo. El margen negativo evita que ese hueco crezca la barra. */
   .af-topbar-nav {
     display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; padding-left: 8px;
-    overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
+    overflow-x: auto; overflow-y: visible; scrollbar-width: none; -ms-overflow-style: none;
+    padding-top: 6px; padding-bottom: 6px; margin-top: -6px; margin-bottom: -6px;
   }
   .af-topbar-nav::-webkit-scrollbar { display: none; }
   .af-topbar-link {
