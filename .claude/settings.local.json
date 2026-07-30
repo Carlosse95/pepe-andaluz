@@ -98,7 +98,28 @@
       "Bash(/usr/bin/grep -n \"af-topbar\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -v \"className\")",
       "Bash(/usr/bin/grep -n -- \"--glass:\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"^\\\\.af-field\\\\b\\\\|^\\\\.af-field {\\\\|^\\\\.af-input {\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"^\\\\.af-field\\\\b\\\\|^\\\\.af-field {\\\\|^\\\\.af-input {\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"ingredientes.*stock\\\\|stock.*ingredientes\\\\|descontar\\\\|restarStock\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"stock bajo\\\\|bajo stock\\\\|alertaStock\\\\|stockMinimo\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"GASTO_CIGARROS\\\\|gastoRecurrente\\\\|recurrente\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"bajoIngredientes\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"guardarPedidoForm\\\\|const guardarPedido\\\\b\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"stock:.*stock -\\\\|stock - \\\\|\\\\.stock =\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/sed -n '433,500p' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"calcularConsumoIngredientes\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const cambiarEstadoPedido\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const ajustarStock\" -A 16 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"inactiv\\\\|sin pedir\\\\|no ha pedido\\\\|ultimoPedido\\\\|ultimaCompra\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"clientesParecidos\\\\|confirmDup\\\\|posibleDup\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"exportarDatos\\\\|importarDatos\\\\|respaldo\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"recurrente\\\\|cadaMes\\\\|mensualFijo\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"cobrosPendientes\\\\|porCobrar\\\\|saldoPendiente\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"recordatorio\\\\|dia antes\\\\|manana.*aviso\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function ClientesView\" -A 30 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"clientesFiltrados\\\\|const listaClientes\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/sed -n '1975,2020p' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const filtrados\\\\|\\\\.filter\\(\\(c\\) =>\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n '\"af-section-title\">Agregar gasto' src/AzafranApp.jsx)"
     ]
   }
 }

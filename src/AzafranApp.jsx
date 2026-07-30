@@ -1438,6 +1438,21 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const activosFiltrados =
     estadoFiltro === "todos" ? activosHoy : activosHoy.filter((p) => (p.estado || "pendiente") === estadoFiltro);
 
+  // Lo de mañana, para verlo desde hoy: da tiempo de comprar lo que falte y
+  // de recordarle al cliente. Antes había que ir a buscarlo a la Agenda.
+  const manianaISO = (() => {
+    const d = new Date(todayISO() + "T00:00:00");
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const pedidosManiana = pedidos
+    .filter((p) => p.fecha === manianaISO && (p.estado || "pendiente") !== "entregado")
+    .sort((a, b) => (a.hora > b.hora ? 1 : -1));
+  const kgManiana = pedidosManiana.reduce(
+    (a, p) => a + (p.items || []).reduce((s, it) => s + (it.tipo === "paella" ? it.kg || 0 : 0), 0),
+    0
+  );
+
   // Paelleras por recoger: solo de pedidos YA ENTREGADOS (antes de eso,
   // la paellera sigue en la cocina y no hay nada que perseguir).
   const pendientesPaellera = [];
@@ -1475,6 +1490,29 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           <FileText size={16} /> Nuevo presupuesto
         </button>
       </div>
+
+      {/* Un vistazo a mañana desde hoy: para comprar a tiempo y avisar. */}
+      {pedidosManiana.length > 0 && (
+        <div className="af-maniana mb-3 mt-3">
+          <div className="af-maniana-titulo">
+            <CalendarDays size={15} /> Mañana
+          </div>
+          <div className="af-maniana-resumen">
+            {pedidosManiana.length} {pedidosManiana.length === 1 ? "pedido" : "pedidos"}
+            {kgManiana > 0 && <> · {Math.round(kgManiana * 10) / 10} kg de paella</>}
+          </div>
+          {pedidosManiana.slice(0, 4).map((p) => (
+            <div key={p.id} className="af-maniana-row">
+              <span className="af-maniana-hora">{fmtHora12(p.hora)}</span>
+              <span className="af-maniana-cliente">{p.clienteNombre}</span>
+              <span className="af-maniana-modo">{p.entrega ? "A domicilio" : "Recoge"}</span>
+            </div>
+          ))}
+          {pedidosManiana.length > 4 && (
+            <div className="af-maniana-mas">y {pedidosManiana.length - 4} más</div>
+          )}
+        </div>
+      )}
 
       {(bajoStock.length > 0 || bajoIngredientes.length > 0) && (
         <div className="af-alert-box mb-5 mt-3">
@@ -1896,6 +1934,7 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
   const [nuevo, setNuevo] = useState(false);
   const [form, setForm] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
   const [confirmDup, setConfirmDup] = useState(false);
+  const [soloAusentes, setSoloAusentes] = useState(false);
 
   const detalle = clientes.find((c) => c.id === detalleId) || null;
 
@@ -2051,9 +2090,41 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
   }
 
   const term = normNombre(q);
+
+  // Cuándo pidió cada quien por última vez. Sirve para no perder de vista a
+  // los que ya no vuelven: un cliente que dejó de pedir sin que nadie se dé
+  // cuenta es dinero que se va sin ruido.
+  const ultimaCompra = {};
+  pedidos.forEach((p) => {
+    if (!p.clienteId || !p.fecha) return;
+    if (!ultimaCompra[p.clienteId] || p.fecha > ultimaCompra[p.clienteId]) {
+      ultimaCompra[p.clienteId] = p.fecha;
+    }
+  });
+
+  const diasSinPedir = (c) => {
+    const ultima = ultimaCompra[c.id];
+    if (!ultima) return null; // nunca ha pedido
+    const dif = (new Date(todayISO() + "T00:00:00") - new Date(ultima + "T00:00:00")) / 86400000;
+    return Math.max(0, Math.floor(dif));
+  };
+
+  // Solo se consideran "perdidos" los que ya habían pedido antes: alguien que
+  // se dio de alta y nunca pidió es otra cosa, no un cliente que se fue.
+  const DIAS_PARA_EXTRANARLOS = 60;
+  const clientesQueNoVuelven = clientes
+    .map((c) => ({ cliente: c, dias: diasSinPedir(c) }))
+    .filter((x) => x.dias !== null && x.dias >= DIAS_PARA_EXTRANARLOS)
+    .sort((a, b) => b.dias - a.dias);
+
   const lista = clientes
     .filter((c) => term.length === 0 || normNombre(c.nombre).includes(term) || (c.telefono || "").includes(term))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+    .filter((c) => (soloAusentes ? clientesQueNoVuelven.some((x) => x.cliente.id === c.id) : true))
+    .sort((a, b) => {
+      // Al ver los ausentes, primero los que llevan más tiempo sin pedir.
+      if (soloAusentes) return (diasSinPedir(b) || 0) - (diasSinPedir(a) || 0);
+      return a.nombre.localeCompare(b.nombre);
+    });
 
   return (
     <div>
@@ -2073,8 +2144,24 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
       </button>
       <div className="af-hint mb-3" style={{ textAlign: "center" }}>
         {clientes.length} cliente{clientes.length === 1 ? "" : "s"} registrado{clientes.length === 1 ? "" : "s"}
-        {term && ` · mostrando ${lista.length}`}
+        {(term || soloAusentes) && ` · mostrando ${lista.length}`}
       </div>
+
+      {/* Clientes que ya pedían y llevan tiempo sin volver: se avisan para que
+          alguien les escriba, en vez de darse cuenta cuando ya se fueron. */}
+      {clientesQueNoVuelven.length > 0 && (
+        <button
+          className={"af-ausentes-aviso mb-3" + (soloAusentes ? " activo" : "")}
+          onClick={() => setSoloAusentes((v) => !v)}
+        >
+          <AlertTriangle size={15} />
+          <span className="af-ausentes-txt">
+            {soloAusentes
+              ? "Viendo los que no han vuelto — toca para ver todos"
+              : `${clientesQueNoVuelven.length} ${clientesQueNoVuelven.length === 1 ? "cliente lleva" : "clientes llevan"} más de ${DIAS_PARA_EXTRANARLOS} días sin pedir`}
+          </span>
+        </button>
+      )}
 
       {lista.length === 0 ? (
         <EmptyState icon={<Users size={28} />} title="Sin clientes todavía" subtitle="Se crean automáticamente al registrar un pedido." />
@@ -2095,7 +2182,20 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
                   {c.telefono && <span><Phone size={12} className="inline mr-1" />{c.telefono}</span>}
                   {c.direccion && <span className="ml-3"><MapPin size={12} className="inline mr-1" />{c.direccion}</span>}
                 </div>
-                {tienePendiente && <span className="af-chip af-chip-gold mt-2 inline-flex"><ChefHat size={12} /> Paellera pendiente</span>}
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  {tienePendiente && <span className="af-chip af-chip-gold inline-flex"><ChefHat size={12} /> Paellera pendiente</span>}
+                  {/* Hace cuánto que no pide, para saber a quién hablarle. */}
+                  {(() => {
+                    const dias = diasSinPedir(c);
+                    if (dias === null || dias < DIAS_PARA_EXTRANARLOS) return null;
+                    const meses = Math.floor(dias / 30);
+                    return (
+                      <span className="af-chip af-chip-ausente inline-flex">
+                        Sin pedir {meses >= 1 ? `${meses} ${meses === 1 ? "mes" : "meses"}` : `${dias} días`}
+                      </span>
+                    );
+                  })()}
+                </div>
               </div>
             );
           })}
@@ -2277,6 +2377,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [sectorDona, setSectorDona] = useState(null);
   const [mesesPlegados, setMesesPlegados] = useState({});
   const [posibleDuplicado, setPosibleDuplicado] = useState(null);
+  // null = apartado cerrado; objeto = capturando o editando un gasto fijo.
+  const [draftFijo, setDraftFijo] = useState(null);
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
@@ -2526,6 +2628,65 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     onGuardarConfig({ ...config, cigarrosGenerados: [...yaGenerados, claveMes] });
     // eslint-disable-next-line
   }, [esAdmin, config?.cigarrosGenerados]);
+
+  // Gastos que caen todos los meses por el mismo monto (renta, sueldos...).
+  // Se marcan una vez al capturarlos y de ahí en adelante se registran solos,
+  // para no teclearlos cada mes ni que se olviden y descuadren los reportes.
+  useEffect(() => {
+    if (!esAdmin) return;
+    const fijos = config?.gastosFijos || [];
+    if (!fijos.length) return;
+
+    const hoy = new Date();
+    const claveMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+    const generados = config?.fijosGenerados || [];
+
+    const porCrear = fijos.filter((f) => !generados.includes(`${f.id}|${claveMes}`));
+    if (!porCrear.length) return;
+
+    const nuevos = porCrear.map((f) => ({
+      id: uid(),
+      fecha: `${claveMes}-${String(Math.min(f.dia || 1, 28)).padStart(2, "0")}`,
+      categoria: f.categoria,
+      descripcion: f.descripcion,
+      monto: f.monto,
+      esFijo: true,
+    }));
+    onGuardarGastos([...nuevos, ...gastos]);
+    onGuardarConfig({
+      ...config,
+      fijosGenerados: [...generados, ...porCrear.map((f) => `${f.id}|${claveMes}`)],
+    });
+    // eslint-disable-next-line
+  }, [esAdmin, config?.gastosFijos, config?.fijosGenerados]);
+
+  const guardarFijo = () => {
+    const monto = parseFloat(draftFijo.monto) || 0;
+    if (!draftFijo.descripcion.trim() || monto <= 0) return;
+    const fijos = config?.gastosFijos || [];
+    const dia = Math.min(Math.max(Number(draftFijo.dia) || 1, 1), 28);
+
+    if (draftFijo.id) {
+      // Al editar solo se cambia la ficha; lo ya registrado de meses pasados
+      // se queda como está, que es lo que de verdad se pagó entonces.
+      onGuardarConfig({
+        ...config,
+        gastosFijos: fijos.map((f) =>
+          f.id === draftFijo.id ? { ...f, descripcion: draftFijo.descripcion.trim(), categoria: draftFijo.categoria, monto, dia } : f
+        ),
+      });
+    } else {
+      const nuevo = { id: uid(), descripcion: draftFijo.descripcion.trim(), categoria: draftFijo.categoria, monto, dia };
+      onGuardarConfig({ ...config, gastosFijos: [...fijos, nuevo] });
+    }
+    setDraftFijo(null);
+  };
+
+  const quitarFijo = (fijoId) =>
+    onGuardarConfig({ ...config, gastosFijos: (config?.gastosFijos || []).filter((f) => f.id !== fijoId) });
+
+  const gastosFijos = config?.gastosFijos || [];
+  const totalFijosAlMes = gastosFijos.reduce((a, f) => a + (parseFloat(f.monto) || 0), 0);
 
   // Nombres que ya se han usado, para ofrecerlos al escribir y que no acaben
   // cinco variantes del mismo lugar ("Chedraui", "chedragui", "CHEDRAUI"...).
@@ -3327,6 +3488,103 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {esAdmin && (
         <>
+        {/* Gastos que caen igual todos los meses (renta, sueldos, servicios).
+            Se capturan una vez aquí y la app los registra sola cada mes, para
+            no teclearlos de nuevo ni que se olviden y descuadren los reportes. */}
+        <div className="af-section-title">Gastos fijos del mes</div>
+        <div className="af-card p-4 mb-5">
+          <div className="af-hint mb-3">
+            Se registran solos cada mes. Revisa que los montos estén al día: si sube la
+            renta o cambia un sueldo, corrígelo aquí.
+          </div>
+
+          {gastosFijos.length === 0 ? (
+            <div className="af-hint mb-3" style={{ textAlign: "center" }}>
+              Todavía no hay gastos fijos.
+            </div>
+          ) : (
+            <>
+              {gastosFijos.map((f) => (
+                <div key={f.id} className="af-fijos-row">
+                  <div className="af-fijos-txt">
+                    <div className="af-fijos-nombre">{f.descripcion}</div>
+                    <div className="af-fijos-sub">{f.categoria} · cada día {f.dia}</div>
+                  </div>
+                  <span className="af-fijos-monto">{money(f.monto)}</span>
+                  <button
+                    className="af-icon-btn"
+                    title="Cambiar"
+                    onClick={() => setDraftFijo({ ...f, monto: String(f.monto) })}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button className="af-icon-btn" title="Quitar" onClick={() => quitarFijo(f.id)}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+              <div className="af-fijos-total">
+                Suman <strong>{money(totalFijosAlMes)}</strong> al mes
+              </div>
+            </>
+          )}
+
+          {draftFijo ? (
+            <div className="af-fijos-form mt-3">
+              <div className="af-field">
+                <label>¿De qué es?</label>
+                <CampoConSugerencias
+                  value={draftFijo.descripcion}
+                  placeholder="Ej. Renta del local, sueldo de Lupita..."
+                  sugerencias={nombresUsados}
+                  onChange={(descripcion) => setDraftFijo({ ...draftFijo, descripcion })}
+                />
+              </div>
+              <div className="af-field">
+                <label>Categoría</label>
+                <select
+                  className="af-input"
+                  value={draftFijo.categoria}
+                  onChange={(e) => setDraftFijo({ ...draftFijo, categoria: e.target.value })}
+                >
+                  {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="af-field">
+                <label>Cuánto es</label>
+                <NumberField
+                  value={draftFijo.monto}
+                  min={0}
+                  className="af-input"
+                  onChange={(v) => setDraftFijo({ ...draftFijo, monto: v })}
+                />
+              </div>
+              <div className="af-field">
+                <label>Qué día del mes se paga</label>
+                <NumberField
+                  value={draftFijo.dia}
+                  min={1}
+                  max={28}
+                  className="af-input"
+                  onChange={(v) => setDraftFijo({ ...draftFijo, dia: v })}
+                />
+                <div className="af-hint mt-1">Del 1 al 28, para que caiga en todos los meses.</div>
+              </div>
+              <button className="af-btn-primary w-full" onClick={guardarFijo} disabled={!draftFijo.descripcion.trim() || !draftFijo.monto}>
+                {draftFijo.id ? "Guardar cambios" : "Agregar gasto fijo"}
+              </button>
+              <button className="af-btn-ghost w-full mt-2" onClick={() => setDraftFijo(null)}>Cancelar</button>
+            </div>
+          ) : (
+            <button
+              className="af-btn-secondary w-full"
+              onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], monto: "", dia: 1 })}
+            >
+              <Plus size={16} className="inline mr-1" /> Agregar gasto fijo
+            </button>
+          )}
+        </div>
+
         <div className="af-section-title">Agregar gasto</div>
         <div className="af-card p-4 mb-5">
           <div className="af-field">
@@ -6813,6 +7071,32 @@ const AZAFRAN_CSS = `
 .af-parecidos-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
 .af-parecidos-txt { flex: 1; min-width: 140px; font-size: 12.5px; color: var(--ink); }
 .af-parecidos-botones { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ---- Clientes que llevan tiempo sin pedir ---- */
+.af-ausentes-aviso { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 13px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--wine) 28%, transparent); background: color-mix(in srgb, var(--wine) 7%, transparent); color: var(--wine); font-size: 12.5px; font-weight: 600; }
+.af-ausentes-aviso.activo { background: var(--wine); color: #fff; border-color: var(--wine); }
+.af-ausentes-txt { flex: 1; min-width: 0; }
+.af-chip-ausente { background: color-mix(in srgb, var(--gasto, #c0392b) 12%, transparent); color: var(--gasto, #c0392b); font-weight: 700; }
+
+/* ---- Gastos que se registran solos cada mes ---- */
+.af-fijos-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.af-fijos-row:last-of-type { border-bottom: none; }
+.af-fijos-txt { flex: 1; min-width: 0; }
+.af-fijos-nombre { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.af-fijos-sub { font-size: 11.5px; color: var(--ink-soft); }
+.af-fijos-monto { font-size: 13.5px; font-weight: 700; color: var(--gasto, #c0392b); flex-shrink: 0; }
+.af-fijos-total { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); text-align: right; }
+.af-fijos-form { padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* ---- Vistazo a los pedidos de mañana, desde Hoy ---- */
+.af-maniana { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.af-maniana-titulo { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
+.af-maniana-resumen { font-size: 14px; font-weight: 700; color: var(--ink); margin: 4px 0 8px; }
+.af-maniana-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 3px 0; }
+.af-maniana-hora { font-weight: 700; color: var(--wine); flex-shrink: 0; min-width: 62px; }
+.af-maniana-cliente { flex: 1; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-maniana-modo { font-size: 11px; color: var(--ink-soft); flex-shrink: 0; }
+.af-maniana-mas { font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
 
 /* Marca de los pedidos que apuntó el asistente de WhatsApp. */
 .af-chip-ia { background: color-mix(in srgb, var(--wine) 13%, transparent); color: var(--wine); font-weight: 700; }
