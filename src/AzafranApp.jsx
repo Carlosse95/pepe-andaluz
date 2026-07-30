@@ -742,6 +742,14 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
             <span className="af-hora">{fmtHora12(pedido.hora)}</span>
             <span className="af-cliente-nombre">{pedido.clienteNombre}</span>
             {pedido.folio && <span className="af-folio-tag">{fmtFolio(pedido.folio, "#")}</span>}
+            {/* Se avisa a la vista que este pedido lo apuntó el asistente y no
+                una persona, para que nadie lo dé por confirmado de más ni se
+                confunda al verlo aparecer solo. */}
+            {esPedidoDeIA(pedido) && (
+              <span className="af-chip af-chip-ia" title="Lo apuntó el asistente de WhatsApp; conviene confirmarlo con el cliente">
+                <MessageCircle size={11} /> Por WhatsApp
+              </span>
+            )}
           </div>
           {showFecha && <div className="af-fecha-sub">{fmtDateHuman(pedido.fecha)}</div>}
         </div>
@@ -2106,6 +2114,11 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
 /* ---------------------------------------------------------------------- */
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+// Los pedidos que apuntó el asistente de WhatsApp se marcan en la tarjeta:
+// aparecen solos en la lista y sin aviso confunden a quien los ve (ya pasó).
+// La marca vive en las notas porque es lo que escribe el bot al registrarlos.
+const esPedidoDeIA = (pedido) => (pedido?.notas || "").includes("tomado por IA");
+
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Familiar/Personal", "Otros"];
 
 // La categoría se llamaba "Gas/Servicios". Los gastos viejos se leen con el
@@ -6798,6 +6811,9 @@ const AZAFRAN_CSS = `
 .af-parecidos-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
 .af-parecidos-txt { flex: 1; min-width: 140px; font-size: 12.5px; color: var(--ink); }
 .af-parecidos-botones { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* Marca de los pedidos que apuntó el asistente de WhatsApp. */
+.af-chip-ia { background: color-mix(in srgb, var(--wine) 13%, transparent); color: var(--wine); font-weight: 700; }
 .af-btn-chico { padding: 4px 9px; font-size: 11.5px; }
 .af-parecidos-hacia { color: var(--ink-soft); font-weight: 600; }
 

@@ -88,7 +88,9 @@
       "Bash(/usr/bin/grep -n \"Gas/Servicios\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n 'else if \\(clave === \"gastos\"\\) setGastos' src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -iE \"error|✓ built\")",
-      "Bash(/usr/bin/tail -2 src/config.js)"
+      "Bash(/usr/bin/tail -2 src/config.js)",
+      "Bash(/usr/bin/grep -n \"function OrderCard\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/tail -1 src/config.js)"
     ]
   }
 }
