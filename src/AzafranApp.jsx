@@ -476,6 +476,46 @@ const calcularConsumoIngredientes = (items, ingredientes) => {
   return consumo;
 };
 
+// Costo de los ingredientes del INVENTARIO que ya están ligados a una paella.
+//
+// El inventario ya sabe cuánto se usa de cada cosa por kilo (el `porKg` que se
+// captura en Ajustes). Si además se anota lo que costó la bolsa o la caja, el
+// costo por kilo sale solo y no hay que volver a capturar la receta aquí.
+const costoDesdeInventario = (paellaId, ingredientes) => {
+  const detalle = [];
+  let total = 0;
+  (ingredientes || []).forEach((raw) => {
+    const ing = normalizarIngrediente(raw);
+    const porKg = (ing.porKg || {})[paellaId] || 0;
+    const costoPres = parseFloat(ing.costoPresentacion) || 0;
+    if (porKg <= 0 || costoPres <= 0) return;
+
+    const fUso = (UNIDAD_INFO[ing.usoUnidad] || { factor: 1 }).factor;
+    const fPres = (UNIDAD_INFO[ing.presentacionUnidad] || { factor: 1 }).factor;
+    const contenido = (ing.presentacionCantidad || 1) * fPres;
+    if (contenido <= 0) return;
+
+    // Qué parte de una bolsa/caja se va en un kilo de paella, por su costo.
+    const costoPorKg = ((porKg * fUso) / contenido) * costoPres;
+    total += costoPorKg;
+    detalle.push({
+      id: ing.id,
+      nombre: ing.nombre,
+      usa: porKg,
+      usoUnidad: ing.usoUnidad,
+      costoPorKg,
+    });
+  });
+  return { total, detalle };
+};
+
+// Ingredientes del inventario ligados a una paella pero sin precio de compra:
+// no se pueden costear todavía, así que se avisa para que se capture.
+const ingredientesSinPrecio = (paellaId, ingredientes) =>
+  (ingredientes || [])
+    .map(normalizarIngrediente)
+    .filter((ing) => ((ing.porKg || {})[paellaId] || 0) > 0 && !(parseFloat(ing.costoPresentacion) || 0));
+
 // Resumen de producción de un conjunto de pedidos (normalmente los de un
 // mismo día): cuántos kilos de cada paella, cuántas piezas de cada platillo
 // (cada uno por separado, ej. "Croquetas de Bacalao" y "Croquetas de Jamón"
@@ -2862,6 +2902,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       precio: p.precioKg || 0,
       costoManual: p.costoKg || 0,
       receta: recetaDeProducto(p, config),
+      // Lo que ya se puede costear solo desde el inventario.
+      auto: costoDesdeInventario(p.id, config?.ingredientes),
+      sinPrecio: ingredientesSinPrecio(p.id, config?.ingredientes),
     })),
     ...(config?.extras || []).map((e) => ({
       clave: "extra:" + e.id,
@@ -2894,14 +2937,21 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     const faltaRinde = ingredientes.some(
       (ing) => (parseFloat(ing.costo) || 0) > 0 && !(parseFloat(ing.rinde) || 0) && rendimiento <= 0
     );
+    // El costo se arma de tres fuentes, en este orden: lo que sale solo del
+    // inventario, lo que se capturó aquí a mano, y si no hay nada de eso, el
+    // costo suelto que se haya escrito. Así lo automático y lo manual se
+    // suman en vez de competir.
+    const costoAuto = f.auto?.total || 0;
     const usaTanda = costoPorTanda > 0;
-    const costo = usaTanda ? costoPorTanda : f.costoManual;
+    const costoRecetas = costoAuto + costoPorTanda;
+    const costo = costoRecetas > 0 ? costoRecetas : f.costoManual;
     const utilidadUnitaria = f.precio - costo;
     const margen = f.precio > 0 ? utilidadUnitaria / f.precio : 0;
     const costoTotal = v.volumen * costo;
     return {
       ...f,
       costo,
+      costoAuto,
       gastoTanda,
       rendimiento,
       usaTanda,
@@ -3097,16 +3147,48 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       >
                         <PackageSearch size={14} />
                         Sacar el costo con ingredientes
-                        {f.usaTanda && <span className="af-rent-desglose-chip">{money(f.costo)}/{f.unidad}</span>}
+                        {(f.usaTanda || f.costoAuto > 0) && <span className="af-rent-desglose-chip">{money(f.costo)}/{f.unidad}</span>}
                         <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? "▲" : "▼"}</span>
                       </button>
 
                       {rentAbierta[f.clave] && (
                         <div className="af-rent-desglose">
+                          {/* Lo que ya sale solo del inventario: no se captura
+                              aquí, se cambia en Ajustes → Inventario. */}
+                          {f.auto?.detalle?.length > 0 && (
+                            <div className="af-rent-auto">
+                              <div className="af-rent-auto-titulo">
+                                <PackageSearch size={13} /> Del inventario · {money(f.auto.total)}/{f.unidad}
+                              </div>
+                              {f.auto.detalle.map((d) => (
+                                <div key={d.id} className="af-rent-auto-row">
+                                  <span className="af-rent-auto-nombre">{d.nombre}</span>
+                                  <span className="af-rent-auto-usa">{d.usa} {d.usoUnidad}/{f.unidad}</span>
+                                  <span className="af-rent-auto-costo">{money(d.costoPorKg)}</span>
+                                </div>
+                              ))}
+                              <div className="af-rent-auto-nota">
+                                Sale de lo que compras y de cuánto usas por {f.unidad}. Para cambiarlo, ve a
+                                Ajustes → Inventario.
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Ligados a esta paella pero sin precio de compra. */}
+                          {f.sinPrecio?.length > 0 && (
+                            <div className="af-rent-faltan">
+                              <AlertTriangle size={13} />
+                              <span>
+                                Falta poner cuánto cuesta: <strong>{f.sinPrecio.map((i) => i.nombre).join(", ")}</strong>.
+                                Ponlo en Ajustes → Inventario y el costo se calcula solo.
+                              </span>
+                            </div>
+                          )}
+
                           <div className="af-rent-desglose-nota">
-                            Por cada ingrediente apunta lo que costó la compra y para cuántos {pluralUnidad(f.unidad)} te
-                            alcanza; la app saca sola el costo de cada {f.unidad}. Se escriben libres, no hace falta
-                            tenerlos en el inventario.
+                            {f.auto?.detalle?.length > 0
+                              ? `Aquí abajo solo agrega lo que NO está en el inventario (gas, envase, lo que sea). Se suma a lo de arriba.`
+                              : `Por cada ingrediente apunta lo que costó la compra y para cuántos ${pluralUnidad(f.unidad)} te alcanza; la app saca sola el costo de cada ${f.unidad}. Se escriben libres, no hace falta tenerlos en el inventario.`}
                           </div>
 
                           {f.receta.ingredientes.map((ing) => {
@@ -4470,6 +4552,17 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
                     </select>
                   </div>
+
+                  {/* Con este precio, la rentabilidad de cada paella sale sola
+                      a partir de lo que se usa por kilo (el "Por kg" de abajo),
+                      sin volver a capturar la receta en Reportes. */}
+                  <div className="af-mini-label">¿Cuánto te cuesta {["bolsa", "caja", "lata"].includes(ing.presentacionNombre) ? "esa" : "ese"} {ing.presentacionNombre}?</div>
+                  <NumberField
+                    value={ing.costoPresentacion}
+                    min={0}
+                    className="af-input w-full mb-2"
+                    onChange={(v) => setIng({ costoPresentacion: v })}
+                  />
 
                   <div className="af-menu-card-row">
                     <div className="flex-1">
@@ -7151,6 +7244,16 @@ const AZAFRAN_CSS = `
 .af-fijos-monto { font-size: 13.5px; font-weight: 700; color: var(--gasto, #c0392b); flex-shrink: 0; }
 .af-fijos-total { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); text-align: right; }
 .af-fijos-form { padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* ---- Costo que sale solo del inventario, en Rentabilidad ---- */
+.af-rent-auto { background: color-mix(in srgb, var(--ok, #1fa971) 8%, transparent); border: 1px solid color-mix(in srgb, var(--ok, #1fa971) 25%, transparent); border-radius: 11px; padding: 10px 12px; margin-bottom: 10px; }
+.af-rent-auto-titulo { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ok, #1fa971); margin-bottom: 7px; }
+.af-rent-auto-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 2px 0; }
+.af-rent-auto-nombre { flex: 1; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-rent-auto-usa { font-size: 11px; color: var(--ink-soft); flex-shrink: 0; }
+.af-rent-auto-costo { font-weight: 700; color: var(--ink); flex-shrink: 0; min-width: 58px; text-align: right; }
+.af-rent-auto-nota { font-size: 11px; color: var(--ink-soft); margin-top: 7px; }
+.af-rent-faltan { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; color: var(--wine); background: color-mix(in srgb, var(--wine) 8%, transparent); border-radius: 10px; padding: 9px 11px; margin-bottom: 10px; }
 
 /* ---- Paneles plegables de "Lo demás" en Hoy ----
    Todos se ven igual a propósito: antes cada aviso tenía su estilo y estaban

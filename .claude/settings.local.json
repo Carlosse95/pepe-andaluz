@@ -126,7 +126,15 @@
       "Bash(/usr/bin/grep -n \"const irAVista\" -A 12 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"function ProduccionDelDiaBox\" -A 22 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"af-maniana-resumen\\\\|af-maniana-titulo\\\\|af-maniana-mas\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"const bajoStock\\\\|const bajoIngredientes\\\\|const hayPorComprar\\\\|pendientesPaellera.sort\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"const bajoStock\\\\|const bajoIngredientes\\\\|const hayPorComprar\\\\|pendientesPaellera.sort\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"filasRentabilidad\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/sed -n '2830,2870p' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const recetaDeProducto\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/sed -n '2880,2925p' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"presentacionCantidad\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -v \"^4[0-9][0-9]:\")",
+      "Bash(/usr/bin/grep -n \"Sacar el costo con ingredientes\" -B 4 -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const paellerasDelDia\" -A 14 src/AzafranApp.jsx)"
     ]
   }
 }
