@@ -1603,12 +1603,12 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               onToggle={() => setVerCompras((v) => !v)}
             >
               {bajoIngredientes.map((i) => (
-                <div key={i.id} className="af-panel-linea">
+                <div key={i.id} className="af-plegable-linea">
                   {i.nombre}: quedan <strong>{i.stock} {(i.presentacionNombre || i.unidad || "") + (i.stock === 1 ? "" : "s")}</strong> (aviso en {i.minimo})
                 </div>
               ))}
               {bajoStock.map((d) => (
-                <div key={d.id} className="af-panel-linea">
+                <div key={d.id} className="af-plegable-linea">
                   {d.nombre}: quedan <strong>{d.stock}</strong> (aviso en {d.minimo})
                 </div>
               ))}
@@ -1684,14 +1684,14 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 // la pantalla no se sienta revuelta con cada bloque hecho a su manera.
 function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, children }) {
   return (
-    <div className={"af-panel" + (tono === "alerta" ? " af-panel-alerta" : "") + (abierto ? " abierto" : "")}>
-      <button className="af-panel-cabecera" onClick={onToggle}>
-        <span className="af-panel-icono">{icono}</span>
-        <span className="af-panel-titulo">{titulo}</span>
-        {resumen && <span className="af-panel-resumen">{resumen}</span>}
-        <ChevronRight size={16} className={"af-panel-flecha" + (abierto ? " abierta" : "")} />
+    <div className={"af-plegable" + (tono === "alerta" ? " af-plegable-alerta" : "") + (abierto ? " abierto" : "")}>
+      <button className="af-plegable-cabecera" onClick={onToggle}>
+        <span className="af-plegable-icono">{icono}</span>
+        <span className="af-plegable-titulo">{titulo}</span>
+        {resumen && <span className="af-plegable-resumen">{resumen}</span>}
+        <ChevronRight size={16} className={"af-plegable-flecha" + (abierto ? " abierta" : "")} />
       </button>
-      {abierto && <div className="af-panel-cuerpo">{children}</div>}
+      {abierto && <div className="af-plegable-cuerpo">{children}</div>}
     </div>
   );
 }
@@ -1706,6 +1706,10 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
   const [diaEntregados, setDiaEntregados] = useState(""); // "" = ver todos (por mes)
+  // Días que el usuario abrió o cerró a mano. Lo que no esté aquí usa el
+  // criterio de abajo: se abre solo lo que urge y el resto queda recogido,
+  // para no tener que bajar por toda la lista.
+  const [diasAbiertos, setDiasAbiertos] = useState({});
 
   const cambiarMes = (delta) => {
     setMesSel((prev) => {
@@ -1747,6 +1751,22 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   const totalPendiente = pendientesFiltrados.reduce((a, p) => a + p.total, 0);
   const porCobrarPendiente = pendientesFiltrados.reduce((a, p) => a + (p.saldo || 0), 0);
 
+  // Por entregar: se abre lo de hoy y lo atrasado, que es lo que hay que
+  // atender. Entregados es historial, así que empieza todo recogido salvo
+  // que se haya pedido un día en concreto con el filtro de fecha.
+  const abiertoPorDefecto = (fecha) =>
+    tab === "pendientes" ? fecha <= hoy : Boolean(diaEntregados);
+  // Se guarda con la pestaña incluida: una misma fecha puede tener pedidos
+  // por entregar y entregados, y cada lista se abre por su cuenta.
+  const claveDia = (fecha) => `${tab}|${fecha}`;
+  const estaAbierto = (fecha) =>
+    claveDia(fecha) in diasAbiertos ? diasAbiertos[claveDia(fecha)] : abiertoPorDefecto(fecha);
+  const alternarDia = (fecha) =>
+    setDiasAbiertos((prev) => ({ ...prev, [claveDia(fecha)]: !estaAbierto(fecha) }));
+  const abrirTodos = (abrir) =>
+    setDiasAbiertos((prev) => ({ ...prev, ...Object.fromEntries(fechas.map((f) => [claveDia(f), abrir])) }));
+  const cuantosAbiertos = fechas.filter(estaAbierto).length;
+
   return (
     <div>
       <div className="af-subtabs mb-4">
@@ -1787,10 +1807,14 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
               <button className="af-icon-btn" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></button>
             </div>
           )}
-          {diaEntregados && entregadosFiltrados.length > 0 && (
+          {entregadosFiltrados.length > 0 && (
             <div className="grid grid-cols-2 gap-2 mt-3">
-              <StatPill label="Vendido ese día" value={money(vendidoDiaEntregados)} />
-              <StatPill label="Cobrado ese día" value={money(cobradoDiaEntregados)} warn={cobradoDiaEntregados < vendidoDiaEntregados} />
+              <StatPill label={diaEntregados ? "Vendido ese día" : "Vendido en el mes"} value={money(vendidoDiaEntregados)} />
+              <StatPill
+                label={diaEntregados ? "Cobrado ese día" : "Cobrado en el mes"}
+                value={money(cobradoDiaEntregados)}
+                warn={cobradoDiaEntregados < vendidoDiaEntregados}
+              />
             </div>
           )}
         </div>
@@ -1812,19 +1836,42 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
         )
       )}
 
+      {fechas.length > 1 && (
+        <div className="af-dias-acciones">
+          <button className="af-btn-ghost" onClick={() => abrirTodos(cuantosAbiertos < fechas.length)}>
+            {cuantosAbiertos < fechas.length ? "Abrir todos los días" : "Cerrar todos los días"}
+          </button>
+        </div>
+      )}
+
       {fechas.map((fecha) => {
         const pedidosDelDia = grupos[fecha];
+        const kgDelDia = pedidosDelDia.reduce(
+          (a, p) => a + (p.items || []).reduce((s, it) => s + (it.tipo === "paella" ? it.kg || 0 : 0), 0),
+          0
+        );
+        const totalDelDia = pedidosDelDia.reduce((a, p) => a + p.total, 0);
+        const abierto = estaAbierto(fecha);
         return (
-          <div key={fecha} className="mb-4">
-            <div className="af-section-title">
-              {fmtDateHuman(fecha)}
-              <span className="af-ink-soft" style={{ fontWeight: 600, textTransform: "none", letterSpacing: 0 }}>
-                {" "}({pedidosDelDia.length} {pedidosDelDia.length === 1 ? "pedido" : "pedidos"})
-              </span>
-              {esHoy(fecha) && <span className="af-chip af-chip-gold">Hoy</span>}
-              {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong">Atrasado</span>}
-            </div>
-
+          <PanelPlegable
+            key={fecha}
+            tono={tab === "pendientes" && fecha < hoy ? "alerta" : undefined}
+            abierto={abierto}
+            onToggle={() => alternarDia(fecha)}
+            icono={<CalendarDays size={16} />}
+            titulo={
+              <>
+                {fmtDateHuman(fecha)}
+                {esHoy(fecha) && <span className="af-chip af-chip-gold ml-2">Hoy</span>}
+                {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong ml-2">Atrasado</span>}
+              </>
+            }
+            resumen={
+              `${pedidosDelDia.length} ${pedidosDelDia.length === 1 ? "pedido" : "pedidos"}` +
+              (kgDelDia > 0 ? ` · ${fmtKg(kgDelDia)}` : "") +
+              ` · ${money(totalDelDia)}`
+            }
+          >
             {tab === "pendientes" && (
               <ProduccionDelDiaBox
                 pedidosDelDia={pedidosDelDia}
@@ -1842,7 +1889,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                   <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
                 ))}
             </div>
-          </div>
+          </PanelPlegable>
         );
       })}
     </div>
@@ -7260,18 +7307,21 @@ const AZAFRAN_CSS = `
    repartidos arriba y abajo de los pedidos, y la pantalla se sentía revuelta. */
 .af-secundarios { display: flex; flex-direction: column; gap: 8px; }
 .af-secundarios .af-section-title { margin-bottom: 2px; }
-.af-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-.af-panel-alerta { border-color: color-mix(in srgb, var(--wine) 32%, transparent); }
-.af-panel-cabecera { display: flex; align-items: center; gap: 9px; width: 100%; padding: 12px 14px; background: none; border: none; text-align: left; }
-.af-panel-icono { display: inline-flex; color: var(--ink-soft); flex-shrink: 0; }
-.af-panel-alerta .af-panel-icono { color: var(--wine); }
-.af-panel-titulo { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); }
-.af-panel-resumen { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); background: color-mix(in srgb, var(--ink-soft) 12%, transparent); padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
-.af-panel-alerta .af-panel-resumen { color: #fff; background: var(--wine); }
-.af-panel-flecha { color: var(--ink-soft); flex-shrink: 0; transition: transform 0.15s ease; }
-.af-panel-flecha.abierta { transform: rotate(90deg); }
-.af-panel-cuerpo { padding: 0 14px 13px; }
-.af-panel-linea { font-size: 12.5px; color: var(--ink); padding: 3px 0; }
+/* Ojo: estas clases NO se llaman af-panel* porque Reportes ya usa ese
+   nombre para sus tarjetas grandes y le ganaba a este panel. */
+.af-plegable { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
+.af-plegable-alerta { border-color: color-mix(in srgb, var(--wine) 32%, transparent); }
+.af-plegable-cabecera { display: flex; align-items: center; gap: 9px; width: 100%; padding: 12px 14px; background: none; border: none; text-align: left; }
+.af-plegable-icono { display: inline-flex; color: var(--ink-soft); flex-shrink: 0; }
+.af-plegable-alerta .af-plegable-icono { color: var(--wine); }
+.af-plegable-titulo { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.af-plegable-resumen { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); background: color-mix(in srgb, var(--ink-soft) 12%, transparent); padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
+.af-plegable-alerta .af-plegable-resumen { color: #fff; background: var(--wine); }
+.af-plegable-flecha { color: var(--ink-soft); flex-shrink: 0; transition: transform 0.15s ease; }
+.af-plegable-flecha.abierta { transform: rotate(90deg); }
+.af-plegable-cuerpo { padding: 0 14px 13px; }
+.af-plegable-linea { font-size: 12.5px; color: var(--ink); padding: 3px 0; }
+.af-dias-acciones { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 
 /* ---- Vistazo a los pedidos de mañana, desde Hoy ---- */
 .af-maniana-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 3px 0; }
