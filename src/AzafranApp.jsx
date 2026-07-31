@@ -1846,10 +1846,6 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 
       {fechas.map((fecha) => {
         const pedidosDelDia = grupos[fecha];
-        const kgDelDia = pedidosDelDia.reduce(
-          (a, p) => a + (p.items || []).reduce((s, it) => s + (it.tipo === "paella" ? it.kg || 0 : 0), 0),
-          0
-        );
         const totalDelDia = pedidosDelDia.reduce((a, p) => a + p.total, 0);
         const abierto = estaAbierto(fecha);
         return (
@@ -1867,9 +1863,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
               </>
             }
             resumen={
-              `${pedidosDelDia.length} ${pedidosDelDia.length === 1 ? "pedido" : "pedidos"}` +
-              (kgDelDia > 0 ? ` · ${fmtKg(kgDelDia)}` : "") +
-              ` · ${money(totalDelDia)}`
+              `${pedidosDelDia.length} ${pedidosDelDia.length === 1 ? "pedido" : "pedidos"} · ${money(totalDelDia)}`
             }
           >
             {tab === "pendientes" && (
