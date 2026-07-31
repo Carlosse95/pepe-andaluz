@@ -119,7 +119,14 @@
       "Bash(/usr/bin/grep -n \"clientesFiltrados\\\\|const listaClientes\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/sed -n '1975,2020p' src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"const filtrados\\\\|\\\\.filter\\(\\(c\\) =>\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n '\"af-section-title\">Agregar gasto' src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n '\"af-section-title\">Agregar gasto' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"presentacionNombre: \\\\\"bolsa\\\\\"\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"costoPresentacion\\\\|precioPresentacion\\\\|ing.costo\\\\|costoUnitario\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"fijosGenerados\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const irAVista\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function ProduccionDelDiaBox\" -A 22 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-maniana-resumen\\\\|af-maniana-titulo\\\\|af-maniana-mas\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const bajoStock\\\\|const bajoIngredientes\\\\|const hayPorComprar\\\\|pendientesPaellera.sort\" src/AzafranApp.jsx)"
     ]
   }
 }

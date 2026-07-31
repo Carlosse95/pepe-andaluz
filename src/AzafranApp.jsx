@@ -1329,7 +1329,9 @@ function SaludoInicio({ nombre, saliendo }) {
 // Lo que hay que cocinar/preparar para un día: kilos por paella, platillos,
 // paelleras que se van a necesitar e ingredientes marcados. Se usa igual en
 // Hoy (para lo de hoy) y en Agenda (para cada fecha de la lista).
-function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle }) {
+// soloContenido: dibuja nada más el desglose, sin su propio botón de plegar,
+// para poder meterlo dentro de un PanelPlegable y que todos se vean igual.
+function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloContenido }) {
   const { paellasKg, platillos, ingredientesUso, sueltasPorPaella } = produccionDelDia(pedidosDelDia, config);
   const conteoPaelleras = paellerasDelDia(pedidosDelDia, config.paelleras);
   const hayProduccion =
@@ -1347,11 +1349,13 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle }) {
   };
 
   return (
-    <div className="mb-3">
-      <button className="af-colapsable-btn" onClick={onToggle}>
-        <ChefHat size={15} /> Producción del día {abierto ? "▲" : "▼"}
-      </button>
-      {abierto && (
+    <div className={soloContenido ? "" : "mb-3"}>
+      {!soloContenido && (
+        <button className="af-colapsable-btn" onClick={onToggle}>
+          <ChefHat size={15} /> Producción del día {abierto ? "▲" : "▼"}
+        </button>
+      )}
+      {(soloContenido || abierto) && (
         <div className="af-produccion-box">
           {Object.entries(paellasKg).map(([paellaId, kg]) => (
             <div key={paellaId} className="af-produccion-row">
@@ -1422,6 +1426,10 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
+  const [verManiana, setVerManiana] = useState(false);
+  // Lo que falta por comprar sí conviene verlo de entrada: es lo único que
+  // hay que resolver antes de que sea tarde.
+  const [verCompras, setVerCompras] = useState(true);
   // Filtro por estado: se maneja aquí (y no en Agenda) porque estos son los
   // pedidos que se están trabajando hoy.
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -1468,6 +1476,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
   const bajoStock = (config.desechables || []).filter((d) => d.stock <= d.minimo);
   const bajoIngredientes = (config.ingredientes || []).filter((i) => i.stock <= i.minimo);
+  const hayPorComprar = bajoStock.length > 0 || bajoIngredientes.length > 0;
 
   return (
     <div>
@@ -1490,54 +1499,6 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           <FileText size={16} /> Nuevo presupuesto
         </button>
       </div>
-
-      {/* Un vistazo a mañana desde hoy: para comprar a tiempo y avisar. */}
-      {pedidosManiana.length > 0 && (
-        <div className="af-maniana mb-3 mt-3">
-          <div className="af-maniana-titulo">
-            <CalendarDays size={15} /> Mañana
-          </div>
-          <div className="af-maniana-resumen">
-            {pedidosManiana.length} {pedidosManiana.length === 1 ? "pedido" : "pedidos"}
-            {kgManiana > 0 && <> · {Math.round(kgManiana * 10) / 10} kg de paella</>}
-          </div>
-          {pedidosManiana.slice(0, 4).map((p) => (
-            <div key={p.id} className="af-maniana-row">
-              <span className="af-maniana-hora">{fmtHora12(p.hora)}</span>
-              <span className="af-maniana-cliente">{p.clienteNombre}</span>
-              <span className="af-maniana-modo">{p.entrega ? "A domicilio" : "Recoge"}</span>
-            </div>
-          ))}
-          {pedidosManiana.length > 4 && (
-            <div className="af-maniana-mas">y {pedidosManiana.length - 4} más</div>
-          )}
-        </div>
-      )}
-
-      {(bajoStock.length > 0 || bajoIngredientes.length > 0) && (
-        <div className="af-alert-box mb-5 mt-3">
-          <div className="af-alert-title">Por comprar</div>
-          {bajoIngredientes.map((i) => (
-            <div key={i.id} className="af-alert-line">
-              {i.nombre}: quedan <strong>{i.stock} {(i.presentacionNombre || i.unidad || "") + (i.stock === 1 ? "" : "s")}</strong> (aviso en {i.minimo})
-            </div>
-          ))}
-          {bajoStock.map((d) => (
-            <div key={d.id} className="af-alert-line">
-              {d.nombre}: quedan <strong>{d.stock}</strong> (aviso en {d.minimo})
-            </div>
-          ))}
-        </div>
-      )}
-
-      {pedidosHoy.length > 0 && (
-        <ProduccionDelDiaBox
-          pedidosDelDia={pedidosHoy}
-          config={config}
-          abierto={verProduccion}
-          onToggle={() => setVerProduccion((v) => !v)}
-        />
-      )}
 
       <div className="af-section-title mt-4">Por hacer hoy</div>
 
@@ -1585,36 +1546,112 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
         </div>
       )}
 
-      {entregadosHoy.length > 0 && (
-        <div className="mt-5">
-          <button className="af-colapsable-btn" onClick={() => setVerEntregados((v) => !v)}>
-            <Check size={15} /> Entregados hoy ({entregadosHoy.length}) {verEntregados ? "▲" : "▼"}
-          </button>
-          {verEntregados && (
-            <div className="af-card-grid mt-3">
-              {entregadosHoy
-                .slice()
-                .sort((a, b) => a.hora.localeCompare(b.hora))
-                .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Todo lo que no es "atender el pedido de ahorita" vive aquí abajo, con
+          el mismo aspecto y plegado. Antes cada aviso tenía su propio estilo y
+          estaban repartidos arriba y abajo: se sentía revuelto. */}
+      {(hayPorComprar || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
+        <div className="af-secundarios mt-5">
+          <div className="af-section-title">Lo demás</div>
 
-      {pendientesPaellera.length > 0 && (
-        <div className="mt-4 mb-2">
-          <button className="af-colapsable-btn" onClick={() => setVerPaelleras((v) => !v)}>
-            <ChefHat size={15} /> Paelleras por recoger ({pendientesPaellera.length}) {verPaelleras ? "▲" : "▼"}
-          </button>
-          {verPaelleras && (
-            <div className="mt-3">
+          {hayPorComprar && (
+            <PanelPlegable
+              icono={<AlertTriangle size={15} />}
+              titulo="Por comprar"
+              resumen={`${bajoIngredientes.length + bajoStock.length}`}
+              tono="alerta"
+              abierto={verCompras}
+              onToggle={() => setVerCompras((v) => !v)}
+            >
+              {bajoIngredientes.map((i) => (
+                <div key={i.id} className="af-panel-linea">
+                  {i.nombre}: quedan <strong>{i.stock} {(i.presentacionNombre || i.unidad || "") + (i.stock === 1 ? "" : "s")}</strong> (aviso en {i.minimo})
+                </div>
+              ))}
+              {bajoStock.map((d) => (
+                <div key={d.id} className="af-panel-linea">
+                  {d.nombre}: quedan <strong>{d.stock}</strong> (aviso en {d.minimo})
+                </div>
+              ))}
+            </PanelPlegable>
+          )}
+
+          {pendientesPaellera.length > 0 && (
+            <PanelPlegable
+              icono={<ChefHat size={15} />}
+              titulo="Paelleras por recoger"
+              resumen={`${pendientesPaellera.length}`}
+              abierto={verPaelleras}
+              onToggle={() => setVerPaelleras((v) => !v)}
+            >
               {pendientesPaellera.map((it) => (
                 <PaelleraRow key={it.pedidoId + it.itemId} item={it} onMarcarDevuelta={onMarcarDevuelta} />
               ))}
-            </div>
+            </PanelPlegable>
+          )}
+
+          {pedidosHoy.length > 0 && (
+            <PanelPlegable
+              icono={<ChefHat size={15} />}
+              titulo="Producción del día"
+              abierto={verProduccion}
+              onToggle={() => setVerProduccion((v) => !v)}
+            >
+              <ProduccionDelDiaBox pedidosDelDia={pedidosHoy} config={config} soloContenido />
+            </PanelPlegable>
+          )}
+
+          {pedidosManiana.length > 0 && (
+            <PanelPlegable
+              icono={<CalendarDays size={15} />}
+              titulo="Mañana"
+              resumen={`${pedidosManiana.length} ${pedidosManiana.length === 1 ? "pedido" : "pedidos"}${kgManiana > 0 ? ` · ${Math.round(kgManiana * 10) / 10} kg` : ""}`}
+              abierto={verManiana}
+              onToggle={() => setVerManiana((v) => !v)}
+            >
+              {pedidosManiana.map((p) => (
+                <div key={p.id} className="af-maniana-row">
+                  <span className="af-maniana-hora">{fmtHora12(p.hora)}</span>
+                  <span className="af-maniana-cliente">{p.clienteNombre}</span>
+                  <span className="af-maniana-modo">{p.entrega ? "A domicilio" : "Recoge"}</span>
+                </div>
+              ))}
+            </PanelPlegable>
+          )}
+
+          {entregadosHoy.length > 0 && (
+            <PanelPlegable
+              icono={<Check size={15} />}
+              titulo="Entregados hoy"
+              resumen={`${entregadosHoy.length}`}
+              abierto={verEntregados}
+              onToggle={() => setVerEntregados((v) => !v)}
+            >
+              <div className="af-card-grid">
+                {entregadosHoy
+                  .slice()
+                  .sort((a, b) => a.hora.localeCompare(b.hora))
+                  .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
+              </div>
+            </PanelPlegable>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Panel plegable con un mismo aspecto para todos los avisos de "Hoy", para que
+// la pantalla no se sienta revuelta con cada bloque hecho a su manera.
+function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, children }) {
+  return (
+    <div className={"af-panel" + (tono === "alerta" ? " af-panel-alerta" : "") + (abierto ? " abierto" : "")}>
+      <button className="af-panel-cabecera" onClick={onToggle}>
+        <span className="af-panel-icono">{icono}</span>
+        <span className="af-panel-titulo">{titulo}</span>
+        {resumen && <span className="af-panel-resumen">{resumen}</span>}
+        <ChevronRight size={16} className={"af-panel-flecha" + (abierto ? " abierta" : "")} />
+      </button>
+      {abierto && <div className="af-panel-cuerpo">{children}</div>}
     </div>
   );
 }
@@ -2379,6 +2416,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [posibleDuplicado, setPosibleDuplicado] = useState(null);
   // null = apartado cerrado; objeto = capturando o editando un gasto fijo.
   const [draftFijo, setDraftFijo] = useState(null);
+  // Lo ya generado en esta sesión, para no repetirlo mientras la nube confirma.
+  const yaGeneradosEnEstaSesion = useRef(new Set());
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
@@ -2614,6 +2653,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     const yaGenerados = config?.cigarrosGenerados || [];
     if (yaGenerados.includes(claveMes)) return;
     if (gastos.some((g) => g.esCigarros && (g.fecha || "").startsWith(claveMes))) return;
+    // Misma protección que los gastos fijos: mientras la nube confirma, este
+    // apunte en memoria evita que se registre dos veces.
+    if (yaGeneradosEnEstaSesion.current.has(`cigarros|${claveMes}`)) return;
+    yaGeneradosEnEstaSesion.current.add(`cigarros|${claveMes}`);
 
     const diasDelMes = new Date(anioHoy, mesHoy + 1, 0).getDate();
     const nuevo = {
@@ -2641,8 +2684,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     const claveMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
     const generados = config?.fijosGenerados || [];
 
-    const porCrear = fijos.filter((f) => !generados.includes(`${f.id}|${claveMes}`));
+    const porCrear = fijos.filter(
+      (f) =>
+        !generados.includes(`${f.id}|${claveMes}`) &&
+        // Guardar en la nube tarda un instante. Sin esta marca en memoria, el
+        // efecto volvía a correr antes de que llegara el apunte de "ya está" y
+        // registraba el gasto dos veces (pasó con un gasto fijo real).
+        !yaGeneradosEnEstaSesion.current.has(`${f.id}|${claveMes}`)
+    );
     if (!porCrear.length) return;
+
+    porCrear.forEach((f) => yaGeneradosEnEstaSesion.current.add(`${f.id}|${claveMes}`));
 
     const nuevos = porCrear.map((f) => ({
       id: uid(),
@@ -6257,7 +6309,19 @@ export default function App() {
     });
   };
 
-  const irAVista = (v) => { setError(""); setView(v); };
+  const irAVista = (v) => {
+    setError("");
+    // Tocar la pestaña en la que ya estás sube hasta arriba, como en cualquier
+    // otra app: se usa mucho para volver al inicio de una lista larga.
+    if (v === view) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    setView(v);
+    // Al cambiar de pestaña también se empieza desde arriba, en vez de heredar
+    // el desplazamiento de la pantalla anterior.
+    window.scrollTo({ top: 0 });
+  };
 
   const goToNuevoPedido = (clientePre) => {
     const base = emptyForm();
@@ -7088,15 +7152,29 @@ const AZAFRAN_CSS = `
 .af-fijos-total { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); text-align: right; }
 .af-fijos-form { padding-top: 14px; border-top: 1px solid var(--line); }
 
+/* ---- Paneles plegables de "Lo demás" en Hoy ----
+   Todos se ven igual a propósito: antes cada aviso tenía su estilo y estaban
+   repartidos arriba y abajo de los pedidos, y la pantalla se sentía revuelta. */
+.af-secundarios { display: flex; flex-direction: column; gap: 8px; }
+.af-secundarios .af-section-title { margin-bottom: 2px; }
+.af-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.af-panel-alerta { border-color: color-mix(in srgb, var(--wine) 32%, transparent); }
+.af-panel-cabecera { display: flex; align-items: center; gap: 9px; width: 100%; padding: 12px 14px; background: none; border: none; text-align: left; }
+.af-panel-icono { display: inline-flex; color: var(--ink-soft); flex-shrink: 0; }
+.af-panel-alerta .af-panel-icono { color: var(--wine); }
+.af-panel-titulo { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.af-panel-resumen { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); background: color-mix(in srgb, var(--ink-soft) 12%, transparent); padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
+.af-panel-alerta .af-panel-resumen { color: #fff; background: var(--wine); }
+.af-panel-flecha { color: var(--ink-soft); flex-shrink: 0; transition: transform 0.15s ease; }
+.af-panel-flecha.abierta { transform: rotate(90deg); }
+.af-panel-cuerpo { padding: 0 14px 13px; }
+.af-panel-linea { font-size: 12.5px; color: var(--ink); padding: 3px 0; }
+
 /* ---- Vistazo a los pedidos de mañana, desde Hoy ---- */
-.af-maniana { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
-.af-maniana-titulo { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
-.af-maniana-resumen { font-size: 14px; font-weight: 700; color: var(--ink); margin: 4px 0 8px; }
 .af-maniana-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 3px 0; }
 .af-maniana-hora { font-weight: 700; color: var(--wine); flex-shrink: 0; min-width: 62px; }
 .af-maniana-cliente { flex: 1; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-maniana-modo { font-size: 11px; color: var(--ink-soft); flex-shrink: 0; }
-.af-maniana-mas { font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
 
 /* Marca de los pedidos que apuntó el asistente de WhatsApp. */
 .af-chip-ia { background: color-mix(in srgb, var(--wine) 13%, transparent); color: var(--wine); font-weight: 700; }
