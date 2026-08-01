@@ -154,6 +154,61 @@ export const suscribirBandejaWhatsApp = (callback) => {
   return () => supabase.removeChannel(canal);
 };
 
+/* ------------------- Carta pública (página de clientes) ------------------- */
+// La página `carta.html` no puede leer `almacen` (ahí están los pedidos y los
+// clientes). La app publica aquí una copia con solo lo que el cliente ve.
+
+export const publicarCarta = async (datos) => {
+  if (!nubeActiva) return;
+  const { error } = await supabase
+    .from("carta_publica")
+    .upsert({ id: 1, datos, actualizado_at: new Date().toISOString() });
+  if (error) throw error;
+};
+
+export const leerCartaPublica = async () => {
+  if (!nubeActiva) return null;
+  const { data, error } = await supabase.from("carta_publica").select("datos").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  return (data && data.datos) || null;
+};
+
+/* ------------- Solicitudes que llegan desde la página pública ------------- */
+// No son pedidos: son "esto me gustaría pedir". Pepe las revisa y decide.
+
+export const enviarSolicitudWeb = async (solicitud) => {
+  if (!nubeActiva) return null;
+  const { data, error } = await supabase.from("solicitudes_web").insert(solicitud).select().maybeSingle();
+  if (error) throw error;
+  return data;
+};
+
+export const listarSolicitudesWeb = async () => {
+  if (!nubeActiva) return [];
+  const { data, error } = await supabase
+    .from("solicitudes_web")
+    .select("*")
+    .order("creado_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return data || [];
+};
+
+export const cambiarEstadoSolicitud = async (id, estado) => {
+  if (!nubeActiva) return;
+  const { error } = await supabase.from("solicitudes_web").update({ estado }).eq("id", id);
+  if (error) throw error;
+};
+
+export const suscribirSolicitudesWeb = (callback) => {
+  if (!nubeActiva) return () => {};
+  const canal = supabase
+    .channel("solicitudes-web")
+    .on("postgres_changes", { event: "*", schema: "public", table: "solicitudes_web" }, () => callback())
+    .subscribe();
+  return () => supabase.removeChannel(canal);
+};
+
 /* ----------------------------- Sesión ----------------------------- */
 
 export const obtenerSesion = async () => {

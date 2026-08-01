@@ -6,6 +6,7 @@ import {
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet,
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil,
+  Globe, ExternalLink, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import jsPDF from "jspdf";
@@ -16,6 +17,7 @@ import {
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
+  publicarCarta, listarSolicitudesWeb, cambiarEstadoSolicitud, suscribirSolicitudesWeb,
 } from "./nube.js";
 
 /* ---------------------------------------------------------------------- */
@@ -47,6 +49,23 @@ const MENSAJES_DEFAULT = {
 // texto viejo y actualizarlas solas la primera vez que se cargan (ver
 // aplicarClave, más abajo).
 const MENSAJE_RECOGER_ANTERIOR = "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘";
+
+// Lo que se ve en la página pública. Vive dentro de la misma config del menú
+// para que al guardar precios se republique la carta en el mismo movimiento:
+// si fueran dos cosas separadas, tarde o temprano la página anunciaría un
+// precio que la app ya no cobra.
+const WEB_DEFAULT = {
+  nombre: "Pepe Andaluz",
+  claim: "Paella valenciana a la leña, hecha el mismo día de tu evento",
+  descripcion:
+    "Cocinamos por encargo para comidas en casa, cumpleaños, bodas y eventos de empresa. " +
+    "Tú eliges la paella y para cuántos; nosotros llegamos con todo listo.",
+  telefono: "",
+  zona: "",
+  horario: "Pedidos con 48 horas de anticipación",
+  instagram: "",
+  mostrarPrecios: true,
+};
 
 const DEFAULT_CONFIG = {
   paellas: [
@@ -84,6 +103,40 @@ const DEFAULT_CONFIG = {
   // Paelleras (recipientes grandes que se prestan al cliente): cada tamaño
   // cubre un rango de kilos y se sabe cuántas se tienen de ese tamaño.
   paelleras: [],
+  // Textos y datos de la página pública (carta.html).
+  web: WEB_DEFAULT,
+};
+
+// Arma la copia pública del menú: solo nombre, descripción, precio y foto.
+// Nada de costos, inventario ni márgenes — eso no sale de la app.
+const cartaPublicaDeConfig = (config) => {
+  const web = { ...WEB_DEFAULT, ...(config.web || {}) };
+  const { mostrarPrecios, ...negocio } = web;
+  return {
+    negocio,
+    mostrarPrecios: mostrarPrecios !== false,
+    paellas: (config.paellas || [])
+      .filter((p) => p.ocultarEnWeb !== true)
+      .map((p) => ({ id: p.id, nombre: p.nombre, precioKg: p.precioKg, descripcion: p.descripcion || "" })),
+    extras: (config.extras || [])
+      .filter((e) => e.ocultarEnWeb !== true)
+      .map((e) => ({
+        id: e.id,
+        nombre: e.nombre,
+        precio: e.precio,
+        unidad: e.unidad || "pieza",
+        categoria: e.categoria || "platillo",
+        descripcion: e.descripcion || "",
+      })),
+    extrasPaella: (config.extrasPaella || []).map((e) => ({ id: e.id, nombre: e.nombre, precio: e.precio })),
+    actualizado: new Date().toISOString(),
+  };
+};
+
+// La carta pública se sirve junto a la app: misma carpeta, otro archivo.
+const urlCartaPublica = () => {
+  const base = window.location.href.split("?")[0].split("#")[0];
+  return base.replace(/[^/]*$/, "") + "carta.html";
 };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -4115,6 +4168,309 @@ function UsuariosPanel({ perfil, showToast }) {
   );
 }
 
+// Lo que cada platillo muestra en la página pública. Va en la misma tarjeta
+// que su precio para que se escriba de una vez, y no en otra pantalla que
+// nadie vuelve a abrir.
+function CamposWeb({ item, onCambiar }) {
+  return (
+    <div className="af-web-campos">
+      <div className="af-mini-label">
+        <Globe size={12} /> En la página
+      </div>
+      <textarea
+        className="af-input af-web-desc"
+        rows={2}
+        maxLength={220}
+        placeholder="Cómo se lo describirías a un cliente..."
+        value={item.descripcion || ""}
+        onChange={(e) => onCambiar({ descripcion: e.target.value })}
+      />
+      <label className="af-web-check">
+        <input
+          type="checkbox"
+          checked={item.ocultarEnWeb !== true}
+          onChange={(e) => onCambiar({ ocultarEnWeb: !e.target.checked })}
+        />
+        <span>Mostrarlo en la carta pública</span>
+      </label>
+      {/* El nombre del archivo no se puede adivinar desde fuera (los platillos
+          nuevos llevan un id generado), así que se enseña aquí mismo: es lo
+          que hay que escribirle a la foto para que la página la encuentre. */}
+      <div className="af-web-foto">
+        Su foto: <code>fotos/{item.id}.jpg</code>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Ajustes → Página (la carta pública)                                    */
+/* ---------------------------------------------------------------------- */
+
+function PaginaPanel({ draft, setDraft, showToast }) {
+  const web = { ...WEB_DEFAULT, ...(draft.web || {}) };
+  const url = urlCartaPublica();
+  const [publicando, setPublicando] = useState(false);
+
+  const set = (campo) => (e) => {
+    const valor = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setDraft({ ...draft, web: { ...web, [campo]: valor } });
+  };
+
+  // Normalmente la carta se republica sola al guardar el menú. Este botón es
+  // para cuando algo salió mal (se cayó la red al guardar) y hay que forzarlo
+  // sin tener que inventarse un cambio en los precios.
+  const publicarAhora = async () => {
+    setPublicando(true);
+    try {
+      await publicarCarta(cartaPublicaDeConfig({ ...draft, web }));
+      showToast("Carta publicada", "ok");
+    } catch (e) {
+      console.error(e);
+      showToast("No se pudo publicar, revisa tu conexión", "error");
+    }
+    setPublicando(false);
+  };
+
+  const copiarLink = () => {
+    navigator.clipboard?.writeText(url);
+    showToast("Link copiado", "ok");
+  };
+
+  return (
+    <>
+      <div className="af-section-title">Tu página pública</div>
+      <div className="af-card p-4 mb-4">
+        <p className="af-ink-soft text-sm mb-3">
+          Este es el link que le mandas a los clientes. Ahí ven la carta, arman lo que
+          les gustaría pedir y te llega por WhatsApp y a <strong>Solicitudes</strong>.
+        </p>
+        <div className="af-web-link">{url}</div>
+        <div className="af-web-acciones">
+          <a className="af-btn-secondary" href={url} target="_blank" rel="noopener noreferrer">
+            <ExternalLink size={15} /> Abrirla
+          </a>
+          <button className="af-btn-secondary" onClick={copiarLink}>
+            <Copy size={15} /> Copiar el link
+          </button>
+          <button className="af-btn-secondary" onClick={publicarAhora} disabled={publicando}>
+            <Globe size={15} /> {publicando ? "Publicando..." : "Publicar de nuevo"}
+          </button>
+        </div>
+        <div className="af-hint mt-3">
+          Los precios y las descripciones se publican solos cada vez que guardas el menú.
+        </div>
+      </div>
+
+      <div className="af-section-title">WhatsApp de la página</div>
+      <div className="af-card p-4 mb-4">
+        <div className="af-field">
+          <label>Número al que llegan los pedidos</label>
+          <input
+            className="af-input"
+            type="tel"
+            placeholder="55 1234 5678"
+            value={web.telefono}
+            onChange={set("telefono")}
+          />
+        </div>
+        {!web.telefono.trim() && (
+          <div className="af-hint af-hint-warn">
+            Sin este número el botón de la página no abre WhatsApp: al cliente solo le
+            queda copiar el resumen. La solicitud sí te llega igual.
+          </div>
+        )}
+      </div>
+
+      <div className="af-section-title">Textos</div>
+      <div className="af-card p-4 mb-4">
+        <div className="af-field">
+          <label>Nombre del negocio</label>
+          <input className="af-input" value={web.nombre} onChange={set("nombre")} />
+        </div>
+        <div className="af-field">
+          <label>Frase principal</label>
+          <input className="af-input" value={web.claim} onChange={set("claim")} maxLength={90} />
+          <div className="af-hint">Es el título grande. La primera palabra sale en cursiva y en color.</div>
+        </div>
+        <div className="af-field">
+          <label>Presentación</label>
+          <textarea className="af-input" rows={3} maxLength={300} value={web.descripcion} onChange={set("descripcion")} />
+        </div>
+        <div className="af-field">
+          <label>Zona a la que llegan</label>
+          <input className="af-input" placeholder="Ej. CDMX y área metropolitana" value={web.zona} onChange={set("zona")} />
+        </div>
+        <div className="af-field">
+          <label>Anticipación / horario</label>
+          <input className="af-input" value={web.horario} onChange={set("horario")} />
+        </div>
+        <div className="af-field">
+          <label>Instagram (opcional)</label>
+          <input className="af-input" placeholder="@pepeandaluz" value={web.instagram} onChange={set("instagram")} />
+        </div>
+      </div>
+
+      <div className="af-section-title">Precios</div>
+      <div className="af-card p-4 mb-4">
+        <label className="af-web-check">
+          <input type="checkbox" checked={web.mostrarPrecios !== false} onChange={set("mostrarPrecios")} />
+          <span>Enseñar los precios en la página</span>
+        </label>
+        <div className="af-hint mt-2">
+          Si lo apagas, la carta se ve igual pero sin importes y sin estimado: todo se cotiza
+          por WhatsApp.
+        </div>
+      </div>
+
+      <div className="af-section-title">Fotos</div>
+      <div className="af-card p-4 mb-4">
+        <p className="af-ink-soft text-sm">
+          Las fotos van en la carpeta <strong>public/fotos</strong> del proyecto, con el nombre
+          de cada platillo. Mientras no estén, la página muestra un marco de papel en su lugar
+          (no una imagen rota). En <strong>FOTOS.md</strong> está la lista de las que hacen falta
+          y cómo deben nombrarse.
+        </p>
+      </div>
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Solicitudes que llegan desde la página pública                         */
+/* ---------------------------------------------------------------------- */
+
+// Una solicitud NO es un pedido: es "esto me gustaría pedir", escrito por el
+// cliente sin que nadie lo revise. Por eso no se convierte sola en pedido —
+// se abre el formulario de siempre ya lleno y Pepe ajusta kilos, fecha y
+// precio antes de guardar. Así ningún error de dedo del cliente entra directo
+// a la agenda de producción.
+
+const fmtCuando = (iso) => {
+  const d = new Date(iso);
+  const dias = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (dias === 0) return "Hoy " + fmtHora12(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+  if (dias === 1) return "Ayer";
+  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+};
+
+function SolicitudesView({ solicitudes, onPasarAPedido, onCambiarEstado }) {
+  const [tab, setTab] = useState("nuevas");
+  const lista = solicitudes.filter((s) => (tab === "nuevas" ? s.estado === "nueva" : s.estado !== "nueva"));
+
+  return (
+    <div>
+      <div className="af-subtabs mb-4">
+        <button className={"af-subtab" + (tab === "nuevas" ? " active" : "")} onClick={() => setTab("nuevas")}>
+          Sin atender
+        </button>
+        <button className={"af-subtab" + (tab === "vistas" ? " active" : "")} onClick={() => setTab("vistas")}>
+          Ya revisadas
+        </button>
+      </div>
+
+      {lista.length === 0 ? (
+        <EmptyState
+          icon={<Globe size={28} />}
+          title={tab === "nuevas" ? "Nada nuevo por ahora" : "Todavía no has revisado ninguna"}
+          subtitle={
+            tab === "nuevas"
+              ? "Aquí aparece lo que la gente manda desde la página, al instante. El link está en Ajustes → Página."
+              : "Las solicitudes que pases a pedido o descartes se guardan aquí."
+          }
+        />
+      ) : (
+        <div className="af-sol-lista">
+          {lista.map((s) => (
+            <SolicitudCard key={s.id} sol={s} onPasarAPedido={onPasarAPedido} onCambiarEstado={onCambiarEstado} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SolicitudCard({ sol, onPasarAPedido, onCambiarEstado }) {
+  const items = Array.isArray(sol.items) ? sol.items : [];
+  const nueva = sol.estado === "nueva";
+
+  return (
+    <div className={"af-card af-sol-card" + (nueva ? " nueva" : "")}>
+      <div className="af-sol-top">
+        <div className="af-sol-quien">
+          <div className="af-sol-nombre">{sol.nombre}</div>
+          <a className="af-sol-tel" href={`https://wa.me/${telWhatsApp(sol.telefono)}`} target="_blank" rel="noopener noreferrer">
+            <MessageCircle size={13} /> {sol.telefono}
+          </a>
+        </div>
+        <span className="af-sol-cuando">{fmtCuando(sol.creado_at)}</span>
+      </div>
+
+      <div className="af-sol-datos">
+        {sol.fecha && (
+          <span className="af-sol-dato">
+            <CalendarDays size={13} /> {fmtDateHuman(sol.fecha)}
+            {sol.hora ? ` · ${fmtHora12(sol.hora)}` : ""}
+          </span>
+        )}
+        <span className="af-sol-dato">
+          {sol.entrega === "domicilio" ? <Truck size={13} /> : <Store size={13} />}
+          {sol.entrega === "domicilio" ? sol.direccion || "A domicilio" : "Pasa a recogerla"}
+        </span>
+        {sol.personas > 0 && (
+          <span className="af-sol-dato">
+            <Users size={13} /> {sol.personas} personas
+          </span>
+        )}
+      </div>
+
+      <ul className="af-sol-items">
+        {items.map((it, i) => (
+          <li key={i}>
+            <span>{it.nombre}</span>
+            <span className="af-ink-soft">{it.detalle}</span>
+            {it.importe > 0 && <strong>{money(it.importe)}</strong>}
+          </li>
+        ))}
+      </ul>
+
+      {sol.nota && (
+        <div className="af-sol-nota">
+          <StickyNote size={13} /> {sol.nota}
+        </div>
+      )}
+
+      {sol.estimado > 0 && (
+        <div className="af-sol-total">
+          Estimado por la página: <strong>{money(sol.estimado)}</strong>
+        </div>
+      )}
+
+      {nueva ? (
+        <div className="af-sol-acciones">
+          <button className="af-btn-primary" onClick={() => onPasarAPedido(sol)}>
+            <ArrowRightCircle size={15} /> Pasar a pedido
+          </button>
+          <button className="af-btn-secondary" onClick={() => onCambiarEstado(sol.id, "descartada")}>
+            Descartar
+          </button>
+        </div>
+      ) : (
+        <div className="af-sol-estado">
+          {sol.estado === "atendida" ? (
+            <><Check size={14} /> Ya pasó a pedido</>
+          ) : (
+            <><X size={14} /> Descartada</>
+          )}
+          <button className="af-link-btn" onClick={() => onCambiarEstado(sol.id, "nueva")}>
+            Regresarla a pendientes
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, perfil, nombreUsuario, onCerrarSesion, showToast }) {
   const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("menu");
@@ -4178,6 +4534,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       paelleras: draft.paelleras || [],
       pago: draft.pago || { banco: "", titular: "", clabe: "" },
       mensajes: { ...MENSAJES_DEFAULT, ...(draft.mensajes || {}) },
+      web: { ...WEB_DEFAULT, ...(draft.web || {}) },
     };
     onGuardarConfig(limpio);
     setDraft(limpio);
@@ -4190,6 +4547,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       <div className="af-subtabs mb-4">
         <button className={"af-subtab" + (tab === "menu" ? " active" : "")} onClick={() => setTab("menu")}>Menú</button>
         <button className={"af-subtab" + (tab === "inventario" ? " active" : "")} onClick={() => setTab("inventario")}>Inventario</button>
+        <button className={"af-subtab" + (tab === "web" ? " active" : "")} onClick={() => setTab("web")}>Página</button>
         <button className={"af-subtab" + (tab === "datos" ? " active" : "")} onClick={() => setTab("datos")}>Datos</button>
         {perfil && perfil.rol === "admin" && (
           <button className={"af-subtab" + (tab === "usuarios" ? " active" : "")} onClick={() => setTab("usuarios")}>Usuarios</button>
@@ -4375,6 +4733,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   />
                   <span className="af-price-suffix">$/kg</span>
                 </div>
+                <CamposWeb
+                  item={p}
+                  onCambiar={(cambios) =>
+                    setDraft({ ...draft, paellas: draft.paellas.map((x, xi) => (xi === i ? { ...x, ...cambios } : x)) })
+                  }
+                />
               </div>
             ))}
             <button
@@ -4482,6 +4846,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     Configura esos envases en <strong>Inventario → Envases desechables</strong>.
                   </div>
                 )}
+                <CamposWeb
+                  item={ex}
+                  onCambiar={(cambios) =>
+                    setDraft({ ...draft, extras: draft.extras.map((x, xi) => (xi === i ? { ...x, ...cambios } : x)) })
+                  }
+                />
               </div>
             ))}
             <button
@@ -4533,6 +4903,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <span>Añadir extra</span>
             </button>
           </div>
+        </fieldset>
+      )}
+
+      {tab === "web" && (
+        <fieldset disabled={!esAdmin} className="af-fieldset-reset">
+          <PaginaPanel draft={draft} setDraft={setDraft} showToast={showToast} />
         </fieldset>
       )}
 
@@ -5969,6 +6345,7 @@ export default function App() {
   const [historico, setHistorico] = useState({});
   const [presupuestos, setPresupuestos] = useState([]);
   const [avatares, setAvatares] = useState({}); // email (o "local") -> { foto, nombre }
+  const [solicitudes, setSolicitudes] = useState([]);
   const [gastos, setGastos] = useState([]);
   // pedidoId -> "avisado" | "entregado": pedidos que acaban de cambiar a ese
   // estado y siguen esperando que alguien toque "Enviar aviso" (ver OrderCard).
@@ -6298,6 +6675,39 @@ export default function App() {
     // eslint-disable-next-line
   }, [puedeUsarDatos]);
 
+  // --- Solicitudes de la página pública ---
+  // Se cargan aparte de `almacen`: son datos que escribe gente sin cuenta, y
+  // mezclarlos con los pedidos reales antes de que Pepe los revise sería
+  // dejar que cualquiera escriba en la agenda de producción.
+  useEffect(() => {
+    if (!puedeUsarDatos || !nubeActiva) return;
+    let cancelado = false;
+
+    const traer = () => {
+      listarSolicitudesWeb()
+        .then((lista) => { if (!cancelado) setSolicitudes(lista); })
+        .catch(() => {});
+    };
+
+    traer();
+    const desuscribir = suscribirSolicitudesWeb(traer);
+    // Mismo respaldo que el buzón de WhatsApp: en celular el tiempo real se
+    // queda colgado sin avisar, así que además se revisa cada minuto.
+    const intervalo = setInterval(() => {
+      if (document.visibilityState === "visible") traer();
+    }, 60000);
+    const alVolver = () => { if (document.visibilityState === "visible") traer(); };
+    document.addEventListener("visibilitychange", alVolver);
+
+    return () => {
+      cancelado = true;
+      desuscribir();
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+    // eslint-disable-next-line
+  }, [puedeUsarDatos]);
+
   // Una vez cargados los datos, el saludo de pantalla completa se queda
   // visible un momento y luego se retira solo, dejando ver "Hoy" debajo.
   useEffect(() => {
@@ -6319,7 +6729,14 @@ export default function App() {
 
   const guardarPedidos = (lista) => { setPedidos(lista); persist("pedidos", lista); };
   const guardarClientes = (lista) => { setClientes(lista); persist("clientes", lista); };
-  const guardarConfig = (nueva) => { setConfig(nueva); persist("config-productos", nueva); };
+  // Al guardar el menú se republica la carta pública en el mismo movimiento.
+  // Si falla, no se interrumpe el guardado: lo importante es que la app tenga
+  // el precio bueno; la página se pondrá al día en el siguiente guardado.
+  const guardarConfig = (nueva) => {
+    setConfig(nueva);
+    persist("config-productos", nueva);
+    publicarCarta(cartaPublicaDeConfig(nueva)).catch((e) => console.error("No se pudo publicar la carta", e));
+  };
   const guardarHistorico = (nuevo) => { setHistorico(nuevo); persist("historico-mensual", nuevo); };
   const guardarPresupuestos = (lista) => { setPresupuestos(lista); persist("presupuestos", lista); };
   const guardarGastos = (lista) => { setGastos(lista); persist("gastos", lista); };
@@ -6455,6 +6872,78 @@ export default function App() {
     // Al cambiar de pestaña también se empieza desde arriba, en vez de heredar
     // el desplazamiento de la pantalla anterior.
     window.scrollTo({ top: 0 });
+  };
+
+  const marcarSolicitud = (id, estado) => {
+    // Se pinta al instante y se guarda después: si falla la red, la lista se
+    // corrige sola en el siguiente refresco (cada minuto o al volver a la app).
+    setSolicitudes((prev) => prev.map((s) => (s.id === id ? { ...s, estado } : s)));
+    cambiarEstadoSolicitud(id, estado).catch(() => showToast("No se pudo guardar el cambio", "error"));
+  };
+
+  // Abre el formulario de pedido con lo que pidió el cliente ya cargado.
+  // Los kilos vienen del cálculo de la página (1 kg = 2 personas); Pepe los
+  // ajusta ahí mismo antes de guardar.
+  const pasarSolicitudAPedido = (sol) => {
+    const base = emptyForm();
+    const tel = telWhatsApp(sol.telefono);
+    const clienteExistente = tel
+      ? clientes.find((c) => telWhatsApp(c.telefono).slice(-10) === tel.slice(-10))
+      : null;
+
+    if (clienteExistente) {
+      base.clienteId = clienteExistente.id;
+      base.clienteNombre = clienteExistente.nombre;
+      base.clienteTelefono = clienteExistente.telefono || sol.telefono;
+      base.clienteDireccion = clienteExistente.direccion || "";
+      base.clienteUbicacion = clienteExistente.ubicacion || "";
+    } else {
+      base.clienteNombre = sol.nombre;
+      base.clienteTelefono = sol.telefono;
+    }
+
+    if (sol.fecha) base.fecha = sol.fecha;
+    if (sol.hora) base.hora = sol.hora;
+    base.entrega = sol.entrega === "domicilio";
+    base.direccion = sol.entrega === "domicilio" ? sol.direccion || base.clienteDireccion || "" : "";
+    base.notas = sol.nota || "";
+
+    // El precio se toma SIEMPRE del menú de la app, nunca del que venía en la
+    // solicitud: entre que el cliente abrió la página y esto, el precio pudo
+    // cambiar, y el bueno es el de la app.
+    const items = [];
+    for (const it of Array.isArray(sol.items) ? sol.items : []) {
+      if (it.tipo === "paella") {
+        const paella = (config.paellas || []).find((p) => p.id === it.id);
+        if (!paella) continue;
+        const kg = Number(it.kg) > 0 ? Number(it.kg) : 1;
+        items.push({
+          id: uid(), tipo: "paella", paellaId: paella.id, paellaNombre: paella.nombre,
+          kg, precioKg: paella.precioKg, extras: [],
+          subtotal: calcPaellaSubtotal(kg, paella.precioKg), enPaellera: false, paelleraDevuelta: false,
+        });
+      } else {
+        const extra = (config.extras || []).find((e) => e.id === it.id);
+        if (!extra) continue;
+        const cantidad = Number(it.cantidad) > 0 ? Number(it.cantidad) : 1;
+        items.push({
+          id: uid(), tipo: "extra", extraId: extra.id, nombre: extra.nombre,
+          unidad: extra.unidad || "pieza", piezasPorUnidad: extra.piezasPorUnidad || 0,
+          cantidad, precio: extra.precio, subtotal: calcExtraSubtotal(cantidad, extra.precio),
+        });
+      }
+    }
+    base.items = items;
+
+    setForm(base);
+    setFormModo("pedido");
+    setFormOrigen("solicitudes");
+    setError("");
+    setView("nuevo");
+    marcarSolicitud(sol.id, "atendida");
+    if (items.length === 0) {
+      showToast("Ese platillo ya no está en el menú: agrégalo a mano", "error");
+    }
   };
 
   const goToNuevoPedido = (clientePre) => {
@@ -6853,13 +7342,15 @@ export default function App() {
   }
 
   const pedidosHoy = pedidos.filter((p) => esHoy(p.fecha));
+  const solicitudesNuevas = solicitudes.filter((s) => s.estado === "nueva").length;
 
-  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", reportes: "Reportes", ajustes: "Ajustes" };
+  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", reportes: "Reportes", ajustes: "Ajustes", solicitudes: "Solicitudes de la página" };
 
   const navItems = [
     { key: "hoy", icon: <Home size={20} />, label: "Hoy" },
     { key: "agenda", icon: <CalendarDays size={20} />, label: "Agenda" },
     { key: "mensajes", icon: <MessageCircle size={20} />, label: "Mensajes", badge: pendientesWhatsApp },
+    { key: "solicitudes", icon: <Globe size={20} />, label: "Solicitudes", badge: solicitudesNuevas },
     { key: "presupuestos", icon: <FileText size={20} />, label: "Presupuestos" },
     { key: "clientes", icon: <Users size={20} />, label: "Clientes" },
     { key: "reportes", icon: <TrendingUp size={20} />, label: "Reportes" },
@@ -6938,6 +7429,13 @@ export default function App() {
               onAbrir={abrirChat}
               onEnviar={responderWhatsApp}
               onVolver={() => { setChatAbierto(null); setMensajesChat([]); }}
+            />
+          )}
+          {view === "solicitudes" && (
+            <SolicitudesView
+              solicitudes={solicitudes}
+              onPasarAPedido={pasarSolicitudAPedido}
+              onCambiarEstado={marcarSolicitud}
             />
           )}
           {view === "clientes" && (
@@ -7905,4 +8403,46 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-content { max-width: 1180px; }
   .af-card-grid { grid-template-columns: 1fr 1fr 1fr; }
 }
+/* --- Ajustes → Página, y las solicitudes que llegan de ahí --- */
+
+.af-web-campos { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 10px; }
+.af-web-campos .af-mini-label { display: flex; align-items: center; gap: 5px; }
+.af-web-desc { min-height: 52px; resize: vertical; font-size: 13px; }
+.af-web-check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; cursor: pointer; }
+.af-web-check input { width: 17px; height: 17px; accent-color: var(--chrome); cursor: pointer; }
+.af-web-foto { font-size: 11px; color: var(--ink-soft); margin-top: 8px; }
+.af-web-foto code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--neutral-soft); padding: 2px 5px; border-radius: 4px; }
+.af-web-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  background: var(--neutral-soft); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; word-break: break-all; color: var(--ink);
+}
+.af-web-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.af-web-acciones > * { flex: 1 1 140px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+.af-hint-warn { color: #9A5B00; background: var(--gold-soft); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
+
+.af-sol-lista { display: grid; gap: 12px; }
+.af-sol-card { padding: 14px; }
+.af-sol-card.nueva { border-left: 3px solid var(--chrome); }
+.af-sol-top { display: flex; align-items: flex-start; gap: 10px; }
+.af-sol-quien { flex: 1; min-width: 0; }
+.af-sol-nombre { font-weight: 700; font-size: 15px; }
+.af-sol-tel { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--chrome); text-decoration: none; margin-top: 2px; }
+.af-sol-tel:hover { text-decoration: underline; }
+.af-sol-cuando { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.af-sol-datos { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; }
+.af-sol-dato { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--ink-soft); }
+.af-sol-items { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.af-sol-items li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.af-sol-items li > span:first-child { font-weight: 600; }
+.af-sol-items li > span:nth-child(2) { flex: 1; }
+.af-sol-items strong { font-variant-numeric: tabular-nums; }
+.af-sol-nota { display: flex; gap: 6px; font-size: 13px; color: var(--ink-soft); margin-top: 10px; font-style: italic; }
+.af-sol-total { font-size: 13px; color: var(--ink-soft); margin-top: 10px; }
+.af-sol-acciones { display: flex; gap: 8px; margin-top: 14px; }
+.af-sol-acciones > * { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.af-sol-estado { display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 13px; color: var(--ink-soft); }
+.af-link-btn { background: none; border: 0; color: var(--chrome); font-size: 13px; font-weight: 600; cursor: pointer; margin-left: auto; padding: 4px; }
+.af-link-btn:hover { text-decoration: underline; }
+
 `;

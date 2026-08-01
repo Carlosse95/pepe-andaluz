@@ -75,6 +75,59 @@ y en ~2 minutos el link se actualiza solo.
 
 ---
 
+## Paso 3 · La página pública (la carta para clientes)
+
+Con los pasos 1 y 2 ya quedó publicada, en la misma dirección de la app pero
+con `/carta.html` al final:
+
+```
+https://TU-USUARIO.github.io/pepe-andaluz/carta.html
+```
+
+Ese es el link que se comparte con los clientes (WhatsApp, Instagram, el
+código QR de las tarjetas). El de la app, sin `/carta.html`, sigue siendo
+privado y con contraseña.
+
+### Lo que hay que configurar una vez
+
+En la app: **Ajustes → Página**.
+
+1. **Número de WhatsApp**: el número al que quieres que lleguen los pedidos.
+   Sin él, el botón de la página no abre WhatsApp (al cliente solo le queda
+   copiar el resumen; la solicitud igual te llega a la app).
+2. **Textos**: nombre, frase principal, presentación, zona a la que llegan y
+   la anticipación con la que piden. Cámbialos cuando quieras.
+3. **Descripciones de los platillos**: en **Ajustes → Menú**, debajo del precio
+   de cada uno. Es lo que el cliente lee en la carta.
+4. **Fotos**: ver `FOTOS.md`.
+
+Los precios NO se configuran aparte: la página toma los mismos del menú de la
+app y se republica sola cada vez que guardas ahí. Así nunca anuncia un precio
+que ya no cobras.
+
+### Qué pasa cuando alguien pide
+
+1. El cliente elige sus paellas (en personas, no en kilos) y sus extras, pone
+   fecha, teléfono y si pasa a recogerla o la quiere a domicilio.
+2. Al mandarlo pasan **dos cosas a la vez**:
+   - se guarda la solicitud en la nube, y
+   - se le abre WhatsApp con el resumen ya escrito, listo para enviarte.
+3. En la app aparece al instante en la pestaña **Solicitudes**, con su globo de
+   pendientes. Ahí decides: **Pasar a pedido** (abre el formulario de siempre
+   ya lleno, para ajustar kilos y precio antes de guardar) o **Descartar**.
+
+Una solicitud **no es un pedido**: nadie la revisó todavía. Por eso no entra
+sola a la agenda — la confirma Pepe.
+
+### Una tabla más en Supabase
+
+Si ya habías corrido `supabase/setup.sql` antes de esto, vuelve a correrlo
+completo (SQL Editor → New query → pegar todo → Run). Está escrito para poder
+ejecutarse las veces que haga falta sin borrar nada; crea las dos tablas
+nuevas (`carta_publica` y `solicitudes_web`) y deja el resto igual.
+
+---
+
 ## Notas
 
 - **Respaldo**: aunque los datos estén en la nube, Ajustes → Datos → "Descargar respaldo"
@@ -83,3 +136,6 @@ y en ~2 minutos el link se actualiza solo.
   del usuario → "Send password recovery" (o bórralo y créalo de nuevo desde la app).
 - **Migrar lo capturado en modo local**: antes de activar la nube, descarga un respaldo
   (Ajustes → Datos); ya con login activo, impórtalo en el mismo lugar.
+- **La carta pública sin nube**: si `src/config.js` está vacío (modo local), `carta.html`
+  se sigue viendo, con el menú de ejemplo, pero no puede guardar solicitudes ni traer
+  los precios de la app. Para que sirva de verdad hacen falta los pasos 1 y 2.
