@@ -194,3 +194,74 @@ begin
   alter publication supabase_realtime add table public.whatsapp_conversaciones;
 exception when duplicate_object then null;
 end $$;
+
+-- ---------- Carta pública (la página que ven los clientes) ----------
+-- La página `carta.html` NO puede leer `almacen`: ahí viven los pedidos y los
+-- datos de los clientes. En vez de eso, la app publica aquí una copia con solo
+-- lo que el cliente debe ver (nombres, descripciones, precios y fotos).
+-- Una sola fila, siempre id = 1.
+
+create table if not exists public.carta_publica (
+  id             int primary key default 1 check (id = 1),
+  datos          jsonb not null default '{}'::jsonb,
+  actualizado_at timestamptz not null default now()
+);
+
+insert into public.carta_publica (id, datos) values (1, '{}'::jsonb)
+on conflict (id) do nothing;
+
+alter table public.carta_publica enable row level security;
+
+-- Cualquiera (incluso sin cuenta) puede leerla: para eso es pública.
+-- Solo los usuarios activos de la app la publican.
+drop policy if exists "carta leer"     on public.carta_publica;
+drop policy if exists "carta escribir" on public.carta_publica;
+drop policy if exists "carta insertar" on public.carta_publica;
+create policy "carta leer"     on public.carta_publica for select using (true);
+create policy "carta escribir" on public.carta_publica for update using (public.es_usuario_activo());
+create policy "carta insertar" on public.carta_publica for insert with check (public.es_usuario_activo());
+
+-- ---------- Solicitudes que llegan desde la página ----------
+-- El cliente arma lo que le gustaría pedir en `carta.html` y lo manda. Cae
+-- aquí Y se abre WhatsApp con el mismo resumen: si el cliente nunca llega a
+-- mandar el WhatsApp, la solicitud ya quedó registrada de todos modos.
+--
+-- Ojo: esto NO es un pedido. Es una petición sin confirmar; Pepe la revisa,
+-- ajusta kilos y precio, y decide si se vuelve pedido.
+
+create table if not exists public.solicitudes_web (
+  id           uuid primary key default gen_random_uuid(),
+  nombre       text not null check (length(nombre) between 2 and 80),
+  telefono     text not null check (length(telefono) between 7 and 25),
+  fecha        date,
+  hora         text check (hora is null or length(hora) <= 10),
+  personas     int  check (personas is null or personas between 1 and 500),
+  entrega      text not null default 'recoger' check (entrega in ('recoger', 'domicilio')),
+  direccion    text check (direccion is null or length(direccion) <= 300),
+  items        jsonb not null default '[]'::jsonb,
+  nota         text check (nota is null or length(nota) <= 600),
+  estimado     numeric,
+  estado       text not null default 'nueva' check (estado in ('nueva', 'atendida', 'descartada')),
+  creado_at    timestamptz not null default now()
+);
+
+create index if not exists solicitudes_web_estado_idx
+  on public.solicitudes_web (estado, creado_at desc);
+
+alter table public.solicitudes_web enable row level security;
+
+-- Insertar es abierto (el cliente no tiene cuenta); los checks de arriba
+-- limitan el tamaño de lo que se puede escribir. Leer y cambiar el estado
+-- es solo de los usuarios activos: nadie de fuera ve las solicitudes ajenas.
+drop policy if exists "solicitudes insertar" on public.solicitudes_web;
+drop policy if exists "solicitudes leer"     on public.solicitudes_web;
+drop policy if exists "solicitudes editar"   on public.solicitudes_web;
+create policy "solicitudes insertar" on public.solicitudes_web for insert with check (true);
+create policy "solicitudes leer"     on public.solicitudes_web for select using (public.es_usuario_activo());
+create policy "solicitudes editar"   on public.solicitudes_web for update using (public.es_usuario_activo());
+
+do $$
+begin
+  alter publication supabase_realtime add table public.solicitudes_web;
+exception when duplicate_object then null;
+end $$;

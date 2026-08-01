@@ -1,5 +1,19 @@
 # Pepe Andaluz — app de pedidos
 
+Son dos cosas en el mismo proyecto:
+
+| | Quién la usa | Dónde queda |
+|---|---|---|
+| **La app** (`index.html`) | Pepe y quien él dé de alta, con contraseña | `.../pepe-andaluz/` |
+| **La carta** (`carta.html`) | Los clientes, sin cuenta | `.../pepe-andaluz/carta.html` |
+
+La carta enseña el menú con los precios de la app, deja que el cliente arme lo
+que le gustaría pedir y lo manda por WhatsApp **y** a la pestaña *Solicitudes*
+de la app. Se configura en **Ajustes → Página**; los detalles están en
+`GUIA-NUBE-Y-PUBLICACION.md` (paso 3) y las fotos en `FOTOS.md`.
+
+Con `npm run dev`, la carta se abre en <http://localhost:5173/carta.html>.
+
 ## Cómo abrirla en VS Code (paso a paso)
 
 1. **Descomprime** este archivo .zip donde quieras (por ejemplo en tu carpeta de Documentos).

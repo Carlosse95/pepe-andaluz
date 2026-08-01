@@ -1,0 +1,317 @@
+/* ---------------------------------------------------------------------
+   Estilos de la carta pública.
+
+   Deliberadamente NO comparte hoja con la app: la app es una herramienta de
+   trabajo (densa, azul, muchos datos) y esto es un escaparate (cálido, con
+   aire y fotos grandes). Mezclarlas obligaría a pelear con los estilos de la
+   otra en cada cambio.
+   --------------------------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Karla:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700;1,500&display=swap');
+
+.cp {
+  /* Colores: barro, azafrán y olivo sobre papel. */
+  --papel: #FBF7F0;
+  --papel-hondo: #F3ECE0;
+  --superficie: #FFFFFF;
+  --tinta: #2A1E14;
+  --tinta-suave: #6B5949;
+  --barro: #B4441F;
+  --barro-hondo: #8E3517;
+  --azafran: #E0A32E;
+  --azafran-suave: #FBEDD2;
+  --olivo: #4F6B2F;
+  --linea: #E4D9C8;
+  --sombra: 0 1px 2px rgba(42, 30, 20, .05), 0 8px 24px rgba(42, 30, 20, .06);
+  --sombra-alta: 0 2px 4px rgba(42, 30, 20, .06), 0 16px 40px rgba(42, 30, 20, .12);
+
+  /* Espaciado en múltiplos de 8. */
+  --sp-1: 8px;  --sp-2: 16px; --sp-3: 24px;
+  --sp-4: 32px; --sp-5: 48px; --sp-6: 64px; --sp-7: 96px;
+
+  --radio: 14px;
+  --ancho: 1120px;
+
+  background: var(--papel);
+  color: var(--tinta);
+  font-family: Karla, system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cp *, .cp *::before, .cp *::after { box-sizing: border-box; }
+.cp h1, .cp h2, .cp h3 { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; line-height: 1.15; margin: 0; }
+.cp p { margin: 0; }
+.cp img { max-width: 100%; display: block; }
+.cp button { font: inherit; cursor: pointer; }
+.cp :focus-visible { outline: 3px solid var(--barro); outline-offset: 2px; border-radius: 4px; }
+
+.cp-wrap { max-width: var(--ancho); margin: 0 auto; padding: 0 var(--sp-3); }
+
+/* Volanta: el textito en versalitas que va encima de cada título. */
+.cp-volanta {
+  font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--barro); margin-bottom: var(--sp-1);
+}
+.cp-seccion { padding: var(--sp-6) 0; }
+.cp-seccion-titulo { font-size: clamp(28px, 5vw, 40px); }
+.cp-seccion-bajada { color: var(--tinta-suave); margin-top: var(--sp-1); max-width: 58ch; }
+
+/* ------------------------------ Barra ------------------------------ */
+
+.cp-barra {
+  position: sticky; top: 0; z-index: 40;
+  background: rgba(251, 247, 240, .92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--linea);
+}
+.cp-barra-fila { display: flex; align-items: center; gap: var(--sp-2); height: 64px; }
+.cp-marca { font-family: 'Playfair Display', Georgia, serif; font-size: 21px; font-weight: 700; margin-right: auto; }
+.cp-barra-links { display: none; gap: var(--sp-3); }
+.cp-barra-link {
+  background: none; border: 0; padding: 4px 0; color: var(--tinta-suave); font-weight: 600;
+  border-bottom: 2px solid transparent; transition: color .2s ease, border-color .2s ease;
+}
+.cp-barra-link:hover { color: var(--barro); border-bottom-color: var(--barro); }
+@media (min-width: 860px) { .cp-barra-links { display: flex; } }
+
+/* ------------------------------ Botones ------------------------------ */
+
+.cp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 22px; border-radius: 999px; border: 1px solid transparent;
+  font-weight: 700; text-decoration: none; white-space: nowrap;
+  transition: background-color .2s ease, color .2s ease, box-shadow .2s ease, transform .1s ease;
+}
+.cp-btn:active { transform: scale(.98); }
+.cp-btn-primario { background: var(--barro); color: #fff; box-shadow: var(--sombra); }
+.cp-btn-primario:hover { background: var(--barro-hondo); }
+.cp-btn-secundario { background: transparent; color: var(--tinta); border-color: var(--tinta); }
+.cp-btn-secundario:hover { background: var(--tinta); color: var(--papel); }
+.cp-btn-wa { background: #128C4B; color: #fff; }
+.cp-btn-wa:hover { background: #0E6E3B; }
+.cp-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.cp-btn-ancho { width: 100%; }
+
+/* ------------------------------- Hero ------------------------------- */
+
+.cp-hero { padding: var(--sp-5) 0 var(--sp-6); }
+.cp-hero-grid { display: grid; gap: var(--sp-4); align-items: center; }
+@media (min-width: 900px) { .cp-hero-grid { grid-template-columns: 1.05fr 1fr; gap: var(--sp-6); } }
+
+.cp-hero h1 { font-size: clamp(38px, 8vw, 64px); letter-spacing: -.01em; }
+.cp-hero h1 em { font-style: italic; color: var(--barro); }
+.cp-hero-texto { margin-top: var(--sp-2); font-size: 19px; color: var(--tinta-suave); max-width: 46ch; }
+.cp-hero-botones { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-3); }
+.cp-hero-datos { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); margin-top: var(--sp-3); color: var(--tinta-suave); font-size: 15px; }
+.cp-hero-dato { display: flex; align-items: center; gap: 8px; }
+
+.cp-hero-foto { position: relative; }
+.cp-hero-foto .cp-foto { aspect-ratio: 4 / 5; border-radius: var(--radio); box-shadow: var(--sombra-alta); }
+.cp-sello {
+  position: absolute; right: -10px; bottom: 24px;
+  background: var(--azafran); color: var(--tinta);
+  border-radius: 999px; padding: 10px 18px; font-weight: 700; font-size: 15px;
+  box-shadow: var(--sombra);
+}
+
+/* ------------------------------- Fotos ------------------------------- */
+/* Mientras no lleguen las fotos, el hueco se ve como papel con un aro de
+   sartén dibujado — no como una imagen rota. */
+
+.cp-foto { position: relative; width: 100%; overflow: hidden; background: var(--papel-hondo); }
+.cp-foto img { width: 100%; height: 100%; object-fit: cover; }
+.cp-foto-vacia {
+  display: grid; place-items: center;
+  background:
+    radial-gradient(circle at 50% 46%, transparent 0 32%, rgba(180, 68, 31, .10) 32% 33%, transparent 33%),
+    radial-gradient(circle at 50% 46%, transparent 0 24%, rgba(180, 68, 31, .10) 24% 25%, transparent 25%),
+    var(--papel-hondo);
+}
+.cp-foto-vacia span {
+  font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: #8A7660; background: rgba(251, 247, 240, .85); padding: 4px 10px; border-radius: 999px;
+}
+
+/* ------------------------------- Carta ------------------------------- */
+
+.cp-grid { display: grid; gap: var(--sp-2); grid-template-columns: 1fr; }
+@media (min-width: 620px) { .cp-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1000px) { .cp-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.cp-plato {
+  display: flex; flex-direction: column;
+  background: var(--superficie); border: 1px solid var(--linea); border-radius: var(--radio);
+  overflow: hidden; box-shadow: var(--sombra);
+  transition: box-shadow .2s ease, transform .2s ease;
+}
+.cp-plato:hover { box-shadow: var(--sombra-alta); transform: translateY(-2px); }
+.cp-plato.elegido { border-color: var(--barro); box-shadow: 0 0 0 2px var(--barro), var(--sombra); }
+.cp-plato .cp-foto { aspect-ratio: 4 / 3; }
+.cp-plato-cuerpo { padding: var(--sp-2); display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.cp-plato-nombre { font-family: 'Playfair Display', Georgia, serif; font-size: 22px; font-weight: 700; }
+.cp-plato-desc { color: var(--tinta-suave); font-size: 15px; flex: 1; }
+.cp-plato-pie { display: flex; align-items: center; gap: var(--sp-1); margin-top: var(--sp-1); }
+.cp-precio { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: auto; }
+.cp-precio small { display: block; font-weight: 500; font-size: 13px; color: var(--tinta-suave); }
+
+.cp-btn-agregar {
+  min-height: 44px; padding: 0 16px; border-radius: 999px;
+  border: 1px solid var(--tinta); background: transparent; color: var(--tinta); font-weight: 700;
+  transition: background-color .2s ease, color .2s ease;
+}
+.cp-btn-agregar:hover { background: var(--tinta); color: var(--papel); }
+.cp-plato.elegido .cp-btn-agregar { background: var(--barro); border-color: var(--barro); color: #fff; }
+
+/* Selector de cantidad dentro de la tarjeta. */
+.cp-cantidad { display: flex; align-items: center; gap: 4px; }
+.cp-cantidad button {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--linea); background: var(--papel); color: var(--tinta);
+  display: grid; place-items: center;
+  transition: background-color .2s ease, border-color .2s ease;
+}
+.cp-cantidad button:hover:not(:disabled) { background: var(--azafran-suave); border-color: var(--azafran); }
+.cp-cantidad-valor { min-width: 76px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 15px; }
+
+.cp-sub { margin: 0 0 var(--sp-2); font-size: 26px; }
+.cp-bloque { padding-top: var(--sp-5); }
+
+/* En el celular los extras van en fila (foto chica a la izquierda): con la
+   foto grande de cada uno, la página pasaba de 8.000 px de scroll y la
+   paella —que es lo que se viene a ver— quedaba enterrada. */
+@media (max-width: 619px) {
+  .cp-plato-fila { flex-direction: row; align-items: stretch; }
+  .cp-plato-fila .cp-foto { width: 112px; flex: 0 0 112px; aspect-ratio: auto; }
+  .cp-plato-fila .cp-foto-vacia span { font-size: 10px; padding: 3px 6px; }
+  .cp-plato-fila .cp-plato-nombre { font-size: 19px; }
+  .cp-plato-fila .cp-plato-desc { font-size: 14px; }
+  .cp-plato-fila .cp-plato-pie { flex-wrap: wrap; }
+}
+
+/* --------------------------- Cómo funciona --------------------------- */
+
+.cp-pasos { display: grid; gap: var(--sp-3); counter-reset: paso; }
+@media (min-width: 760px) { .cp-pasos { grid-template-columns: repeat(3, 1fr); } }
+.cp-paso { position: relative; padding-top: var(--sp-3); border-top: 2px solid var(--azafran); }
+.cp-paso::before {
+  counter-increment: paso; content: counter(paso);
+  position: absolute; top: -18px; left: 0;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--azafran); color: var(--tinta);
+  display: grid; place-items: center; font-weight: 700; font-size: 15px;
+}
+.cp-paso h3 { font-size: 20px; margin-bottom: 4px; }
+.cp-paso p { color: var(--tinta-suave); font-size: 15px; }
+
+/* ------------------------------ Pedido ------------------------------ */
+
+.cp-pedido { background: var(--papel-hondo); }
+.cp-pedido-grid { display: grid; gap: var(--sp-3); align-items: start; }
+@media (min-width: 940px) { .cp-pedido-grid { grid-template-columns: 1fr 400px; gap: var(--sp-5); } }
+
+.cp-tarjeta {
+  background: var(--superficie); border: 1px solid var(--linea);
+  border-radius: var(--radio); padding: var(--sp-3); box-shadow: var(--sombra);
+}
+.cp-resumen { position: sticky; top: 88px; }
+
+.cp-campos { display: grid; gap: var(--sp-2); }
+@media (min-width: 620px) { .cp-campos-2 { grid-template-columns: 1fr 1fr; } }
+
+.cp-campo { display: flex; flex-direction: column; gap: 6px; }
+.cp-campo label { font-weight: 600; font-size: 15px; }
+.cp-campo label span { color: var(--barro); }
+.cp-ayuda { font-size: 13px; color: var(--tinta-suave); }
+.cp-input, .cp-select, .cp-textarea {
+  font: inherit; font-size: 16px; /* 16px evita que Safari haga zoom al enfocar */
+  min-height: 48px; padding: 10px 14px;
+  border: 1px solid var(--linea); border-radius: 10px;
+  background: var(--papel); color: var(--tinta); width: 100%;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.cp-textarea { min-height: 96px; resize: vertical; }
+.cp-input:focus, .cp-select:focus, .cp-textarea:focus {
+  outline: none; border-color: var(--barro); box-shadow: 0 0 0 3px rgba(180, 68, 31, .18);
+}
+.cp-input[aria-invalid="true"] { border-color: #B3261E; }
+.cp-error { color: #B3261E; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+
+.cp-opciones { display: flex; gap: var(--sp-1); flex-wrap: wrap; }
+.cp-opcion {
+  flex: 1 1 140px; min-height: 48px; padding: 10px 16px;
+  border: 1px solid var(--linea); border-radius: 10px; background: var(--papel);
+  color: var(--tinta); font-weight: 600; text-align: left;
+  display: flex; align-items: center; gap: 8px;
+  transition: border-color .2s ease, background-color .2s ease;
+}
+.cp-opcion:hover { border-color: var(--azafran); }
+.cp-opcion[aria-pressed="true"] { border-color: var(--barro); background: #FDF1EC; color: var(--barro-hondo); }
+
+.cp-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
+.cp-lista li { display: flex; gap: var(--sp-1); align-items: baseline; font-size: 15px; }
+.cp-lista .cp-l-nombre { flex: 1; }
+.cp-lista .cp-l-monto { font-weight: 700; font-variant-numeric: tabular-nums; }
+.cp-lista button {
+  background: none; border: 0; color: var(--tinta-suave); padding: 6px; margin: -6px;
+  display: grid; place-items: center; border-radius: 6px;
+}
+.cp-lista button:hover { color: #B3261E; background: #FBEAE8; }
+
+.cp-total { display: flex; align-items: baseline; gap: var(--sp-1); margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--linea); }
+.cp-total-label { flex: 1; font-weight: 700; }
+.cp-total-monto { font-family: 'Playfair Display', Georgia, serif; font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cp-nota-precio { font-size: 13px; color: var(--tinta-suave); margin-top: 6px; }
+
+.cp-vacio { color: var(--tinta-suave); font-size: 15px; text-align: center; padding: var(--sp-3) 0; }
+
+/* Aviso de "listo, ya se envió". */
+.cp-listo { display: grid; gap: var(--sp-2); text-align: center; padding: var(--sp-2) 0; }
+.cp-listo-icono {
+  width: 56px; height: 56px; border-radius: 50%; background: #DCF2E4; color: #0E6E3B;
+  display: grid; place-items: center; margin: 0 auto;
+}
+
+/* ------------------------------ Barra móvil ------------------------------ */
+/* En el celular el resumen queda lejísimos; esta barra lo trae al pulgar. */
+
+.cp-barra-movil {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  background: var(--superficie); border-top: 1px solid var(--linea);
+  padding: 10px var(--sp-2) calc(10px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: var(--sp-2);
+  box-shadow: 0 -8px 24px rgba(42, 30, 20, .10);
+  animation: cp-subir .25s ease-out;
+}
+.cp-barra-movil-txt { flex: 1; font-size: 14px; line-height: 1.3; }
+.cp-barra-movil-txt strong { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+@keyframes cp-subir { from { transform: translateY(100%); } to { transform: none; } }
+@media (min-width: 940px) { .cp-barra-movil { display: none; } }
+
+/* --------------------------------- Pie --------------------------------- */
+
+.cp-pie { background: var(--tinta); color: #E9DFD2; padding: var(--sp-5) 0 var(--sp-3); margin-top: var(--sp-5); }
+.cp-pie a { color: #E9DFD2; }
+.cp-pie-grid { display: grid; gap: var(--sp-3); }
+@media (min-width: 760px) { .cp-pie-grid { grid-template-columns: 1.4fr 1fr 1fr; } }
+.cp-pie h3 { font-size: 15px; letter-spacing: .1em; text-transform: uppercase; font-family: Karla, sans-serif; color: var(--azafran); margin-bottom: var(--sp-1); }
+.cp-pie-legal { margin-top: var(--sp-4); padding-top: var(--sp-2); border-top: 1px solid rgba(233, 223, 210, .2); font-size: 13px; color: #B5A695; }
+
+/* ------------------------------ Movimiento ------------------------------ */
+
+/* Ojo con el orden: el elemento nace VISIBLE y es el JS el que lo esconde
+   justo antes de vigilarlo. Al revés (nacer en opacity:0) cualquier fallo
+   del observador deja la carta en blanco, que es exactamente lo que no
+   puede pasar en la página que ve el cliente. */
+.cp-revelar { transition: opacity .45s ease-out, transform .45s ease-out; }
+.cp-revelar.cp-oculto { opacity: 0; transform: translateY(12px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cp *, .cp *::before, .cp *::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important; scroll-behavior: auto !important;
+  }
+  .cp-revelar.cp-oculto { opacity: 1; transform: none; }
+}

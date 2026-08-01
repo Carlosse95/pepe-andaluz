@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Pepe Andaluz · Paella a domicilio y para eventos</title>
+    <meta
+      name="description"
+      content="Paella valenciana hecha a la leña el mismo día de tu evento. Elige tu paella, dinos para cuántos y te confirmamos por WhatsApp."
+    />
+    <meta name="theme-color" content="#FBF7F0" />
+
+    <!-- Para cuando alguien comparte el link por WhatsApp: la vista previa
+         se arma con estas etiquetas. La imagen es la portada de la carta. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Pepe Andaluz" />
+    <meta property="og:title" content="Pepe Andaluz · Paella a domicilio y para eventos" />
+    <meta
+      property="og:description"
+      content="Paella valenciana hecha a la leña el mismo día de tu evento. Pide por WhatsApp en un minuto."
+    />
+    <meta property="og:image" content="./fotos/portada.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <style>
+      /* Color de fondo desde el primer pixel: sin esto, el celular parpadea
+         en blanco antes de que cargue la hoja de estilos. */
+      html, body { margin: 0; background: #FBF7F0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/carta/main.jsx"></script>
+  </body>
+</html>
