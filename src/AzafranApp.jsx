@@ -40,6 +40,12 @@ const MENSAJES_DEFAULT = {
     "Foto de la fachada: https://carlosse95.github.io/pepe-andaluz/casa-recoleccion.webp",
   avisadoDomicilio: "¡Hola {nombre}! Su pedido {folio} ya está listo y va en camino a su domicilio 🚚",
   entregado: "¡Hola {nombre}! Su pedido {folio} fue entregado. ¡Gracias por su preferencia, esperamos disfrute su comida! 🥘",
+  pagoAbono:
+    "¡Hola {nombre}! Recibimos su pago de {abono} 🙏\n\n" +
+    "Pedido {folio}\nTotal: {total}\nPagado: {pagado}\nQueda pendiente: {saldo}",
+  pagoLiquidado:
+    "¡Hola {nombre}! Recibimos su pago de {abono} 🙏\n\n" +
+    "Con esto su pedido {folio} queda totalmente pagado. ¡Muchas gracias! ✅",
 };
 
 // Mensaje de "listo para recoger" de antes de agregar la dirección/ubicación/
@@ -208,10 +214,16 @@ const telWhatsApp = (tel) => {
   return d.length === 10 ? "52" + d : d;
 };
 
-const aplicarPlantillaMensaje = (texto, datos) => {
+// `extra` son marcadores que solo tienen sentido en algunos mensajes (por
+// ejemplo {saldo} al confirmar un pago), para no calcularlos cuando no se usan.
+const aplicarPlantillaMensaje = (texto, datos, extra) => {
   const nombre = (datos.clienteNombre || "").split(/\s+/)[0] || "";
   const folio = datos.folio ? fmtFolio(datos.folio) : "";
-  return (texto || "").replaceAll("{nombre}", nombre).replaceAll("{folio}", folio);
+  let salida = (texto || "").replaceAll("{nombre}", nombre).replaceAll("{folio}", folio);
+  Object.entries(extra || {}).forEach(([clave, valor]) => {
+    salida = salida.replaceAll(`{${clave}}`, valor);
+  });
+  return salida;
 };
 
 // Texto de resumen para mandar por WhatsApp (pedido o presupuesto).
@@ -285,6 +297,23 @@ const mensajeAvisado = (pedido, mensajes) => {
 // Mensaje corto para avisar que el pedido ya se entregó (al marcarlo "Entregado").
 const mensajeEntregado = (pedido, mensajes) =>
   aplicarPlantillaMensaje(mensajes?.entregado || MENSAJES_DEFAULT.entregado, pedido);
+
+// Mensaje que se manda cuando el cliente acaba de abonar: le confirma cuánto
+// pagó y qué le falta, o que ya no debe nada. A Pepe le gusta mandar el saldo
+// al día cada vez que le pagan, y así no tiene que sacar la cuenta a mano.
+const mensajePago = (pedido, abono, mensajes) => {
+  const saldo = Math.max(pedido.saldo || 0, 0);
+  const plantilla =
+    saldo <= 0
+      ? mensajes?.pagoLiquidado || MENSAJES_DEFAULT.pagoLiquidado
+      : mensajes?.pagoAbono || MENSAJES_DEFAULT.pagoAbono;
+  return aplicarPlantillaMensaje(plantilla, pedido, {
+    abono: money(abono),
+    pagado: money(pedido.pagado || 0),
+    saldo: money(saldo),
+    total: money(pedido.total || 0),
+  });
+};
 
 const abrirWhatsApp = (telefono, texto) => {
   const tel = telWhatsApp(telefono);
@@ -4294,6 +4323,28 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), entregado: e.target.value } })}
               />
             </div>
+            <div className="af-field">
+              <label>Al recibir un pago — todavía debe algo</label>
+              <textarea
+                className="af-input"
+                rows={6}
+                value={(draft.mensajes || MENSAJES_DEFAULT).pagoAbono || MENSAJES_DEFAULT.pagoAbono}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), pagoAbono: e.target.value } })}
+              />
+              <p className="af-ink-soft text-xs mt-1">
+                Aquí sí puedes usar <strong>{"{abono}"}</strong> (lo que acaba de pagar),{" "}
+                <strong>{"{pagado}"}</strong>, <strong>{"{saldo}"}</strong> y <strong>{"{total}"}</strong>.
+              </p>
+            </div>
+            <div className="af-field">
+              <label>Al recibir un pago — ya quedó saldado</label>
+              <textarea
+                className="af-input"
+                rows={4}
+                value={(draft.mensajes || MENSAJES_DEFAULT).pagoLiquidado || MENSAJES_DEFAULT.pagoLiquidado}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), pagoLiquidado: e.target.value } })}
+              />
+            </div>
             <button className="af-btn-primary w-full" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar mensajes"}
             </button>
@@ -6615,7 +6666,13 @@ export default function App() {
 
     // WhatsApp automático: al crear el pedido se manda la confirmación; si se
     // acaba de marcar "Avisar" se manda el mensaje de listo para recoger/domicilio;
-    // si se acaba de marcar "Entregado" se manda el mensaje de entrega.
+    // si se acaba de marcar "Entregado" se manda el mensaje de entrega; y si solo
+    // se le acaba de abonar, se le manda su saldo al día.
+    //
+    // El orden importa: el cambio de estado gana sobre el aviso de pago para no
+    // abrir dos WhatsApp de un jalón (marcar Entregado también deja el pedido
+    // pagado, así que los dos casos se cumplen a la vez).
+    const abonoNuevo = anteriorPedido ? pagado - (anteriorPedido.pagado || 0) : 0;
     if (pedidoObj.clienteTelefono) {
       if (esNuevo) {
         abrirWhatsApp(pedidoObj.clienteTelefono, mensajeWhatsApp(pedidoObj, "pedido", config.pago, config.mensajes));
@@ -6623,6 +6680,8 @@ export default function App() {
         abrirWhatsApp(pedidoObj.clienteTelefono, mensajeAvisado(pedidoObj, config.mensajes));
       } else if (anteriorPedido && anteriorPedido.estado !== "entregado" && pedidoObj.estado === "entregado") {
         abrirWhatsApp(pedidoObj.clienteTelefono, mensajeEntregado(pedidoObj, config.mensajes));
+      } else if (abonoNuevo > 0) {
+        abrirWhatsApp(pedidoObj.clienteTelefono, mensajePago(pedidoObj, abonoNuevo, config.mensajes));
       }
     }
 
