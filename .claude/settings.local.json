@@ -136,7 +136,24 @@
       "Bash(/usr/bin/grep -n \"Sacar el costo con ingredientes\" -B 4 -A 12 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"const paellerasDelDia\" -A 14 src/AzafranApp.jsx)",
       "Bash(echo \"---exit $?\")",
-      "Bash(perl -i -pe 's/af-panel-linea/af-plegable-linea/g if $. == 1606 || $. == 1611' src/AzafranApp.jsx)"
+      "Bash(perl -i -pe 's/af-panel-linea/af-plegable-linea/g if $. == 1606 || $. == 1611' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"WhatsApp\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"wa.me\\\\|abrirWhatsApp\\\\|enviarWhats\\\\|mensajeWhats\\\\|plantilla\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"MENSAJES_DEFAULT\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"autoWhats\\\\|avisoAuto\\\\|auto\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const computeTotal\" -A 20 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"supabase.co\" src/config.js)",
+      "Bash(/usr/bin/grep -n \"normalizarPedido\\\\|clave === \\\\\"pedidos\\\\\"\\\\|setPedidos\\(\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const sumaAbonos\" -A 4 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const migrarPedido\" -A 30 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"reclamarPedidosWhatsApp\" -A 30 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"pagado\\\\|abonos\\\\|saldo\\\\|estadoPago\")",
+      "Bash(/usr/bin/grep -n \"reclamarPedidosWhatsApp\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"pagado\\\\|abonos\\\\|saldo\" supabase/functions/whatsapp-webhook/index.ts)",
+      "Bash(/usr/bin/grep -n \"af-nav-texto\\\\|af-nav-label\\\\|af-nav-icono\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"\\\\.af-nav\\\\b\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-topbar-nav\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const irAVista\" -B 6 src/AzafranApp.jsx)"
     ]
   }
 }

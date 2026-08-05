@@ -6494,6 +6494,19 @@ export default function App() {
     });
   };
 
+  // En pantallas angostas (iPad de pie) la barra de arriba no alcanza para las
+  // siete pestañas y se desliza. Sin esto, al entrar a una de las últimas la
+  // pestaña marcada se queda fuera de vista y parece que no pasó nada.
+  const navRef = useRef(null);
+  const botonActivoRef = useRef(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    const boton = botonActivoRef.current;
+    if (!nav || !boton || nav.scrollWidth <= nav.clientWidth) return;
+    const centro = boton.offsetLeft - (nav.clientWidth - boton.offsetWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, centro), behavior: "smooth" });
+  }, [view]);
+
   const irAVista = (v) => {
     setError("");
     // Tocar la pestaña en la que ya estás sube hasta arriba, como en cualquier
@@ -6931,9 +6944,14 @@ export default function App() {
 
       <div className="af-topbar">
         <div className="af-logo-mark af-logo-topbar" />
-        <nav className="af-topbar-nav">
+        <nav className="af-topbar-nav" ref={navRef}>
           {navItems.map((n) => (
-            <button key={n.key} className={"af-topbar-link" + (view === n.key ? " active" : "")} onClick={() => irAVista(n.key)}>
+            <button
+              key={n.key}
+              ref={view === n.key ? botonActivoRef : null}
+              className={"af-topbar-link" + (view === n.key ? " active" : "")}
+              onClick={() => irAVista(n.key)}
+            >
               {n.label}
               {n.badge > 0 && <span className="af-badge af-badge-topbar">{n.badge > 9 ? "9+" : n.badge}</span>}
             </button>
@@ -7297,7 +7315,10 @@ const AZAFRAN_CSS = `
 .af-empty-sub { font-size: 13px; margin-top: 4px; max-width: 260px; margin-left: auto; margin-right: auto; }
 
 .af-nav { position: fixed; left: 0; right: 0; bottom: 0; max-width: 560px; margin: 0 auto; z-index: 20; display: flex; background: var(--surface); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
-.af-nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; background: none; border: none; color: var(--ink-soft); font-size: 10.5px; font-weight: 600; transition: color 0.15s ease, transform 0.15s ease; }
+/* min-width:0 + el recorte del texto evitan que una etiqueta larga
+   ("Presupuestos") se salga de su botón y se encime con la de al lado. */
+.af-nav-btn { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; background: none; border: none; color: var(--ink-soft); font-size: 10.5px; font-weight: 600; transition: color 0.15s ease, transform 0.15s ease; }
+.af-nav-btn > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-nav-btn.active { color: var(--wine); }
 .af-nav-btn:active { transform: scale(0.92); }
 .af-nav-btn svg { transition: transform 0.15s ease; }
