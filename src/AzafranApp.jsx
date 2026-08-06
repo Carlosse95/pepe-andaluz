@@ -248,7 +248,9 @@ const aplicarPlantillaMensaje = (texto, datos, extra) => {
   Object.entries(extra || {}).forEach(([clave, valor]) => {
     salida = salida.replaceAll(`{${clave}}`, valor);
   });
-  return salida;
+  // Si un marcador se queda vacío (por ejemplo {dondeRecoger} cuando no hay
+  // dirección capturada), el mensaje terminaría en renglones en blanco.
+  return salida.replace(/\s+$/, "");
 };
 
 // Texto de resumen para mandar por WhatsApp (pedido o presupuesto).
