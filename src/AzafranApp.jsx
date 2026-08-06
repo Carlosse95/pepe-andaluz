@@ -34,10 +34,7 @@ const MENSAJES_DEFAULT = {
   saludoPedido: "¡Hola {nombre}! Le compartimos el resumen de su pedido en Pepe Andaluz 🥘",
   cierrePedido: "¡Gracias por su preferencia!",
   avisadoRecoger:
-    "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘\n\n" +
-    "📍 Calle 8 número 341 x 17 y 19, Montebello\n" +
-    "Ubicación: https://maps.google.com/?q=21.032793,-89.590668\n" +
-    "Foto de la fachada: https://carlosse95.github.io/pepe-andaluz/casa-recoleccion.webp",
+    "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘\n\n{dondeRecoger}",
   avisadoDomicilio: "¡Hola {nombre}! Su pedido {folio} ya está listo y va en camino a su domicilio 🚚",
   entregado: "¡Hola {nombre}! Su pedido {folio} fue entregado. ¡Gracias por su preferencia, esperamos disfrute su comida! 🥘",
   pagoAbono:
@@ -48,11 +45,37 @@ const MENSAJES_DEFAULT = {
     "Con esto su pedido {folio} queda totalmente pagado. ¡Muchas gracias! ✅",
 };
 
-// Mensaje de "listo para recoger" de antes de agregar la dirección/ubicación/
-// foto — sirve para detectar configuraciones guardadas que todavía traen el
-// texto viejo y actualizarlas solas la primera vez que se cargan (ver
-// aplicarClave, más abajo).
-const MENSAJE_RECOGER_ANTERIOR = "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘";
+// Dónde recoger. Vive aquí, aparte de los mensajes, porque va en más de uno
+// (al crear el pedido y al avisar que está listo) y así se cambia en un solo
+// lugar: Ajustes → Datos.
+const LOCAL_DEFAULT = {
+  direccion: "Calle 8 número 341 x 17 y 19, Montebello",
+  ubicacion: "https://maps.google.com/?q=21.032793,-89.590668",
+  foto: "https://carlosse95.github.io/pepe-andaluz/casa-recoleccion.webp",
+};
+
+// Arma el bloque de "dónde recoger" saltándose lo que esté vacío, para que no
+// queden renglones sueltos si el negocio no tiene foto o mapa.
+const bloqueDondeRecoger = (local) => {
+  const l = { ...LOCAL_DEFAULT, ...(local || {}) };
+  const lineas = [];
+  if ((l.direccion || "").trim()) lineas.push(`📍 ${l.direccion.trim()}`);
+  if ((l.ubicacion || "").trim()) lineas.push(`Ubicación: ${l.ubicacion.trim()}`);
+  if ((l.foto || "").trim()) lineas.push(`Foto de la fachada: ${l.foto.trim()}`);
+  return lineas.join("\n");
+};
+
+// Versiones anteriores del mensaje de "listo para recoger": la primera sin
+// dirección, y la segunda con la dirección escrita a mano dentro del texto.
+// Sirven para detectar configuraciones guardadas que todavía traen el texto
+// viejo y actualizarlas solas la primera vez que se cargan (ver aplicarClave).
+const MENSAJES_RECOGER_ANTERIORES = [
+  "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘",
+  "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘\n\n" +
+    "📍 Calle 8 número 341 x 17 y 19, Montebello\n" +
+    "Ubicación: https://maps.google.com/?q=21.032793,-89.590668\n" +
+    "Foto de la fachada: https://carlosse95.github.io/pepe-andaluz/casa-recoleccion.webp",
+];
 
 const DEFAULT_CONFIG = {
   paellas: [
@@ -74,6 +97,8 @@ const DEFAULT_CONFIG = {
   pago: { banco: "", titular: "", clabe: "" },
   // Plantillas editables de los mensajes automáticos de WhatsApp.
   mensajes: MENSAJES_DEFAULT,
+  // Dónde recoger: se manda al crear el pedido y al avisar que está listo.
+  local: LOCAL_DEFAULT,
   // Ingredientes con stock y consumo por kilo de cada paella (porKg[paellaId] = cantidad).
   ingredientes: [],
   extrasPaella: [
@@ -229,7 +254,8 @@ const aplicarPlantillaMensaje = (texto, datos, extra) => {
 // Texto de resumen para mandar por WhatsApp (pedido o presupuesto).
 // `pago` son los datos bancarios de Ajustes para ofrecer el anticipo.
 // `mensajes` son las plantillas editables de Ajustes → Datos.
-const mensajeWhatsApp = (datos, modo, pago, mensajes) => {
+// `local` es dónde recoger, para que el cliente lo tenga desde que aparta.
+const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   const lineas = [];
   const nombre = (datos.clienteNombre || "").split(/\s+/)[0];
   if (modo === "pedido") {
@@ -276,6 +302,17 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes) => {
     lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
     lineas.push("Por favor, en el concepto de la transferencia ponga únicamente su nombre.");
   }
+  // Dónde recoger, desde que se aparta el pedido: así el cliente ya sabe a
+  // dónde ir y no tiene que esperar al aviso de "ya está listo" para buscarlo.
+  // Solo en pedidos para recoger; a domicilio la dirección la pone él.
+  if (modo === "pedido" && !datos.entrega) {
+    const donde = bloqueDondeRecoger(local);
+    if (donde) {
+      lineas.push("");
+      lineas.push("Cuando esté listo lo puede recoger aquí:");
+      lineas.push(donde);
+    }
+  }
   lineas.push("");
   lineas.push(
     modo === "pedido"
@@ -287,11 +324,11 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes) => {
 
 // Mensaje corto para avisar que el pedido ya está listo (al marcarlo "Avisar"),
 // distinto según sea para recoger o a domicilio.
-const mensajeAvisado = (pedido, mensajes) => {
+const mensajeAvisado = (pedido, mensajes, local) => {
   const plantilla = pedido.entrega
     ? mensajes?.avisadoDomicilio || MENSAJES_DEFAULT.avisadoDomicilio
     : mensajes?.avisadoRecoger || MENSAJES_DEFAULT.avisadoRecoger;
-  return aplicarPlantillaMensaje(plantilla, pedido);
+  return aplicarPlantillaMensaje(plantilla, pedido, { dondeRecoger: bloqueDondeRecoger(local) });
 };
 
 // Mensaje corto para avisar que el pedido ya se entregó (al marcarlo "Entregado").
@@ -4198,7 +4235,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
   }, [config]);
 
   const guardar = () => {
+    // Se parte de `draft` entero y solo se reescribe lo que se edita aquí.
+    // La configuración también guarda cosas que se manejan desde otras
+    // pantallas (gastos fijos, qué duplicados ya se revisaron, de qué meses
+    // ya se generaron los gastos). Si esto armara el objeto desde cero, al
+    // guardar en Ajustes se borrarían: los gastos fijos desaparecían y, sin
+    // las marcas de "ya generado", se volvían a crear duplicados.
     const limpio = {
+      ...draft,
       paellas: draft.paellas.filter((p) => p.nombre.trim().length > 0),
       extras: draft.extras.filter((e) => e.nombre.trim().length > 0),
       extrasPaella: (draft.extrasPaella || []).filter((e) => e.nombre.trim().length > 0),
@@ -4207,6 +4251,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       paelleras: draft.paelleras || [],
       pago: draft.pago || { banco: "", titular: "", clabe: "" },
       mensajes: { ...MENSAJES_DEFAULT, ...(draft.mensajes || {}) },
+      local: { ...LOCAL_DEFAULT, ...(draft.local || {}) },
     };
     onGuardarConfig(limpio);
     setDraft(limpio);
@@ -4271,6 +4316,48 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </button>
           </div>
 
+          <div className="af-section-title">Dónde recoger</div>
+          <div className="af-card p-4 mb-4">
+            <p className="af-ink-soft text-sm mb-3">
+              Esto se le manda al cliente <strong>desde que aparta su pedido</strong> y otra vez
+              cuando le avisas que ya está listo, para que no tenga que esperar a buscar la
+              dirección. Solo se envía en los pedidos para recoger. Deja vacío lo que no quieras mandar.
+            </p>
+            <div className="af-field">
+              <label>Dirección</label>
+              <input
+                className="af-input"
+                placeholder="Calle, número y colonia"
+                value={(draft.local || {}).direccion || ""}
+                onChange={(e) => setDraft({ ...draft, local: { ...(draft.local || {}), direccion: e.target.value } })}
+              />
+            </div>
+            <div className="af-field">
+              <label>Liga de la ubicación</label>
+              <input
+                className="af-input"
+                placeholder="Ej. https://maps.google.com/?q=21.03,-89.59"
+                value={(draft.local || {}).ubicacion || ""}
+                onChange={(e) => setDraft({ ...draft, local: { ...(draft.local || {}), ubicacion: e.target.value } })}
+              />
+              <p className="af-ink-soft text-xs mt-1">
+                Se saca de Google Maps: busca el lugar, dale a Compartir y copia la liga.
+              </p>
+            </div>
+            <div className="af-field">
+              <label>Liga de la foto de la fachada</label>
+              <input
+                className="af-input"
+                placeholder="Ej. https://…/casa-recoleccion.webp"
+                value={(draft.local || {}).foto || ""}
+                onChange={(e) => setDraft({ ...draft, local: { ...(draft.local || {}), foto: e.target.value } })}
+              />
+            </div>
+            <button className="af-btn-primary w-full" onClick={guardar}>
+              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar dónde recoger"}
+            </button>
+          </div>
+
           <div className="af-section-title">Mensajes de WhatsApp</div>
           <div className="af-card p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
@@ -4304,6 +4391,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 value={(draft.mensajes || MENSAJES_DEFAULT).avisadoRecoger}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoRecoger: e.target.value } })}
               />
+              <p className="af-ink-soft text-xs mt-1">
+                Donde diga <strong>{"{dondeRecoger}"}</strong> se pone sola la dirección, la ubicación
+                y la foto que capturaste arriba. Si lo borras, ya no se manda.
+              </p>
             </div>
             <div className="af-field">
               <label>Al avisar — pedido a domicilio</label>
@@ -5935,7 +6026,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       ) : (
         <>
           {form.clienteId && form.items.length > 0 && (
-            <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago, config.mensajes))}>
+            <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago, config.mensajes, config.local))}>
               <MessageCircle size={16} className="inline mr-1" /> Enviar resumen por WhatsApp
             </button>
           )}
@@ -6179,10 +6270,10 @@ export default function App() {
       else if (clave === "config-productos") {
         const mensajesFusionados = { ...MENSAJES_DEFAULT, ...(valor.mensajes || {}) };
         // Migración de una sola vez: si el mensaje de "listo para recoger"
-        // guardado todavía es el de antes (sin dirección/ubicación/foto), se
-        // actualiza solo al nuevo por defecto sin pisar nada que se haya
-        // personalizado a mano.
-        if (mensajesFusionados.avisadoRecoger === MENSAJE_RECOGER_ANTERIOR) {
+        // guardado es alguno de los anteriores (sin dirección, o con la
+        // dirección escrita dentro del texto), se cambia al nuevo, que toma
+        // los datos de Ajustes → Datos. No se pisa nada personalizado a mano.
+        if (MENSAJES_RECOGER_ANTERIORES.includes(mensajesFusionados.avisadoRecoger)) {
           mensajesFusionados.avisadoRecoger = MENSAJES_DEFAULT.avisadoRecoger;
           almacen.set("config-productos", JSON.stringify({ ...valor, mensajes: mensajesFusionados })).catch(() => {});
         }
@@ -6190,6 +6281,7 @@ export default function App() {
           ...DEFAULT_CONFIG,
           ...valor,
           mensajes: mensajesFusionados,
+          local: { ...LOCAL_DEFAULT, ...(valor.local || {}) },
           desechables: valor.desechables || DEFAULT_CONFIG.desechables,
           ingredientes: (valor.ingredientes || []).map(normalizarIngrediente),
         });
@@ -6484,7 +6576,7 @@ export default function App() {
 
   const enviarAvisoWhatsApp = (pedido) => {
     if (pedido.clienteTelefono) {
-      const mensaje = pedido.estado === "entregado" ? mensajeEntregado(pedido, config.mensajes) : mensajeAvisado(pedido, config.mensajes);
+      const mensaje = pedido.estado === "entregado" ? mensajeEntregado(pedido, config.mensajes) : mensajeAvisado(pedido, config.mensajes, config.local);
       abrirWhatsApp(pedido.clienteTelefono, mensaje);
     }
     setAvisosPendientes((prev) => {
@@ -6688,9 +6780,9 @@ export default function App() {
     const abonoNuevo = anteriorPedido ? pagado - (anteriorPedido.pagado || 0) : 0;
     if (pedidoObj.clienteTelefono) {
       if (esNuevo) {
-        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeWhatsApp(pedidoObj, "pedido", config.pago, config.mensajes));
+        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeWhatsApp(pedidoObj, "pedido", config.pago, config.mensajes, config.local));
       } else if (anteriorPedido && anteriorPedido.estado !== "avisado" && pedidoObj.estado === "avisado") {
-        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeAvisado(pedidoObj, config.mensajes));
+        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeAvisado(pedidoObj, config.mensajes, config.local));
       } else if (anteriorPedido && anteriorPedido.estado !== "entregado" && pedidoObj.estado === "entregado") {
         abrirWhatsApp(pedidoObj.clienteTelefono, mensajeEntregado(pedidoObj, config.mensajes));
       } else if (abonoNuevo > 0) {

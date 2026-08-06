@@ -153,7 +153,16 @@
       "Bash(/usr/bin/grep -n \"af-nav-texto\\\\|af-nav-label\\\\|af-nav-icono\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"\\\\.af-nav\\\\b\" -A 12 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"af-topbar-nav\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"const irAVista\" -B 6 src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"const irAVista\" -B 6 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"casa-recoleccion\\\\|maps.google\\\\|Calle 8\\\\|MENSAJE_RECOGER_ANTERIOR\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"mensajes: MENSAJES_DEFAULT\" -B 3 -A 2 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"mensajeWhatsApp\\(\\\\|mensajeAvisado\\(\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe ' *)",
+      "Bash(/usr/bin/grep -n \"Mensajes de WhatsApp\" -B 25 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-section-title\\\\|guardado ?\\\\|const guardar\\\\|draft.pago\")",
+      "Bash(/usr/bin/grep -n \"mensajes: { ...MENSAJES_DEFAULT\" -B 12 -A 6 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const guardarConfig\\\\|onGuardarConfig={\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -oE \"config\\\\?\\\\.[a-zA-Z]+|config\\\\.[a-zA-Z]+\" src/AzafranApp.jsx)"
     ]
   }
 }
