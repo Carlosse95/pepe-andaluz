@@ -43,6 +43,10 @@ const MENSAJES_DEFAULT = {
   pagoLiquidado:
     "¡Hola {nombre}! Recibimos su pago de {abono} 🙏\n\n" +
     "Con esto su pedido {folio} queda totalmente pagado. ¡Muchas gracias! ✅",
+  extranamos:
+    "¡Hola {nombre}! Le saludamos de Pepe Andaluz 🥘\n\n" +
+    "Hace rato que no lo vemos por acá y queríamos saludarlo. " +
+    "Cuando se le antoje una paella, con gusto se la preparamos.",
 };
 
 // Dónde recoger. Vive aquí, aparte de los mensajes, porque va en más de uno
@@ -353,6 +357,13 @@ const mensajePago = (pedido, abono, mensajes) => {
     total: money(pedido.total || 0),
   });
 };
+
+// Saludo para el cliente que lleva mucho sin pedir. Recibe un cliente, no un
+// pedido, así que no hay folio: solo se le habla por su nombre.
+const mensajeExtranamos = (cliente, mensajes) =>
+  aplicarPlantillaMensaje(mensajes?.extranamos || MENSAJES_DEFAULT.extranamos, {
+    clienteNombre: cliente?.nombre || "",
+  });
 
 const abrirWhatsApp = (telefono, texto) => {
   const tel = telWhatsApp(telefono);
@@ -677,11 +688,26 @@ const contarPaellasEnFranja = (pedidos, fecha, hora, excluirId) => {
 // si el pedido viejo tenía paellera a nivel general, se aplica a sus paellas.
 // Asigna folio consecutivo a los registros que aún no lo tengan (datos viejos),
 // respetando el orden de creación para que los folios queden cronológicos.
+// También repara folios repetidos. Se colaban cuando dos dispositivos (el
+// celular de Pepe y el iPad) guardaban un pedido casi al mismo tiempo: los dos
+// leían la misma lista y sacaban el mismo "siguiente" número. Cuando eso pasa
+// se respeta el más viejo y al otro se le da uno nuevo, para que el folio
+// siga sirviendo como identificador único frente al cliente.
 const asignarFolios = (lista) => {
   let max = lista.reduce((m, x) => Math.max(m, x.folio || 0), 0);
-  const sinFolio = lista.filter((x) => !x.folio).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const mapa = new Map(sinFolio.map((x) => [x.id, ++max]));
-  return lista.map((x) => (x.folio ? x : { ...x, folio: mapa.get(x.id) }));
+  const porAntiguedad = [...lista].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const usados = new Set();
+  const mapa = new Map();
+  porAntiguedad.forEach((x) => {
+    if (x.folio && !usados.has(x.folio)) {
+      usados.add(x.folio);
+      return;
+    }
+    const nuevo = ++max;
+    usados.add(nuevo);
+    mapa.set(x.id, nuevo);
+  });
+  return lista.map((x) => (mapa.has(x.id) ? { ...x, folio: mapa.get(x.id) } : x));
 };
 
 const migrarPedido = (p) => {
@@ -1233,6 +1259,13 @@ function AlertaFranjaModal({ alerta, onCerrar }) {
 // Se muestra apenas se marca "Avisado" o "Entregado", sin importar en qué
 // pestaña esté el usuario, para que el envío del WhatsApp salga de un toque
 // real ahí mismo — antes había que ir a buscar el pedido a otra lista.
+const TITULO_AVISO = {
+  entregado: "Pedido entregado",
+  avisado: "Pedido avisado",
+  pago: "Pago registrado",
+  nuevo: "Pedido guardado",
+};
+
 function AvisoPendienteModal({ aviso, onEnviar, onCerrar }) {
   if (!aviso) return null;
   const { pedido, tipo } = aviso;
@@ -1240,9 +1273,11 @@ function AvisoPendienteModal({ aviso, onEnviar, onCerrar }) {
     <div className="af-modal-overlay af-modal-overlay-center" onClick={onCerrar}>
       <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
         <div className="af-alerta-icon"><MessageCircle size={26} /></div>
-        <div className="af-alerta-titulo">{tipo === "entregado" ? "Pedido entregado" : "Pedido avisado"}</div>
+        <div className="af-alerta-titulo">{TITULO_AVISO[tipo] || "Pedido actualizado"}</div>
         <p className="af-alerta-texto">
-          ¿Enviamos el mensaje de WhatsApp a <strong>{pedido.clienteNombre}</strong>?
+          {tipo === "pago"
+            ? <>¿Le mandamos su saldo al día a <strong>{pedido.clienteNombre}</strong>?</>
+            : <>¿Enviamos el mensaje de WhatsApp a <strong>{pedido.clienteNombre}</strong>?</>}
         </p>
         <button className="af-btn-primary w-full" onClick={onEnviar}>
           <MessageCircle size={15} className="inline mr-1" /> Enviar por WhatsApp
@@ -1537,7 +1572,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const [verManiana, setVerManiana] = useState(false);
   // Lo que falta por comprar sí conviene verlo de entrada: es lo único que
   // hay que resolver antes de que sea tarde.
-  const [verCompras, setVerCompras] = useState(true);
+  const [verCompras, setVerCompras] = useState(false);
   // Filtro por estado: se maneja aquí (y no en Agenda) porque estos son los
   // pedidos que se están trabajando hoy.
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -1768,7 +1803,7 @@ function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, childr
 /*  Vista: Agenda                                                         */
 /* ---------------------------------------------------------------------- */
 
-function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
+function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido }) {
   const [tab, setTab] = useState("pendientes");
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
@@ -1819,11 +1854,10 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   const totalPendiente = pendientesFiltrados.reduce((a, p) => a + p.total, 0);
   const porCobrarPendiente = pendientesFiltrados.reduce((a, p) => a + (p.saldo || 0), 0);
 
-  // Por entregar: se abre lo de hoy y lo atrasado, que es lo que hay que
-  // atender. Entregados es historial, así que empieza todo recogido salvo
-  // que se haya pedido un día en concreto con el filtro de fecha.
-  const abiertoPorDefecto = (fecha) =>
-    tab === "pendientes" ? fecha <= hoy : Boolean(diaEntregados);
+  // Todo empieza recogido: al entrar se ve la lista de días de un vistazo y
+  // se abre solo el que interesa. La excepción es buscar un día concreto con
+  // el filtro de fecha, donde abrirlo es justo lo que se pidió.
+  const abiertoPorDefecto = (fecha) => (tab === "entregados" ? Boolean(diaEntregados) : false);
   // Se guarda con la pestaña incluida: una misma fecha puede tener pedidos
   // por entregar y entregados, y cada lista se abre por su cuenta.
   const claveDia = (fecha) => `${tab}|${fecha}`;
@@ -1845,6 +1879,14 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
           Entregados
         </button>
       </div>
+
+      {onNuevoPedido && (
+        <div className="af-quick-row mb-4">
+          <button className="af-quick-btn" onClick={onNuevoPedido}>
+            <Plus size={16} /> Nuevo pedido
+          </button>
+        </div>
+      )}
 
       {tab === "pendientes" && pendientes.length > 0 && (
         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -2114,7 +2156,7 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
 /*  Vista: Clientes                                                       */
 /* ---------------------------------------------------------------------- */
 
-function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
+function ClientesView({ clientes, pedidos, config, onAddCliente, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [q, setQ] = useState("");
   const [detalleId, setDetalleId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
@@ -2376,9 +2418,25 @@ function ClientesView({ clientes, pedidos, onAddCliente, onUpdateCliente, onNuev
                     if (dias === null || dias < DIAS_PARA_EXTRANARLOS) return null;
                     const meses = Math.floor(dias / 30);
                     return (
-                      <span className="af-chip af-chip-ausente inline-flex">
-                        Sin pedir {meses >= 1 ? `${meses} ${meses === 1 ? "mes" : "meses"}` : `${dias} días`}
-                      </span>
+                      <>
+                        <span className="af-chip af-chip-ausente inline-flex">
+                          Sin pedir {meses >= 1 ? `${meses} ${meses === 1 ? "mes" : "meses"}` : `${dias} días`}
+                        </span>
+                        {/* Saludarlo desde aquí mismo: enterarse de que un
+                            cliente se enfrió no sirve de nada si hay que ir a
+                            buscar su número a otra pantalla. */}
+                        {c.telefono && (
+                          <button
+                            className="af-chip af-chip-wa-mini inline-flex"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              abrirWhatsApp(c.telefono, mensajeExtranamos(c, config?.mensajes));
+                            }}
+                          >
+                            <MessageCircle size={12} /> Saludarlo
+                          </button>
+                        )}
+                      </>
                     );
                   })()}
                 </div>
@@ -3463,7 +3521,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       <div className="af-card p-4 mb-5 af-chart-card">
         <div className="af-chart-title">Ingresos por mes — {anio}</div>
         <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={datosMensuales} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+          <BarChart data={datosMensuales} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
             <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
@@ -3512,7 +3570,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         <div className="af-card p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Total por año</div>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={datosPorAnio} margin={{ top: 10, right: 20, left: -14, bottom: 0 }}>
+            <LineChart data={datosPorAnio} margin={{ top: 10, right: 20, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
               <XAxis dataKey="anio" tick={{ fontSize: 12, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
@@ -3600,7 +3658,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         <div className="af-card p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Ingresos vs. gastos por mes — {anio}</div>
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
@@ -3719,7 +3777,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         <div className="af-card p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Clientes nuevos por mes — {anio}</div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={datosClientesMensual} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+            <BarChart data={datosClientesMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
@@ -4427,6 +4485,18 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <p className="af-ink-soft text-xs mt-1">
                 Aquí sí puedes usar <strong>{"{abono}"}</strong> (lo que acaba de pagar),{" "}
                 <strong>{"{pagado}"}</strong>, <strong>{"{saldo}"}</strong> y <strong>{"{total}"}</strong>.
+              </p>
+            </div>
+            <div className="af-field">
+              <label>Para saludar a un cliente que no ha vuelto</label>
+              <textarea
+                className="af-input"
+                rows={4}
+                value={(draft.mensajes || MENSAJES_DEFAULT).extranamos || MENSAJES_DEFAULT.extranamos}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), extranamos: e.target.value } })}
+              />
+              <p className="af-ink-soft text-xs mt-1">
+                Sale del botón "Saludarlo" en Clientes. Aquí no hay pedido, así que solo funciona <strong>{"{nombre}"}</strong>.
               </p>
             </div>
             <div className="af-field">
@@ -5972,10 +6042,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </div>
       )}
 
-      <div className="af-field">
-        <label>Notas internas</label>
-        <textarea className="af-input" rows={2} placeholder="Notas para uso interno, no salen en el PDF (opcional)" value={form.notas} onChange={(e) => setForm((p) => ({ ...p, notas: e.target.value }))} />
-      </div>
+      {/* Las "Notas internas" del pedido se quitaron: repetían la nota de cada
+          platillo y, al vivir aquí abajo, no se veían al mirar la orden. Lo
+          que hay que avisar en cocina (una alergia, quitar un ingrediente) va
+          en la nota del platillo, que sí sale en la tarjeta del pedido.
+          El campo sigue existiendo en los datos porque el asistente de
+          WhatsApp lo usa para marcar los pedidos que apuntó él. */}
 
       {error && <div className="af-error">{error}</div>}
 
@@ -6036,11 +6108,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             {editando ? "Guardar cambios" : "Guardar pedido"}
           </button>
 
-          {editando && (
-            <button className="af-btn-secondary w-full mt-2" onClick={onDuplicar}>
-              <Copy size={15} className="inline mr-1" /> Repetir pedido
-            </button>
-          )}
           {editando && (
             <button
               className="af-btn-danger w-full mt-2"
@@ -6576,9 +6643,16 @@ export default function App() {
     }
   };
 
-  const enviarAvisoWhatsApp = (pedido) => {
+  // `tipo` decide qué mensaje se manda; `extra` trae lo que ese mensaje
+  // necesite (por ahora, cuánto acaba de abonar).
+  const enviarAvisoWhatsApp = (pedido, tipo, extra) => {
     if (pedido.clienteTelefono) {
-      const mensaje = pedido.estado === "entregado" ? mensajeEntregado(pedido, config.mensajes) : mensajeAvisado(pedido, config.mensajes, config.local);
+      const clase = tipo || (pedido.estado === "entregado" ? "entregado" : "avisado");
+      let mensaje;
+      if (clase === "pago") mensaje = mensajePago(pedido, extra?.abono || 0, config.mensajes);
+      else if (clase === "nuevo") mensaje = mensajeWhatsApp(pedido, "pedido", config.pago, config.mensajes, config.local);
+      else if (clase === "entregado") mensaje = mensajeEntregado(pedido, config.mensajes);
+      else mensaje = mensajeAvisado(pedido, config.mensajes, config.local);
       abrirWhatsApp(pedido.clienteTelefono, mensaje);
     }
     setAvisosPendientes((prev) => {
@@ -6771,24 +6845,30 @@ export default function App() {
     setView(formOrigen);
     setError("");
 
-    // WhatsApp automático: al crear el pedido se manda la confirmación; si se
-    // acaba de marcar "Avisar" se manda el mensaje de listo para recoger/domicilio;
-    // si se acaba de marcar "Entregado" se manda el mensaje de entrega; y si solo
-    // se le acaba de abonar, se le manda su saldo al día.
+    // WhatsApp: al crear el pedido se manda la confirmación; si se acaba de
+    // marcar "Avisar" o "Entregado" el mensaje que toque; y si solo se le
+    // acaba de abonar, su saldo al día.
     //
-    // El orden importa: el cambio de estado gana sobre el aviso de pago para no
-    // abrir dos WhatsApp de un jalón (marcar Entregado también deja el pedido
-    // pagado, así que los dos casos se cumplen a la vez).
+    // Ninguno se abre solo. Al guardar ya corrieron los guardados y el cambio
+    // de pantalla, así que para el navegador (sobre todo Safari en iPhone)
+    // esto ya no cuenta como un toque directo y bloquea la ventana en
+    // silencio: el mensaje simplemente no salía y no se avisaba de nada. Por
+    // eso se abre el mismo modal que ya se usaba al avisar/entregar, con un
+    // botón real que sí lo manda.
+    //
+    // El orden importa: el cambio de estado gana sobre el aviso de pago para
+    // no encimar dos mensajes (marcar Entregado también deja el pedido pagado,
+    // así que los dos casos se cumplen a la vez).
     const abonoNuevo = anteriorPedido ? pagado - (anteriorPedido.pagado || 0) : 0;
     if (pedidoObj.clienteTelefono) {
       if (esNuevo) {
-        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeWhatsApp(pedidoObj, "pedido", config.pago, config.mensajes, config.local));
+        setAvisoModal({ pedido: pedidoObj, tipo: "nuevo" });
       } else if (anteriorPedido && anteriorPedido.estado !== "avisado" && pedidoObj.estado === "avisado") {
-        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeAvisado(pedidoObj, config.mensajes, config.local));
+        setAvisoModal({ pedido: pedidoObj, tipo: "avisado" });
       } else if (anteriorPedido && anteriorPedido.estado !== "entregado" && pedidoObj.estado === "entregado") {
-        abrirWhatsApp(pedidoObj.clienteTelefono, mensajeEntregado(pedidoObj, config.mensajes));
+        setAvisoModal({ pedido: pedidoObj, tipo: "entregado" });
       } else if (abonoNuevo > 0) {
-        abrirWhatsApp(pedidoObj.clienteTelefono, mensajePago(pedidoObj, abonoNuevo, config.mensajes));
+        setAvisoModal({ pedido: pedidoObj, tipo: "pago", abono: abonoNuevo });
       }
     }
 
@@ -7098,7 +7178,7 @@ export default function App() {
 
         <div className="af-content">
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
-          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
+          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
             <MensajesView
@@ -7115,6 +7195,7 @@ export default function App() {
             <ClientesView
               clientes={clientes}
               pedidos={pedidos}
+              config={config}
               onAddCliente={addCliente}
               onUpdateCliente={updateCliente}
               onNuevoPedidoPara={goToNuevoPedido}
@@ -7157,16 +7238,9 @@ export default function App() {
           )}
         </div>
 
-        {(view === "hoy" || view === "agenda") && (
-          <button className="af-fab" onClick={() => goToNuevoPedido()}>
-            <Plus size={24} />
-          </button>
-        )}
-        {view === "presupuestos" && (
-          <button className="af-fab" onClick={() => goToNuevoPresupuesto()}>
-            <Plus size={24} />
-          </button>
-        )}
+        {/* El botón redondo flotante se quitó: en celular quedaba tapado por la
+            barra de abajo y casi no se usaba. Cada pantalla tiene su propio
+            botón de "Nuevo…", que además dice qué hace. */}
 
         {view !== "nuevo" && (
           <div className="af-nav">
@@ -7189,7 +7263,7 @@ export default function App() {
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
         <AvisoPendienteModal
           aviso={avisoModal}
-          onEnviar={() => { enviarAvisoWhatsApp(avisoModal.pedido); setAvisoModal(null); }}
+          onEnviar={() => { enviarAvisoWhatsApp(avisoModal.pedido, avisoModal.tipo, { abono: avisoModal.abono }); setAvisoModal(null); }}
           onCerrar={() => setAvisoModal(null)}
         />
       </div>
@@ -7567,6 +7641,9 @@ const AZAFRAN_CSS = `
 .af-chat-input:focus { outline: none; border-color: var(--wine); }
 .af-chat-enviar { flex-shrink: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: var(--wine); color: #fff; }
 .af-chat-enviar:disabled { opacity: 0.4; }
+
+.af-chip-wa-mini { background: color-mix(in srgb, #25D366 18%, transparent); color: #0b7a3b; font-weight: 700; border: none; cursor: pointer; gap: 4px; }
+.af-chip-wa-mini:hover { background: color-mix(in srgb, #25D366 28%, transparent); }
 
 .af-fab { position: absolute; bottom: 78px; right: 20px; background: var(--wine); color: white; width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 6px 16px rgba(193,66,31,0.35); z-index: 10; transition: transform 0.18s ease, box-shadow 0.18s ease; cursor: pointer; }
 .af-fab:hover { transform: scale(1.07); box-shadow: 0 8px 22px rgba(193,90,52,0.45); }
