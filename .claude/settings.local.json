@@ -301,7 +301,24 @@
       "Bash(awk -F: '$1>6310 && $1<6560')",
       "Bash(perl -i -pe 's/^      doc\\\\.setFontSize\\\\\\(8\\\\\\);$/      doc.setFontSize\\(ETIQUETA\\);/ if $.==6342' src/AzafranApp.jsx)",
       "Bash(awk 'NR>=6310 && NR<=6600 && /setFontSize\\\\\\([0-9]/ {print NR\": \"$0}' src/AzafranApp.jsx)",
-      "Bash(perl -i -pe 's/setFontSize\\\\\\(8\\\\\\)/setFontSize\\(ETIQUETA\\)/ if $.==6568; s/setFontSize\\\\\\(9\\\\.5\\\\\\)/setFontSize\\(CUERPO\\)/ if $.==6573 || $.==6596; s/setFontSize\\\\\\(9\\\\\\)/setFontSize\\(CUERPO\\)/ if $.==6592' src/AzafranApp.jsx)"
+      "Bash(perl -i -pe 's/setFontSize\\\\\\(8\\\\\\)/setFontSize\\(ETIQUETA\\)/ if $.==6568; s/setFontSize\\\\\\(9\\\\.5\\\\\\)/setFontSize\\(CUERPO\\)/ if $.==6573 || $.==6596; s/setFontSize\\\\\\(9\\\\\\)/setFontSize\\(CUERPO\\)/ if $.==6592' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Recibo de pagado\" -B 6 -A 3 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"descargarPDF\\(\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"tipo: \\\\\"pago\\\\\"\\\\|clase === \\\\\"pago\\\\\"\" -A 2 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const envioNum\\\\|const ivaNum\\\\|const total =\" src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=6310 && /^  };$/ {print NR; exit}' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^function NuevoPedidoView\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^const construirPDF\\\\|^const nombreArchivoPDF\\\\|^function NuevoPedidoView\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"descargarPDF\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/onClick=\\\\{\\\\\\(\\\\\\) => descargarPDF\\\\\\(\"\\(presupuesto|recibo\\)\"\\\\\\)\\\\}/onClick={\\(\\) => construirPDF\\(form, \"$1\", config\\).save\\(nombreArchivoPDF\\(form, \"$1\"\\)\\)}/g' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"construirPDF\\(form,\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  subirTicket, verTicket, borrarTicket,$/  subirTicket, verTicket, borrarTicket, subirRecibo,/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"subirRecibo\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function AvisoPendienteModal\" -A 26 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const enviarAvisoWhatsApp\" -A 16 src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  const \\\\[verAvisos, setVerAvisos\\\\] = useState\\\\\\(false\\\\\\);$/  const [verAvisos, setVerAvisos] = useState\\(false\\);\\\\n  const [subiendoRecibo, setSubiendoRecibo] = useState\\(false\\);/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"subiendoRecibo\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"<AvisoPendienteModal\" -A 5 src/AzafranApp.jsx)"
     ]
   }
 }

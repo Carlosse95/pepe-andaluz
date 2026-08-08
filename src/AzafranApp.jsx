@@ -16,7 +16,7 @@ import {
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
-  subirTicket, verTicket, borrarTicket,
+  subirTicket, verTicket, borrarTicket, subirRecibo,
 } from "./nube.js";
 
 /* ---------------------------------------------------------------------- */
@@ -1342,11 +1342,14 @@ function CobroEntregaModal({ cobro, onElegir, onCerrar }) {
   );
 }
 
-function AvisoPendienteModal({ aviso, onEnviar, onCerrar }) {
+function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onCerrar }) {
   if (!aviso) return null;
   const { pedido, tipo } = aviso;
+  // El recibo solo tiene sentido cuando el pedido acaba de quedar saldado:
+  // es el comprobante de que ya no debe nada.
+  const quedoSaldado = tipo === "pago" && sumaAbonos(pedido.abonos) >= (pedido.total || 0) - 0.5;
   return (
-    <div className="af-modal-overlay af-modal-overlay-center" onClick={onCerrar}>
+    <div className="af-modal-overlay af-modal-overlay-center" onClick={subiendo ? undefined : onCerrar}>
       <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
         <div className="af-alerta-icon"><MessageCircle size={26} /></div>
         <div className="af-alerta-titulo">{TITULO_AVISO[tipo] || "Pedido actualizado"}</div>
@@ -1355,10 +1358,27 @@ function AvisoPendienteModal({ aviso, onEnviar, onCerrar }) {
             ? <>¿Le mandamos su saldo al día a <strong>{pedido.clienteNombre}</strong>?</>
             : <>¿Enviamos el mensaje de WhatsApp a <strong>{pedido.clienteNombre}</strong>?</>}
         </p>
-        <button className="af-btn-primary w-full" onClick={onEnviar}>
-          <MessageCircle size={15} className="inline mr-1" /> Enviar por WhatsApp
+        {quedoSaldado && (
+          <button className="af-btn-primary w-full" disabled={subiendo} onClick={onEnviarConRecibo}>
+            {subiendo
+              ? "Preparando el recibo…"
+              : <><Receipt size={15} className="inline mr-1" /> Enviar con su recibo</>}
+          </button>
+        )}
+        <button
+          className={quedoSaldado ? "af-btn-secondary w-full mt-2" : "af-btn-primary w-full"}
+          disabled={subiendo}
+          onClick={onEnviar}
+        >
+          <MessageCircle size={15} className="inline mr-1" /> {quedoSaldado ? "Solo el mensaje" : "Enviar por WhatsApp"}
         </button>
-        <button className="af-btn-secondary w-full mt-2" onClick={onCerrar}>Ahora no</button>
+        <button className="af-btn-secondary w-full mt-2" disabled={subiendo} onClick={onCerrar}>Ahora no</button>
+        {quedoSaldado && (
+          <p className="af-ink-soft text-xs mt-3">
+            El recibo se sube y se manda como liga. Deja de abrirse a los 30 días, porque
+            trae los datos del cliente.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -6102,6 +6122,321 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   );
 }
 
+/* ---------------------------------------------------------------------- */
+/*  PDF: presupuesto y recibo de pago                                     */
+/* ---------------------------------------------------------------------- */
+
+const construirPDF = (form, tipoDoc, config) => {
+  const esRecibo = tipoDoc === "recibo";
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 18;
+  const anchoUtil = pageWidth - margin * 2;
+  // Las cuentas se sacan aquí y no se reciben de fuera: así el documento
+  // siempre cuadra con lo que trae el pedido, lo genere quien lo genere.
+  const envioNum = envioDe(form);
+  const ivaNum = ivaDe(form);
+  const total = computeTotal(form.items) + envioNum + ivaNum;
+
+  // Los mismos colores de la app, para que el papel y la pantalla se vean
+  // del mismo negocio. Antes el PDF seguía con la paleta vieja (café y
+  // naranja) y desentonaba con todo lo demás.
+  const AZUL = [47, 95, 224];
+  const TINTA = [22, 35, 63];
+  const SUAVE = [100, 117, 143];
+  const LINEA = [226, 232, 245];
+  const FONDO = [244, 247, 253];
+  const VERDE = [21, 128, 61];
+  const VERDE_FONDO = [232, 245, 233];
+
+  const tinta = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const relleno = (c) => doc.setFillColor(c[0], c[1], c[2]);
+
+  // Cuatro tamaños y nada más. Antes había nueve distintos y la hoja se
+  // sentía inquieta: cada bloque gritaba más fuerte que el anterior.
+  const ETIQUETA = 7.5; // los rótulos grises de cada sección
+  const CUERPO = 9.5;   // todo el texto normal
+  const FUERTE = 11;    // nombre del cliente, TOTAL y el sello de pagado
+  const TITULO = 13;    // solo el nombre del documento, en el encabezado
+
+  // El pie va siempre pegado abajo, en su sitio, y no donde acabe el
+  // contenido: así nunca se encima con lo último que se escribió.
+  const pie = () => {
+    doc.setDrawColor(LINEA[0], LINEA[1], LINEA[2]);
+    doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(ETIQUETA);
+    tinta(SUAVE);
+    doc.text(
+      esRecibo
+        ? `Recibo emitido el ${fmtDateHuman(todayISO())} · Pepe Andaluz`
+        : `Presupuesto generado el ${fmtDateHuman(todayISO())} · Sujeto a disponibilidad del día`,
+      margin,
+      pageHeight - 14
+    );
+  };
+
+  // Antes, con muchos platillos el texto se salía de la hoja y se encimaba
+  // con el pie. Ahora, cuando ya no cabe, se abre página nueva.
+  let y = 0;
+  const cabe = (alto) => {
+    if (y + alto < pageHeight - 26) return;
+    pie();
+    doc.addPage();
+    y = margin + 6;
+  };
+
+  /* ---- Encabezado ---- */
+  relleno(AZUL);
+  doc.rect(0, 0, pageWidth, 34, "F");
+  const logoW = 46;
+  const logoH = logoW * (497 / 945);
+  try {
+    doc.addImage(`data:image/png;base64,${LOGO_MASK_B64}`, "PNG", margin, (34 - logoH) / 2, logoW, logoH);
+  } catch (e) {
+    // si por lo que sea la imagen falla, el PDF se genera igual sin el logo
+  }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(TITULO);
+  doc.setTextColor(255, 255, 255);
+  doc.text(esRecibo ? "RECIBO DE PAGO" : "PRESUPUESTO", pageWidth - margin, 17, { align: "right" });
+  if (form.folio) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(CUERPO);
+    doc.text(fmtFolio(form.folio, esRecibo ? "Pedido " : "Folio P-"), pageWidth - margin, 24, { align: "right" });
+  }
+
+  /* ---- Cliente y entrega, en dos columnas ---- */
+  y = 48;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(ETIQUETA);
+  tinta(SUAVE);
+  doc.text("CLIENTE", margin, y);
+  doc.text(esRecibo ? "FECHA DEL PEDIDO" : "PARA EL DÍA", pageWidth / 2 + 4, y);
+
+  y += 6;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(FUERTE);
+  tinta(TINTA);
+  // El nombre se queda dentro de su columna: un nombre largo (una empresa,
+  // por ejemplo) se metía encima de la fecha, a la derecha.
+  const anchoColumna = pageWidth / 2 - 4 - margin;
+  const lineasNombre = doc.splitTextToSize(form.clienteNombre || "Cliente", anchoColumna).slice(0, 2);
+  doc.text(lineasNombre, margin, y);
+  doc.text(fmtDateHuman(form.fecha), pageWidth / 2 + 4, y);
+  // Si el nombre ocupó dos renglones, lo de abajo se recorre para no encimarse.
+  const extraNombre = (lineasNombre.length - 1) * 5.5;
+
+  y += 5.5 + extraNombre;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(CUERPO);
+  tinta(SUAVE);
+  if (form.clienteTelefono) doc.text(fmtTel(form.clienteTelefono), margin, y);
+  doc.text(
+    `${fmtHora12(form.hora)} · ${form.entrega ? "A domicilio" : "Para recoger"}`,
+    pageWidth / 2 + 4,
+    y
+  );
+  y += 5;
+  if (form.entrega && form.direccion) {
+    const lineasDir = doc.splitTextToSize(form.direccion, anchoColumna).slice(0, 3);
+    doc.text(lineasDir, pageWidth / 2 + 4, y);
+    y += lineasDir.length * 4.5;
+  }
+
+  /* ---- Tabla de platillos ---- */
+  y += 6;
+  // La columna de cantidad se separa bien de la de precio: con "10 personas"
+  // a un lado y "$240.00/persona" al otro, pegadas se encimaban.
+  const colCant = pageWidth - margin - 95;
+  const colUnit = pageWidth - margin - 34;
+  const colSub = pageWidth - margin;
+  // El nombre del platillo se recorta si no cabe, para que nunca invada la
+  // columna de al lado.
+  const anchoConcepto = colCant - (margin + 3) - 4;
+
+  relleno(FONDO);
+  doc.rect(margin, y, anchoUtil, 9, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(ETIQUETA);
+  tinta(SUAVE);
+  doc.text("CONCEPTO", margin + 3, y + 6);
+  doc.text("CANTIDAD", colCant, y + 6);
+  doc.text("PRECIO", colUnit, y + 6, { align: "right" });
+  doc.text("IMPORTE", colSub - 3, y + 6, { align: "right" });
+  y += 15;
+
+  doc.setFontSize(CUERPO);
+  form.items.forEach((it) => {
+    cabe(9);
+    const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
+    // La paella se cobra POR KILO, y un kilo alcanza para dos personas. Antes
+    // la cuenta se mostraba dividida entre personas ("$240.00/persona"), que
+    // no es como se cobra y no cuadraba a simple vista con el importe. Ahora
+    // se ve el kilaje —que es lo que multiplica— y las personas de referencia.
+    const cant = it.tipo === "paella"
+      ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg).replace("para ", "")}`
+      : it.unidad === "kg" ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
+    const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
+    // Para paellas con extras, la fila muestra solo la base; los extras van
+    // en renglones propios para que la suma cuadre a la vista.
+    const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
+    doc.setFont("helvetica", "bold");
+    tinta(TINTA);
+    doc.text(doc.splitTextToSize(nombre, anchoConcepto)[0], margin + 3, y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(CUERPO);
+    tinta(SUAVE);
+    doc.text(cant, colCant, y);
+    doc.text(unitario, colUnit, y, { align: "right" });
+    doc.setFontSize(CUERPO);
+    doc.setFont("helvetica", "bold");
+    tinta(TINTA);
+    doc.text(money(subtotalFila), colSub - 3, y, { align: "right" });
+    y += 7;
+
+    (it.extras || []).forEach((e) => {
+      cabe(9);
+      doc.setFont("helvetica", "normal");
+      tinta(SUAVE);
+      doc.text(`   + ${e.nombre}`, margin + 3, y);
+      doc.text(`x${e.cantidad}`, colCant, y);
+      doc.text(money(e.precio), colUnit, y, { align: "right" });
+      doc.text(money(e.precio * e.cantidad), colSub - 3, y, { align: "right" });
+      y += 6.5;
+    });
+
+    if (it.nota) {
+      cabe(8);
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(CUERPO);
+      tinta(SUAVE);
+      const lineasNota = doc.splitTextToSize(`Nota: ${it.nota}`, anchoUtil - 8);
+      doc.text(lineasNota, margin + 6, y);
+      y += lineasNota.length * 4.5 + 1;
+      doc.setFontSize(CUERPO);
+    }
+    y += 1.5;
+  });
+
+  /* ---- Totales ---- */
+  cabe(40);
+  y += 2;
+  doc.setDrawColor(LINEA[0], LINEA[1], LINEA[2]);
+  doc.line(colCant - 6, y, pageWidth - margin, y);
+  y += 7;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(CUERPO);
+  const renglonTotal = (etiqueta, monto) => {
+    tinta(SUAVE);
+    doc.text(etiqueta, colUnit, y, { align: "right" });
+    tinta(TINTA);
+    doc.text(monto, colSub - 3, y, { align: "right" });
+    y += 6;
+  };
+  if (envioNum > 0) renglonTotal("Envío a domicilio", money(envioNum));
+  if (ivaNum > 0) renglonTotal("IVA (16%)", money(ivaNum));
+
+  y += 2;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(FUERTE);
+  tinta(AZUL);
+  doc.text("TOTAL", colUnit, y, { align: "right" });
+  doc.text(money(total), colSub - 3, y, { align: "right" });
+  y += 12;
+
+  /* ---- Recibo: cómo pagó y constancia de saldado ---- */
+  if (esRecibo) {
+    cabe(50);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(ETIQUETA);
+    tinta(SUAVE);
+    doc.text("FORMA DE PAGO", margin, y);
+    y += 7;
+
+    doc.setFontSize(CUERPO);
+    (form.abonos || []).forEach((ab) => {
+      cabe(9);
+      doc.setFont("helvetica", "normal");
+      tinta(SUAVE);
+      doc.text(
+        `${METODO_PAGO_LABEL[ab.metodo] || "Pago"}${ab.fecha ? ` · ${fmtDateHuman(ab.fecha)}` : ""}`,
+        margin + 3,
+        y
+      );
+      doc.setFont("helvetica", "bold");
+      tinta(TINTA);
+      doc.text(money(ab.monto), colSub - 3, y, { align: "right" });
+      y += 6.5;
+    });
+
+    // La constancia: el renglón que el cliente viene a buscar.
+    cabe(24);
+    y += 4;
+    relleno(VERDE_FONDO);
+    doc.rect(margin, y, anchoUtil, 16, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(FUERTE);
+    tinta(VERDE);
+    doc.text("PAGADO EN SU TOTALIDAD", margin + 5, y + 10.5);
+    doc.text(money(sumaAbonos(form.abonos)), colSub - 5, y + 10.5, { align: "right" });
+    y += 24;
+  }
+
+  /* ---- Presupuesto: condiciones y datos para depositar ---- */
+  // Nada de esto va en el recibo: las condiciones hablan de un presupuesto
+  // por aceptar, y los datos para depositar no vienen al caso cuando el
+  // pedido ya está pagado.
+  if (!esRecibo && form.terminos) {
+    cabe(30);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(ETIQUETA);
+    tinta(SUAVE);
+    doc.text("CONDICIONES", margin, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(CUERPO);
+    tinta(SUAVE);
+    const lineasNotas = doc.splitTextToSize(form.terminos, anchoUtil);
+    doc.text(lineasNotas, margin, y);
+    y += lineasNotas.length * 4.8 + 6;
+  }
+
+  if (!esRecibo && config.pago && (config.pago.clabe || "").trim()) {
+    cabe(34);
+    relleno(FONDO);
+    const lineasPago = [
+      config.pago.banco ? `Banco: ${config.pago.banco}` : null,
+      config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
+      `CLABE / Tarjeta: ${config.pago.clabe}`,
+      "En el concepto de la transferencia ponga únicamente su nombre, por favor.",
+    ].filter(Boolean);
+    const alto = 14 + lineasPago.length * 5;
+    doc.rect(margin, y, anchoUtil, alto, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(CUERPO);
+    tinta(TINTA);
+    doc.text("Para confirmar: 50% de anticipo, el resto a la entrega", margin + 5, y + 7);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(CUERPO);
+    tinta(SUAVE);
+    doc.text(lineasPago, margin + 5, y + 13);
+    y += alto + 6;
+  }
+
+  pie();
+
+  return doc;
+};
+
+// El nombre con el que se guarda o se sube.
+const nombreArchivoPDF = (form, tipoDoc) => {
+  const limpio = (form.clienteNombre || "cliente").replace(/[^a-zA-Z0-9]+/g, "_");
+  return `${tipoDoc === "recibo" ? "Recibo" : "Presupuesto"}-${limpio}-${form.fecha}.pdf`;
+};
+
 function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
   const [busqueda, setBusqueda] = useState("");
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
@@ -6304,306 +6639,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   // Un mismo documento sirve para las dos cosas: el presupuesto que se manda
   // antes, y el recibo que piden después de pagar. Cambian el título, lo que
   // se dice del dinero y el pie; el cuerpo (quién, qué y cuánto) es el mismo.
-  const descargarPDF = (tipoDoc = "presupuesto") => {
-    const esRecibo = tipoDoc === "recibo";
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 18;
-    const anchoUtil = pageWidth - margin * 2;
-
-    // Los mismos colores de la app, para que el papel y la pantalla se vean
-    // del mismo negocio. Antes el PDF seguía con la paleta vieja (café y
-    // naranja) y desentonaba con todo lo demás.
-    const AZUL = [47, 95, 224];
-    const TINTA = [22, 35, 63];
-    const SUAVE = [100, 117, 143];
-    const LINEA = [226, 232, 245];
-    const FONDO = [244, 247, 253];
-    const VERDE = [21, 128, 61];
-    const VERDE_FONDO = [232, 245, 233];
-
-    const tinta = (c) => doc.setTextColor(c[0], c[1], c[2]);
-    const relleno = (c) => doc.setFillColor(c[0], c[1], c[2]);
-
-    // Cuatro tamaños y nada más. Antes había nueve distintos y la hoja se
-    // sentía inquieta: cada bloque gritaba más fuerte que el anterior.
-    const ETIQUETA = 7.5; // los rótulos grises de cada sección
-    const CUERPO = 9.5;   // todo el texto normal
-    const FUERTE = 11;    // nombre del cliente, TOTAL y el sello de pagado
-    const TITULO = 13;    // solo el nombre del documento, en el encabezado
-
-    // El pie va siempre pegado abajo, en su sitio, y no donde acabe el
-    // contenido: así nunca se encima con lo último que se escribió.
-    const pie = () => {
-      doc.setDrawColor(LINEA[0], LINEA[1], LINEA[2]);
-      doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(ETIQUETA);
-      tinta(SUAVE);
-      doc.text(
-        esRecibo
-          ? `Recibo emitido el ${fmtDateHuman(todayISO())} · Pepe Andaluz`
-          : `Presupuesto generado el ${fmtDateHuman(todayISO())} · Sujeto a disponibilidad del día`,
-        margin,
-        pageHeight - 14
-      );
-    };
-
-    // Antes, con muchos platillos el texto se salía de la hoja y se encimaba
-    // con el pie. Ahora, cuando ya no cabe, se abre página nueva.
-    let y = 0;
-    const cabe = (alto) => {
-      if (y + alto < pageHeight - 26) return;
-      pie();
-      doc.addPage();
-      y = margin + 6;
-    };
-
-    /* ---- Encabezado ---- */
-    relleno(AZUL);
-    doc.rect(0, 0, pageWidth, 34, "F");
-    const logoW = 46;
-    const logoH = logoW * (497 / 945);
-    try {
-      doc.addImage(`data:image/png;base64,${LOGO_MASK_B64}`, "PNG", margin, (34 - logoH) / 2, logoW, logoH);
-    } catch (e) {
-      // si por lo que sea la imagen falla, el PDF se genera igual sin el logo
-    }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(TITULO);
-    doc.setTextColor(255, 255, 255);
-    doc.text(esRecibo ? "RECIBO DE PAGO" : "PRESUPUESTO", pageWidth - margin, 17, { align: "right" });
-    if (form.folio) {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(CUERPO);
-      doc.text(fmtFolio(form.folio, esRecibo ? "Pedido " : "Folio P-"), pageWidth - margin, 24, { align: "right" });
-    }
-
-    /* ---- Cliente y entrega, en dos columnas ---- */
-    y = 48;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(ETIQUETA);
-    tinta(SUAVE);
-    doc.text("CLIENTE", margin, y);
-    doc.text(esRecibo ? "FECHA DEL PEDIDO" : "PARA EL DÍA", pageWidth / 2 + 4, y);
-
-    y += 6;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(FUERTE);
-    tinta(TINTA);
-    // El nombre se queda dentro de su columna: un nombre largo (una empresa,
-    // por ejemplo) se metía encima de la fecha, a la derecha.
-    const anchoColumna = pageWidth / 2 - 4 - margin;
-    const lineasNombre = doc.splitTextToSize(form.clienteNombre || "Cliente", anchoColumna).slice(0, 2);
-    doc.text(lineasNombre, margin, y);
-    doc.text(fmtDateHuman(form.fecha), pageWidth / 2 + 4, y);
-    // Si el nombre ocupó dos renglones, lo de abajo se recorre para no encimarse.
-    const extraNombre = (lineasNombre.length - 1) * 5.5;
-
-    y += 5.5 + extraNombre;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(CUERPO);
-    tinta(SUAVE);
-    if (form.clienteTelefono) doc.text(fmtTel(form.clienteTelefono), margin, y);
-    doc.text(
-      `${fmtHora12(form.hora)} · ${form.entrega ? "A domicilio" : "Para recoger"}`,
-      pageWidth / 2 + 4,
-      y
-    );
-    y += 5;
-    if (form.entrega && form.direccion) {
-      const lineasDir = doc.splitTextToSize(form.direccion, anchoColumna).slice(0, 3);
-      doc.text(lineasDir, pageWidth / 2 + 4, y);
-      y += lineasDir.length * 4.5;
-    }
-
-    /* ---- Tabla de platillos ---- */
-    y += 6;
-    // La columna de cantidad se separa bien de la de precio: con "10 personas"
-    // a un lado y "$240.00/persona" al otro, pegadas se encimaban.
-    const colCant = pageWidth - margin - 95;
-    const colUnit = pageWidth - margin - 34;
-    const colSub = pageWidth - margin;
-    // El nombre del platillo se recorta si no cabe, para que nunca invada la
-    // columna de al lado.
-    const anchoConcepto = colCant - (margin + 3) - 4;
-
-    relleno(FONDO);
-    doc.rect(margin, y, anchoUtil, 9, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(ETIQUETA);
-    tinta(SUAVE);
-    doc.text("CONCEPTO", margin + 3, y + 6);
-    doc.text("CANTIDAD", colCant, y + 6);
-    doc.text("PRECIO", colUnit, y + 6, { align: "right" });
-    doc.text("IMPORTE", colSub - 3, y + 6, { align: "right" });
-    y += 15;
-
-    doc.setFontSize(CUERPO);
-    form.items.forEach((it) => {
-      cabe(9);
-      const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
-      // La paella se cobra POR KILO, y un kilo alcanza para dos personas. Antes
-      // la cuenta se mostraba dividida entre personas ("$240.00/persona"), que
-      // no es como se cobra y no cuadraba a simple vista con el importe. Ahora
-      // se ve el kilaje —que es lo que multiplica— y las personas de referencia.
-      const cant = it.tipo === "paella"
-        ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg).replace("para ", "")}`
-        : it.unidad === "kg" ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
-      const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
-      // Para paellas con extras, la fila muestra solo la base; los extras van
-      // en renglones propios para que la suma cuadre a la vista.
-      const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
-      doc.setFont("helvetica", "bold");
-      tinta(TINTA);
-      doc.text(doc.splitTextToSize(nombre, anchoConcepto)[0], margin + 3, y);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(CUERPO);
-      tinta(SUAVE);
-      doc.text(cant, colCant, y);
-      doc.text(unitario, colUnit, y, { align: "right" });
-      doc.setFontSize(CUERPO);
-      doc.setFont("helvetica", "bold");
-      tinta(TINTA);
-      doc.text(money(subtotalFila), colSub - 3, y, { align: "right" });
-      y += 7;
-
-      (it.extras || []).forEach((e) => {
-        cabe(9);
-        doc.setFont("helvetica", "normal");
-        tinta(SUAVE);
-        doc.text(`   + ${e.nombre}`, margin + 3, y);
-        doc.text(`x${e.cantidad}`, colCant, y);
-        doc.text(money(e.precio), colUnit, y, { align: "right" });
-        doc.text(money(e.precio * e.cantidad), colSub - 3, y, { align: "right" });
-        y += 6.5;
-      });
-
-      if (it.nota) {
-        cabe(8);
-        doc.setFont("helvetica", "italic");
-        doc.setFontSize(CUERPO);
-        tinta(SUAVE);
-        const lineasNota = doc.splitTextToSize(`Nota: ${it.nota}`, anchoUtil - 8);
-        doc.text(lineasNota, margin + 6, y);
-        y += lineasNota.length * 4.5 + 1;
-        doc.setFontSize(CUERPO);
-      }
-      y += 1.5;
-    });
-
-    /* ---- Totales ---- */
-    cabe(40);
-    y += 2;
-    doc.setDrawColor(LINEA[0], LINEA[1], LINEA[2]);
-    doc.line(colCant - 6, y, pageWidth - margin, y);
-    y += 7;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(CUERPO);
-    const renglonTotal = (etiqueta, monto) => {
-      tinta(SUAVE);
-      doc.text(etiqueta, colUnit, y, { align: "right" });
-      tinta(TINTA);
-      doc.text(monto, colSub - 3, y, { align: "right" });
-      y += 6;
-    };
-    if (envioNum > 0) renglonTotal("Envío a domicilio", money(envioNum));
-    if (ivaNum > 0) renglonTotal("IVA (16%)", money(ivaNum));
-
-    y += 2;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(FUERTE);
-    tinta(AZUL);
-    doc.text("TOTAL", colUnit, y, { align: "right" });
-    doc.text(money(total), colSub - 3, y, { align: "right" });
-    y += 12;
-
-    /* ---- Recibo: cómo pagó y constancia de saldado ---- */
-    if (esRecibo) {
-      cabe(50);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(ETIQUETA);
-      tinta(SUAVE);
-      doc.text("FORMA DE PAGO", margin, y);
-      y += 7;
-
-      doc.setFontSize(CUERPO);
-      (form.abonos || []).forEach((ab) => {
-        cabe(9);
-        doc.setFont("helvetica", "normal");
-        tinta(SUAVE);
-        doc.text(
-          `${METODO_PAGO_LABEL[ab.metodo] || "Pago"}${ab.fecha ? ` · ${fmtDateHuman(ab.fecha)}` : ""}`,
-          margin + 3,
-          y
-        );
-        doc.setFont("helvetica", "bold");
-        tinta(TINTA);
-        doc.text(money(ab.monto), colSub - 3, y, { align: "right" });
-        y += 6.5;
-      });
-
-      // La constancia: el renglón que el cliente viene a buscar.
-      cabe(24);
-      y += 4;
-      relleno(VERDE_FONDO);
-      doc.rect(margin, y, anchoUtil, 16, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(FUERTE);
-      tinta(VERDE);
-      doc.text("PAGADO EN SU TOTALIDAD", margin + 5, y + 10.5);
-      doc.text(money(sumaAbonos(form.abonos)), colSub - 5, y + 10.5, { align: "right" });
-      y += 24;
-    }
-
-    /* ---- Presupuesto: condiciones y datos para depositar ---- */
-    // Nada de esto va en el recibo: las condiciones hablan de un presupuesto
-    // por aceptar, y los datos para depositar no vienen al caso cuando el
-    // pedido ya está pagado.
-    if (!esRecibo && form.terminos) {
-      cabe(30);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(ETIQUETA);
-      tinta(SUAVE);
-      doc.text("CONDICIONES", margin, y);
-      y += 6;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(CUERPO);
-      tinta(SUAVE);
-      const lineasNotas = doc.splitTextToSize(form.terminos, anchoUtil);
-      doc.text(lineasNotas, margin, y);
-      y += lineasNotas.length * 4.8 + 6;
-    }
-
-    if (!esRecibo && config.pago && (config.pago.clabe || "").trim()) {
-      cabe(34);
-      relleno(FONDO);
-      const lineasPago = [
-        config.pago.banco ? `Banco: ${config.pago.banco}` : null,
-        config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
-        `CLABE / Tarjeta: ${config.pago.clabe}`,
-        "En el concepto de la transferencia ponga únicamente su nombre, por favor.",
-      ].filter(Boolean);
-      const alto = 14 + lineasPago.length * 5;
-      doc.rect(margin, y, anchoUtil, alto, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(CUERPO);
-      tinta(TINTA);
-      doc.text("Para confirmar: 50% de anticipo, el resto a la entrega", margin + 5, y + 7);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(CUERPO);
-      tinta(SUAVE);
-      doc.text(lineasPago, margin + 5, y + 13);
-      y += alto + 6;
-    }
-
-    pie();
-
-    const limpio = (form.clienteNombre || "cliente").replace(/[^a-zA-Z0-9]+/g, "_");
-    doc.save(`${esRecibo ? "Recibo" : "Presupuesto"}-${limpio}-${form.fecha}.pdf`);
-  };
 
   const editando = !!form.pedidoId;
 
@@ -6998,7 +7033,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         <>
           {form.clienteId && form.items.length > 0 && (
             <div className="flex gap-2 mt-2">
-              <button className="af-btn-secondary flex-1" onClick={() => descargarPDF("presupuesto")}>
+              <button className="af-btn-secondary flex-1" onClick={() => construirPDF(form, "presupuesto", config).save(nombreArchivoPDF(form, "presupuesto"))}>
                 <Download size={16} className="inline mr-1" /> PDF
               </button>
               <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago, config.mensajes))}>
@@ -7045,7 +7080,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           {/* El recibo solo aparece cuando ya no debe nada: es lo que el
               cliente pide "de comprobante" al terminar de pagar. */}
           {editando && form.items.length > 0 && pagadoNum > 0 && pagadoNum >= total && (
-            <button className="af-btn-secondary w-full mt-2" onClick={() => descargarPDF("recibo")}>
+            <button className="af-btn-secondary w-full mt-2" onClick={() => construirPDF(form, "recibo", config).save(nombreArchivoPDF(form, "recibo"))}>
               <Download size={16} className="inline mr-1" /> Recibo de pagado (PDF)
             </button>
           )}
@@ -7171,6 +7206,7 @@ export default function App() {
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
   const [cobroModal, setCobroModal] = useState(null); // { pedido, faltante } o null
   const [verAvisos, setVerAvisos] = useState(false);
+  const [subiendoRecibo, setSubiendoRecibo] = useState(false);
 
   // Sesión (solo aplica en modo nube; en modo local no hay login).
   const [sesion, setSesion] = useState(null);
@@ -7680,6 +7716,32 @@ export default function App() {
       const { [pedido.id]: _quitado, ...resto } = prev;
       return resto;
     });
+  };
+
+  // Manda el mensaje de pago con la liga del recibo. WhatsApp no deja
+  // adjuntar archivos desde una liga, así que el PDF se sube y va el enlace.
+  //
+  // Ojo con Safari: si se abre WhatsApp DESPUÉS de esperar la subida, el
+  // navegador ya no lo cuenta como un toque del usuario y bloquea la ventana
+  // en silencio. Por eso se abre una pestaña vacía de inmediato —eso sí
+  // cuenta— y cuando el recibo está listo se le pone la dirección.
+  const enviarReciboWhatsApp = async (pedido, abono) => {
+    const ventana = window.open("", "_blank", "noopener,noreferrer");
+    setSubiendoRecibo(true);
+    try {
+      const doc = construirPDF(pedido, "recibo", config);
+      const url = await subirRecibo(doc.output("blob"), nombreArchivoPDF(pedido, "recibo"));
+      const texto = `${mensajePago(pedido, abono || 0, config.mensajes)}\n\nSu recibo: ${url}`;
+      const tel = telWhatsApp(pedido.clienteTelefono);
+      const destino = `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
+      if (ventana && !ventana.closed) ventana.location = destino;
+      else abrirWhatsApp(pedido.clienteTelefono, texto);
+      setAvisoModal(null);
+    } catch (e) {
+      if (ventana && !ventana.closed) ventana.close();
+      showToast("No se pudo preparar el recibo: " + (e.message || ""), "error");
+    }
+    setSubiendoRecibo(false);
   };
 
   // En pantallas angostas (iPad de pie) la barra de arriba no alcanza para las
@@ -8348,6 +8410,8 @@ export default function App() {
         <AvisoPendienteModal
           aviso={avisoModal}
           onEnviar={() => { enviarAvisoWhatsApp(avisoModal.pedido, avisoModal.tipo, { abono: avisoModal.abono }); setAvisoModal(null); }}
+          onEnviarConRecibo={() => enviarReciboWhatsApp(avisoModal.pedido, avisoModal.abono)}
+          subiendo={subiendoRecibo}
           onCerrar={() => setAvisoModal(null)}
         />
       </div>

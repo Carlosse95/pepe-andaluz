@@ -188,6 +188,30 @@ export const borrarTicket = async (ruta) => {
   await supabase.storage.from("tickets").remove([ruta]);
 };
 
+/* ------------------- Recibos que se mandan al cliente ------------------- */
+// WhatsApp no deja adjuntar un archivo desde una liga, así que el recibo se
+// sube y en el mensaje va el enlace.
+
+// Días que el enlace sigue sirviendo. Suficiente para que el cliente lo
+// guarde, y no eterno: el recibo trae su nombre y su teléfono.
+const DIAS_QUE_DURA_EL_RECIBO = 30;
+
+export const subirRecibo = async (blob, nombreArchivo) => {
+  if (!nubeActiva) throw new Error("Sin conexión a la nube no se puede compartir el recibo.");
+  // La ruta lleva el pedido: si se vuelve a generar el mismo recibo se
+  // reemplaza en vez de dejar copias sueltas acumulándose.
+  const ruta = `${nombreArchivo}`.replace(/[^A-Za-z0-9._-]/g, "_");
+  const { error } = await supabase.storage
+    .from("recibos")
+    .upload(ruta, blob, { contentType: "application/pdf", upsert: true });
+  if (error) throw error;
+  const { data, error: e2 } = await supabase.storage
+    .from("recibos")
+    .createSignedUrl(ruta, 60 * 60 * 24 * DIAS_QUE_DURA_EL_RECIBO);
+  if (e2) throw e2;
+  return data.signedUrl;
+};
+
 /* ----------------------------- Sesión ----------------------------- */
 
 export const obtenerSesion = async () => {
