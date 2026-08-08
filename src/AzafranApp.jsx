@@ -6326,13 +6326,20 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     const tinta = (c) => doc.setTextColor(c[0], c[1], c[2]);
     const relleno = (c) => doc.setFillColor(c[0], c[1], c[2]);
 
+    // Cuatro tamaños y nada más. Antes había nueve distintos y la hoja se
+    // sentía inquieta: cada bloque gritaba más fuerte que el anterior.
+    const ETIQUETA = 7.5; // los rótulos grises de cada sección
+    const CUERPO = 9.5;   // todo el texto normal
+    const FUERTE = 11;    // nombre del cliente, TOTAL y el sello de pagado
+    const TITULO = 13;    // solo el nombre del documento, en el encabezado
+
     // El pie va siempre pegado abajo, en su sitio, y no donde acabe el
     // contenido: así nunca se encima con lo último que se escribió.
     const pie = () => {
       doc.setDrawColor(LINEA[0], LINEA[1], LINEA[2]);
       doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
+      doc.setFontSize(ETIQUETA);
       tinta(SUAVE);
       doc.text(
         esRecibo
@@ -6364,26 +6371,26 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       // si por lo que sea la imagen falla, el PDF se genera igual sin el logo
     }
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
+    doc.setFontSize(TITULO);
     doc.setTextColor(255, 255, 255);
     doc.text(esRecibo ? "RECIBO DE PAGO" : "PRESUPUESTO", pageWidth - margin, 17, { align: "right" });
     if (form.folio) {
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
+      doc.setFontSize(CUERPO);
       doc.text(fmtFolio(form.folio, esRecibo ? "Pedido " : "Folio P-"), pageWidth - margin, 24, { align: "right" });
     }
 
     /* ---- Cliente y entrega, en dos columnas ---- */
     y = 48;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
+    doc.setFontSize(ETIQUETA);
     tinta(SUAVE);
     doc.text("CLIENTE", margin, y);
     doc.text(esRecibo ? "FECHA DEL PEDIDO" : "PARA EL DÍA", pageWidth / 2 + 4, y);
 
     y += 6;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
+    doc.setFontSize(FUERTE);
     tinta(TINTA);
     // El nombre se queda dentro de su columna: un nombre largo (una empresa,
     // por ejemplo) se metía encima de la fecha, a la derecha.
@@ -6396,7 +6403,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
     y += 5.5 + extraNombre;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
+    doc.setFontSize(CUERPO);
     tinta(SUAVE);
     if (form.clienteTelefono) doc.text(fmtTel(form.clienteTelefono), margin, y);
     doc.text(
@@ -6425,7 +6432,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     relleno(FONDO);
     doc.rect(margin, y, anchoUtil, 9, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
+    doc.setFontSize(ETIQUETA);
     tinta(SUAVE);
     doc.text("CONCEPTO", margin + 3, y + 6);
     doc.text("CANTIDAD", colCant, y + 6);
@@ -6433,12 +6440,18 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     doc.text("IMPORTE", colSub - 3, y + 6, { align: "right" });
     y += 15;
 
-    doc.setFontSize(10);
+    doc.setFontSize(CUERPO);
     form.items.forEach((it) => {
       cabe(9);
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
-      const cant = it.tipo === "paella" ? fmtPersonas(it.kg).replace("para ", "") : it.unidad === "kg" ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
-      const unitario = it.tipo === "paella" ? `${money(it.precioKg / 2)}/persona` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
+      // La paella se cobra POR KILO, y un kilo alcanza para dos personas. Antes
+      // la cuenta se mostraba dividida entre personas ("$240.00/persona"), que
+      // no es como se cobra y no cuadraba a simple vista con el importe. Ahora
+      // se ve el kilaje —que es lo que multiplica— y las personas de referencia.
+      const cant = it.tipo === "paella"
+        ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg).replace("para ", "")}`
+        : it.unidad === "kg" ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
+      const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
       // Para paellas con extras, la fila muestra solo la base; los extras van
       // en renglones propios para que la suma cuadre a la vista.
       const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
@@ -6446,11 +6459,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       tinta(TINTA);
       doc.text(doc.splitTextToSize(nombre, anchoConcepto)[0], margin + 3, y);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
+      doc.setFontSize(CUERPO);
       tinta(SUAVE);
       doc.text(cant, colCant, y);
       doc.text(unitario, colUnit, y, { align: "right" });
-      doc.setFontSize(10);
+      doc.setFontSize(CUERPO);
       doc.setFont("helvetica", "bold");
       tinta(TINTA);
       doc.text(money(subtotalFila), colSub - 3, y, { align: "right" });
@@ -6470,12 +6483,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       if (it.nota) {
         cabe(8);
         doc.setFont("helvetica", "italic");
-        doc.setFontSize(9);
+        doc.setFontSize(CUERPO);
         tinta(SUAVE);
         const lineasNota = doc.splitTextToSize(`Nota: ${it.nota}`, anchoUtil - 8);
         doc.text(lineasNota, margin + 6, y);
         y += lineasNota.length * 4.5 + 1;
-        doc.setFontSize(10);
+        doc.setFontSize(CUERPO);
       }
       y += 1.5;
     });
@@ -6488,7 +6501,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     y += 7;
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
+    doc.setFontSize(CUERPO);
     const renglonTotal = (etiqueta, monto) => {
       tinta(SUAVE);
       doc.text(etiqueta, colUnit, y, { align: "right" });
@@ -6501,7 +6514,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
     y += 2;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(FUERTE);
     tinta(AZUL);
     doc.text("TOTAL", colUnit, y, { align: "right" });
     doc.text(money(total), colSub - 3, y, { align: "right" });
@@ -6511,12 +6524,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     if (esRecibo) {
       cabe(50);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
+      doc.setFontSize(ETIQUETA);
       tinta(SUAVE);
       doc.text("FORMA DE PAGO", margin, y);
       y += 7;
 
-      doc.setFontSize(10);
+      doc.setFontSize(CUERPO);
       (form.abonos || []).forEach((ab) => {
         cabe(9);
         doc.setFont("helvetica", "normal");
@@ -6538,7 +6551,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       relleno(VERDE_FONDO);
       doc.rect(margin, y, anchoUtil, 16, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
+      doc.setFontSize(FUERTE);
       tinta(VERDE);
       doc.text("PAGADO EN SU TOTALIDAD", margin + 5, y + 10.5);
       doc.text(money(sumaAbonos(form.abonos)), colSub - 5, y + 10.5, { align: "right" });
@@ -6552,12 +6565,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     if (!esRecibo && form.terminos) {
       cabe(30);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
+      doc.setFontSize(ETIQUETA);
       tinta(SUAVE);
       doc.text("CONDICIONES", margin, y);
       y += 6;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9.5);
+      doc.setFontSize(CUERPO);
       tinta(SUAVE);
       const lineasNotas = doc.splitTextToSize(form.terminos, anchoUtil);
       doc.text(lineasNotas, margin, y);
@@ -6576,11 +6589,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       const alto = 14 + lineasPago.length * 5;
       doc.rect(margin, y, anchoUtil, alto, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
+      doc.setFontSize(CUERPO);
       tinta(TINTA);
       doc.text("Para confirmar: 50% de anticipo, el resto a la entrega", margin + 5, y + 7);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9.5);
+      doc.setFontSize(CUERPO);
       tinta(SUAVE);
       doc.text(lineasPago, margin + 5, y + 13);
       y += alto + 6;
