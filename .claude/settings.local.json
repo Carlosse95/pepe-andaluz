@@ -359,7 +359,23 @@
       "Bash(/usr/bin/grep -n \"const cuantosFiltros\" -A 12 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"diaGasto\" src/AzafranApp.jsx)",
       "Bash(awk 'NR>=4930 && NR<=4945' src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"const hayFiltro\\\\|const cuantosFiltros\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"const hayFiltro\\\\|const cuantosFiltros\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const porProducto\" -A 24 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"\\\\.pedidos\" src/AzafranApp.jsx)",
+      "Bash(awk -F: '$1>3100 && $1<4400')",
+      "Bash(/usr/bin/grep -n \"Otros platillos\\\\|fmtCantidadVendida\" src/AzafranApp.jsx)",
+      "Bash(git diff *)",
+      "Bash(/usr/bin/grep -n \"Otros platillos\")",
+      "Bash(/usr/bin/grep -c \"af-section-title\\\\\">Otros platillos\")",
+      "Bash(/usr/bin/grep -n \"innerRadius={62}\" -B 10 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const esAdmin\" src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=4550 && NR<=4620 && /esAdmin/ {print NR\": \"$0}' src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=4600 && NR<=4720 && /esAdmin/ {print NR\": \"$0}' src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=3011 && NR<=5320 && /esAdmin/ {print NR\": \"substr\\($0,1,90\\)}' src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=4700 && NR<=4790 && /^        \\\\\\)\\\\}/ {print NR\": \"$0}' src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=4542 && NR<=4800 && \\(/af-encabezado-accion/ || /Gastos fijos/ || /af-section-title/ || /^        \\\\\\)\\\\}/ || /^        <\\\\/>/\\)' src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=4542 && NR<=4800 && \\(/af-encabezado-accion/ || /Gastos fijos del mes/ || /^        \\\\\\)\\\\}/\\) {print NR\": \"substr\\($0,1,70\\)}' src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=4780 && NR<=4805 && \\(/^        \\\\\\)\\\\}/ || /^        <\\\\/>/\\) {print NR\": \"$0}' src/AzafranApp.jsx)"
     ]
   }
 }

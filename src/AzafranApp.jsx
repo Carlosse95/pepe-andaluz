@@ -199,6 +199,16 @@ const money = (n) => moneyFmt.format(n || 0);
 
 const fmtKg = (kg) => (Number.isInteger(kg) ? kg : kg.toFixed(1)) + " kg";
 
+// Cuánto se vendió, dicho en la unidad de ese platillo. Es lo que se apunta
+// en la libreta: "18 kg de Mar y Tierra", "12 órdenes de croquetas".
+const fmtCantidadVendida = (cuanto, unidad) => {
+  const n = Number.isInteger(cuanto) ? cuanto : Math.round(cuanto * 10) / 10;
+  if (unidad === "kg") return `${n} kg`;
+  if (unidad === "l") return `${n} l`;
+  if (unidad === "ordenes") return `${n} ${n === 1 ? "orden" : "órdenes"}`;
+  return `${n} ${n === 1 ? "pieza" : "piezas"}`;
+};
+
 // Para el cliente hablamos en personas, no en kilos: 1 kg = 2 personas.
 const fmtPersonas = (kg) => {
   const n = Math.max(1, Math.round(kg * 2));
@@ -3027,6 +3037,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [abrirGasto, setAbrirGasto] = useState(false);
   const [abrirFiltros, setAbrirFiltros] = useState(false);
   const [datosParaCopiar, setDatosParaCopiar] = useState(null);
+  const [confirmarFactura, setConfirmarFactura] = useState(null);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
 
@@ -3075,22 +3086,34 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Qué se vende de cada cosa: cuánto dinero dejó y en cuántos pedidos salió.
   // Entran todos los platillos, no solo las paellas: las croquetas y los
   // postres también son venta y antes no se veían por ningún lado.
+  // Cuánto se vendió de cada cosa, EN SU PROPIA UNIDAD. Antes decía "3
+  // pedidos", que no sirve para nada: no es lo mismo un pedido de 2 kg que uno
+  // de 20. Cada platillo se mide como se vende, igual que en el menú: las
+  // paellas por kilo, las croquetas por orden (que ya viene de 6), y lo que se
+  // vende suelto por pieza.
+  const unidadDelItem = (it) => {
+    if (it.tipo === "paella") return { cuanto: it.kg || 0, unidad: "kg" };
+    if (it.unidad === "kg") return { cuanto: parseFloat(it.cantidad) || 0, unidad: "kg" };
+    if (it.unidad === "l") return { cuanto: parseFloat(it.cantidad) || 0, unidad: "l" };
+    // Si el platillo se vende por paquete (croquetas de 6), la cantidad ya
+    // está en órdenes: eso es lo que se quiere contar, no las piezas sueltas.
+    if (it.piezasPorUnidad > 0) return { cuanto: parseFloat(it.cantidad) || 0, unidad: "ordenes" };
+    return { cuanto: parseFloat(it.cantidad) || 0, unidad: "piezas" };
+  };
+
   const porProducto = {};
   pedidos.forEach((p) => {
     const [y] = p.fecha.split("-").map(Number);
     if (y !== anio) return;
-    // Un pedido con dos paellas del mismo tipo cuenta como UN pedido de ese
-    // platillo, no dos: la pregunta es a cuánta gente le gusta.
-    const vistosEnEstePedido = new Set();
     p.items.forEach((it) => {
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
       if (!nombre) return;
-      if (!porProducto[nombre]) porProducto[nombre] = { nombre, valor: 0, pedidos: 0, esPaella: it.tipo === "paella" };
-      porProducto[nombre].valor += it.tipo === "paella" ? it.subtotal : it.subtotal || 0;
-      if (!vistosEnEstePedido.has(nombre)) {
-        vistosEnEstePedido.add(nombre);
-        porProducto[nombre].pedidos += 1;
+      const u = unidadDelItem(it);
+      if (!porProducto[nombre]) {
+        porProducto[nombre] = { nombre, valor: 0, cuanto: 0, unidad: u.unidad, esPaella: it.tipo === "paella" };
       }
+      porProducto[nombre].valor += it.subtotal || 0;
+      porProducto[nombre].cuanto += u.cuanto;
     });
   });
   const todosLosProductos = Object.values(porProducto).sort((a, b) => b.valor - a.valor);
@@ -4218,7 +4241,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 className={"af-ambito-btn" + (vistaVentas === "otros" ? " active" : "")}
                 onClick={() => { setVistaVentas("otros"); setSectorPlatillo(null); }}
               >
-                Lo demás
+                Otros platillos
               </button>
             )}
             <button
@@ -4237,6 +4260,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <ResponsiveContainer width="100%" height={230}>
               <PieChart>
                 <Pie
+                  // Al cambiar entre Paellas y Otros, recharts intentaba
+                  // "transformar" las rebanadas viejas en las nuevas y se
+                  // trababa, porque no son los mismos platillos. Con una
+                  // llave distinta por vista, dibuja de nuevo y entra limpio.
+                  key={vistaVentas}
+                  isAnimationActive={false}
                   data={datosPaella}
                   dataKey="valor"
                   nameKey="nombre"
@@ -4265,7 +4294,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <div className="af-dona-centro-label">{datosPaella[sectorPlatillo].nombre}</div>
                   <div className="af-dona-centro-monto positivo">{money(datosPaella[sectorPlatillo].valor)}</div>
                   <div className="af-dona-centro-pct">
-                    {datosPaella[sectorPlatillo].pedidos} {datosPaella[sectorPlatillo].pedidos === 1 ? "pedido" : "pedidos"}
+                    {fmtCantidadVendida(datosPaella[sectorPlatillo].cuanto, datosPaella[sectorPlatillo].unidad)}
                   </div>
                 </>
               ) : (
@@ -4298,7 +4327,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     <div style={{ width: `${Math.max(pct, 2)}%`, background: color }} />
                   </div>
                   <div className="af-platillo-abajo">
-                    <span>{d.pedidos} {d.pedidos === 1 ? "pedido" : "pedidos"}</span>
+                    <span>{fmtCantidadVendida(d.cuanto, d.unidad)}</span>
                     <span>{pct}% de lo vendido</span>
                   </div>
                 </div>
@@ -4610,9 +4639,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           )}
         </div>
 
-        {/* El formulario ya no está siempre desplegado: se abre desde el botón
-            y se cierra al guardar. Ocupaba media pantalla todos los días,
-            aunque casi siempre se entra aquí a consultar, no a capturar. */}
+        </>
+        )}
+
+        {/* Agregar un gasto lo puede hacer cualquiera del negocio, no solo el
+            administrador: Pepe es quien va a la tienda y quien tiene el ticket
+            en la mano. Lo que sigue siendo solo del administrador son los
+            gastos fijos, que no son un gasto suelto sino una regla que crea
+            gastos solos cada mes.
+
+            El formulario no está siempre desplegado: se abre desde el botón y
+            se cierra al guardar. Ocupaba media pantalla todos los días, aunque
+            casi siempre se entra aquí a consultar, no a capturar. */}
         <div className="af-encabezado-accion">
           <div className="af-section-title" style={{ margin: 0 }}>Gastos</div>
           <button className="af-btn-accion" onClick={() => setAbrirGasto((v) => !v)}>
@@ -4758,8 +4796,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
         </div>
         )}
-        </>
-        )}
 
         {/* Lo que falta facturar. Va antes de la lista de gastos porque es
             trabajo pendiente con fecha límite, no historia. */}
@@ -4809,7 +4845,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       <button className="af-chip af-chip-neutral" onClick={() => copiarDatosFiscales(g)}>
                         <ClipboardPaste size={12} /> Copiar mis datos
                       </button>
-                      <button className="af-chip af-chip-wa-mini" onClick={() => marcarFacturado(g.id)}>
+                      <button className="af-chip af-chip-wa-mini" onClick={() => setConfirmarFactura(g)}>
                         <Check size={12} /> Ya facturé
                       </button>
                     </div>
@@ -5096,6 +5132,33 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Marcar facturado borra la foto del ticket y saca la compra de
+            pendientes, así que conviene preguntar: el botón está junto a los
+            demás y es fácil darle sin querer. */}
+        {confirmarFactura && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmarFactura(null)}>
+            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-icon"><Receipt size={26} /></div>
+              <div className="af-alerta-titulo">¿Ya la facturaste?</div>
+              <p className="af-alerta-texto">
+                <strong>{confirmarFactura.tienda}</strong> · {money(confirmarFactura.monto)} ·{" "}
+                {fmtDateHuman(confirmarFactura.fecha)}
+              </p>
+              <p className="af-ink-soft text-sm mb-3">
+                Sale de la lista de pendientes y {confirmarFactura.ticket ? "se borra la foto del ticket" : "ya no se te vuelve a recordar"}.
+                El gasto se queda en tus cuentas.
+              </p>
+              <button
+                className="af-btn-primary w-full"
+                onClick={() => { marcarFacturado(confirmarFactura.id); setConfirmarFactura(null); }}
+              >
+                Sí, ya la facturé
+              </button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmarFactura(null)}>Todavía no</button>
+            </div>
           </div>
         )}
 
