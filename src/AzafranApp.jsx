@@ -5,7 +5,7 @@ import {
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet,
-  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera,
+  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import jsPDF from "jspdf";
@@ -1783,27 +1783,8 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
         <div className="af-secundarios mt-5">
           <div className="af-section-title">Lo demás</div>
 
-          {hayPorComprar && (
-            <PanelPlegable
-              icono={<AlertTriangle size={15} />}
-              titulo="Por comprar"
-              resumen={`${bajoIngredientes.length + bajoStock.length}`}
-              tono="alerta"
-              abierto={verCompras}
-              onToggle={() => setVerCompras((v) => !v)}
-            >
-              {bajoIngredientes.map((i) => (
-                <div key={i.id} className="af-plegable-linea">
-                  {i.nombre}: quedan <strong>{i.stock} {(i.presentacionNombre || i.unidad || "") + (i.stock === 1 ? "" : "s")}</strong> (aviso en {i.minimo})
-                </div>
-              ))}
-              {bajoStock.map((d) => (
-                <div key={d.id} className="af-plegable-linea">
-                  {d.nombre}: quedan <strong>{d.stock}</strong> (aviso en {d.minimo})
-                </div>
-              ))}
-            </PanelPlegable>
-          )}
+          {/* "Por comprar" ya no vive aquí: se movió a la campana de la barra
+              de arriba, como en cualquier app. Abajo estorbaba más que avisar. */}
 
           {/* Dinero que el cliente dice haber transferido y que todavía no se
               ha visto en el banco. Va arriba y abierto: es lo único de esta
@@ -1922,7 +1903,7 @@ function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, childr
 /*  Vista: Agenda                                                         */
 /* ---------------------------------------------------------------------- */
 
-function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido }) {
+function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [tab, setTab] = useState("pendientes");
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
@@ -1999,13 +1980,8 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
         </button>
       </div>
 
-      {onNuevoPedido && (
-        <div className="af-quick-row mb-4">
-          <button className="af-quick-btn" onClick={onNuevoPedido}>
-            <Plus size={16} /> Nuevo pedido
-          </button>
-        </div>
-      )}
+      {/* Aquí no va "Nuevo pedido": ya está en Hoy, que es la pantalla de
+          arranque. Repetirlo solo llena la Agenda de cosas. */}
 
       {tab === "pendientes" && pendientes.length > 0 && (
         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -2702,7 +2678,11 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 // La marca vive en las notas porque es lo que escribe el bot al registrarlos.
 const esPedidoDeIA = (pedido) => (pedido?.notas || "").includes("tomado por IA");
 
-const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Familiar/Personal", "Otros"];
+// "Familiar/Personal" ya no está aquí: era trabajo doble. Que un gasto sea de
+// la casa ahora lo dice el ámbito, arriba del formulario, y tenerlo también
+// como categoría hacía que el mismo dato se capturara dos veces (y que se
+// pudiera capturar contradictorio: categoría familiar con ámbito del negocio).
+const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Otros"];
 
 // El gasto familiar no es del negocio. Mezclados, la despensa y la escuela se
 // restan de las ventas y el negocio aparece en números rojos aunque vaya bien.
@@ -2734,8 +2714,16 @@ const esDelNegocio = (g) => ambitoDe(g) === "negocio";
 // nombre nuevo para que no queden fuera de los totales de su categoría.
 const CATEGORIAS_RENOMBRADAS = { "Gas/Servicios": "Servicios" };
 const migrarGasto = (g) => {
+  let salida = g;
   const nueva = CATEGORIAS_RENOMBRADAS[g?.categoria];
-  return nueva ? { ...g, categoria: nueva } : g;
+  if (nueva) salida = { ...salida, categoria: nueva };
+  // Los gastos viejos con categoría "Familiar/Personal" pasan a decirlo por
+  // el ámbito, que es donde ahora vive esa información. La categoría queda en
+  // "Otros" porque "de la casa" no dice de qué fue el gasto.
+  if (CATEGORIAS_FAMILIARES.includes(g?.categoria)) {
+    salida = { ...salida, ambito: "familia", categoria: "Otros" };
+  }
+  return salida;
 };
 
 // Deja el nombre de un gasto en su forma "de comparación": sin acentos, sin
@@ -2903,6 +2891,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [diaGasto, setDiaGasto] = useState("");
   const [sectorDona, setSectorDona] = useState(null);
   const [sectorPlatillo, setSectorPlatillo] = useState(null);
+  const [vistaVentas, setVistaVentas] = useState("paellas");
   const [mesesPlegados, setMesesPlegados] = useState({});
   const [posibleDuplicado, setPosibleDuplicado] = useState(null);
   // null = apartado cerrado; objeto = capturando o editando un gasto fijo.
@@ -2911,6 +2900,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const yaGeneradosEnEstaSesion = useRef(new Set());
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [subiendoTicket, setSubiendoTicket] = useState(false);
+  const [tiendaOtra, setTiendaOtra] = useState(false);
+  const [abrirGasto, setAbrirGasto] = useState(false);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
 
@@ -2969,7 +2960,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     p.items.forEach((it) => {
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
       if (!nombre) return;
-      if (!porProducto[nombre]) porProducto[nombre] = { nombre, valor: 0, pedidos: 0 };
+      if (!porProducto[nombre]) porProducto[nombre] = { nombre, valor: 0, pedidos: 0, esPaella: it.tipo === "paella" };
       porProducto[nombre].valor += it.tipo === "paella" ? it.subtotal : it.subtotal || 0;
       if (!vistosEnEstePedido.has(nombre)) {
         vistosEnEstePedido.add(nombre);
@@ -2977,7 +2968,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       }
     });
   });
-  const datosPaella = Object.values(porProducto).sort((a, b) => b.valor - a.valor);
+  const todosLosProductos = Object.values(porProducto).sort((a, b) => b.valor - a.valor);
+
+  // El pastel con TODO junto salía apretadísimo: las paellas son el negocio y
+  // las croquetas o el flan son rebanadas diminutas que solo estorban. Por eso
+  // se ve una cosa a la vez, y de arranque las paellas, que es lo que importa.
+  const soloPaellas = todosLosProductos.filter((d) => d.esPaella);
+  const soloOtros = todosLosProductos.filter((d) => !d.esPaella);
+  const datosPaella =
+    vistaVentas === "paellas" ? soloPaellas : vistaVentas === "otros" ? soloOtros : todosLosProductos;
   const totalPorProducto = datosPaella.reduce((a, x) => a + x.valor, 0);
   // Una rebanada por platillo, con colores que se distinguen entre sí.
   const COLORES_PASTEL = ["#2F5FE0", "#E0524A", "#F2A03D", "#31A66B", "#8B5CF6", "#0EA5E9", "#EC4899", "#84CC16"];
@@ -3302,6 +3301,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     return [...vistos.values()].sort((a, b) => b.veces - a.veces).map((v) => v.texto);
   })();
 
+  // Lo que se ofrece en la lista: primero lo que ya se ha usado (arriba lo más
+  // frecuente) y después las tiendas que se facturan, aunque todavía no se
+  // haya comprado ahí, para que estén desde el primer día.
+  const tiendasParaElegir = [
+    ...tiendasUsadas,
+    ...TIENDAS_FACTURABLES.filter(
+      (f) => !tiendasUsadas.some((u) => normalizarNombreGasto(u) === normalizarNombreGasto(f))
+    ),
+  ];
+
   // Grupos de nombres que se escriben casi igual y seguramente son lo mismo.
   // No se tocan solos: se le muestran a quien lleva las cuentas para que
   // decida, porque solo él sabe si de verdad son el mismo gasto.
@@ -3338,6 +3347,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const guardarGastoNuevo = (g) => {
     onGuardarGastos([g, ...gastos]);
     setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0, tienda: "", ticket: null, ambito: "negocio" });
+    setTiendaOtra(false);
+    setAbrirGasto(false);
     setPosibleDuplicado(null);
   };
 
@@ -3976,9 +3987,39 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </div>
       )}
 
-      {datosPaella.length > 0 && (
+      {todosLosProductos.length > 0 && (
         <div className="af-card p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Qué se vendió — {anio}</div>
+
+          {/* Una cosa a la vez: juntas, las paellas aplastan a lo demás y el
+              pastel se vuelve ilegible. */}
+          <div className="af-ambito-switch mb-3">
+            <button
+              className={"af-ambito-btn" + (vistaVentas === "paellas" ? " active" : "")}
+              onClick={() => { setVistaVentas("paellas"); setSectorPlatillo(null); }}
+            >
+              Paellas
+            </button>
+            {soloOtros.length > 0 && (
+              <button
+                className={"af-ambito-btn" + (vistaVentas === "otros" ? " active" : "")}
+                onClick={() => { setVistaVentas("otros"); setSectorPlatillo(null); }}
+              >
+                Lo demás
+              </button>
+            )}
+            <button
+              className={"af-ambito-btn" + (vistaVentas === "todo" ? " active" : "")}
+              onClick={() => { setVistaVentas("todo"); setSectorPlatillo(null); }}
+            >
+              Todo
+            </button>
+          </div>
+
+          {datosPaella.length === 0 ? (
+            <p className="af-ink-soft text-sm">Todavía no hay ventas de esto en {anio}.</p>
+          ) : (
+          <>
           <div className="af-dona-grafica">
             <ResponsiveContainer width="100%" height={230}>
               <PieChart>
@@ -4025,24 +4066,34 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
 
           {/* La misma información en números, que es lo que se acaba copiando
-              a la libreta: cuántos pedidos y cuánto dejó cada platillo. */}
-          <div className="af-tabla-platillos">
-            <div className="af-tabla-encabezado">
-              <span>Platillo</span>
-              <span>Pedidos</span>
-              <span>Vendido</span>
-            </div>
-            {datosPaella.map((d, i) => (
-              <div key={d.nombre} className="af-tabla-fila">
-                <span className="af-tabla-nombre">
-                  <span className="af-punto-color" style={{ background: COLORES_PASTEL[i % COLORES_PASTEL.length] }} />
-                  {d.nombre}
-                </span>
-                <span className="af-tabla-num">{d.pedidos}</span>
-                <span className="af-tabla-num fuerte">{money(d.valor)}</span>
-              </div>
-            ))}
+              a la libreta. En tarjetas y no en columnas apretadas: en celular
+              el nombre, los pedidos y el monto se encimaban. */}
+          <div className="af-platillos">
+            {datosPaella.map((d, i) => {
+              const pct = totalPorProducto > 0 ? Math.round((d.valor / totalPorProducto) * 100) : 0;
+              const color = COLORES_PASTEL[i % COLORES_PASTEL.length];
+              return (
+                <div key={d.nombre} className="af-platillo">
+                  <div className="af-platillo-arriba">
+                    <span className="af-punto-color" style={{ background: color }} />
+                    <span className="af-platillo-nombre">{d.nombre}</span>
+                    <span className="af-platillo-monto">{money(d.valor)}</span>
+                  </div>
+                  {/* La barra dice de un vistazo cuál se vende más, sin
+                      tener que comparar números uno por uno. */}
+                  <div className="af-platillo-barra">
+                    <div style={{ width: `${Math.max(pct, 2)}%`, background: color }} />
+                  </div>
+                  <div className="af-platillo-abajo">
+                    <span>{d.pedidos} {d.pedidos === 1 ? "pedido" : "pedidos"}</span>
+                    <span>{pct}% de lo vendido</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+          </>
+          )}
         </div>
       )}
       </div>
@@ -4346,7 +4397,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           )}
         </div>
 
-        <div className="af-section-title">Agregar gasto</div>
+        {/* El formulario ya no está siempre desplegado: se abre desde el botón
+            y se cierra al guardar. Ocupaba media pantalla todos los días,
+            aunque casi siempre se entra aquí a consultar, no a capturar. */}
+        <div className="af-encabezado-accion">
+          <div className="af-section-title" style={{ margin: 0 }}>Gastos</div>
+          <button className="af-btn-accion" onClick={() => setAbrirGasto((v) => !v)}>
+            {abrirGasto ? <><X size={15} /> Cerrar</> : <><Plus size={15} /> Agregar gasto</>}
+          </button>
+        </div>
+
+        {abrirGasto && (
         <div className="af-card p-4 mb-5">
           {/* Lo primero es de qué bolsa sale: es lo que decide si este gasto
               cuenta contra el negocio o contra la casa. */}
@@ -4370,22 +4431,39 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
           <div className="af-field">
             <label>¿En qué tienda?</label>
-            {/* Separar la tienda de la descripción deja buscar "todo lo de
-                Chedraui" sin depender de cómo se haya escrito el detalle. */}
-            <CampoConSugerencias
-              value={nuevoGasto.tienda || ""}
-              placeholder="Ej. Chedraui, Costco, mercado..."
-              sugerencias={tiendasUsadas}
-              onChange={(tienda) => setNuevoGasto({ ...nuevoGasto, tienda })}
-              onBlur={() => {
-                const escrito = normalizarNombreGasto(nuevoGasto.tienda || "");
-                if (!escrito) return;
-                const igual = tiendasUsadas.find((n) => normalizarNombreGasto(n) === escrito);
-                if (igual && igual !== nuevoGasto.tienda) {
-                  setNuevoGasto((prev) => ({ ...prev, tienda: igual }));
-                }
-              }}
-            />
+            {/* Lista en vez de campo libre: se elige de las que ya se han
+                usado, así el nombre sale idéntico siempre y no acaba escrito
+                de tres formas. Solo se escribe cuando es una tienda nueva. */}
+            {tiendaOtra ? (
+              <div className="flex gap-2">
+                <input
+                  className="af-input flex-1"
+                  autoFocus
+                  placeholder="Nombre de la tienda"
+                  value={nuevoGasto.tienda || ""}
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value })}
+                />
+                <button
+                  className="af-btn-ghost"
+                  onClick={() => { setTiendaOtra(false); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }}
+                >
+                  Ver lista
+                </button>
+              </div>
+            ) : (
+              <select
+                className="af-input"
+                value={nuevoGasto.tienda || ""}
+                onChange={(e) => {
+                  if (e.target.value === "__otra__") { setTiendaOtra(true); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }
+                  else setNuevoGasto({ ...nuevoGasto, tienda: e.target.value });
+                }}
+              >
+                <option value="">Sin tienda</option>
+                {tiendasParaElegir.map((t) => <option key={t} value={t}>{t}</option>)}
+                <option value="__otra__">Otra tienda…</option>
+              </select>
+            )}
           </div>
           <div className="af-field">
             <label>Categoría</label>
@@ -4466,6 +4544,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
           <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
         </div>
+        )}
         </>
         )}
 
@@ -6939,6 +7018,7 @@ export default function App() {
   const [alertaFranja, setAlertaFranja] = useState(null); // { total, hora } o null
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
   const [cobroModal, setCobroModal] = useState(null); // { pedido, faltante } o null
+  const [verAvisos, setVerAvisos] = useState(false);
 
   // Sesión (solo aplica en modo nube; en modo local no hay login).
   const [sesion, setSesion] = useState(null);
@@ -7459,6 +7539,22 @@ export default function App() {
     if ((config?.navOcultas || []).includes(view)) setView("hoy");
   }, [config?.navOcultas, view]);
 
+  // Lo que está por acabarse, para la campana de la barra. Vive aquí y no en
+  // Hoy porque la barra se ve desde cualquier pantalla.
+  const porComprar = [
+    ...(config.ingredientes || [])
+      .filter((i) => i.stock <= i.minimo)
+      .map((i) => ({
+        id: "ing-" + i.id,
+        nombre: i.nombre,
+        texto: `${i.stock} ${(i.presentacionNombre || i.unidad || "") + (i.stock === 1 ? "" : "s")}`,
+        minimo: i.minimo,
+      })),
+    ...(config.desechables || [])
+      .filter((d) => d.stock <= d.minimo)
+      .map((d) => ({ id: "des-" + d.id, nombre: d.nombre, texto: String(d.stock), minimo: d.minimo })),
+  ];
+
   const navRef = useRef(null);
   const botonActivoRef = useRef(null);
   useEffect(() => {
@@ -7934,6 +8030,39 @@ export default function App() {
               <Search size={18} />
             </button>
           )}
+          {/* Lo que hay que comprar: antes vivía al fondo de Hoy, donde solo
+              estorbaba. Aquí avisa con el punto rojo y solo se abre si
+              interesa, como en cualquier app. */}
+          <div className="af-campana">
+            <button
+              className="af-icon-btn"
+              title="Avisos"
+              onClick={() => setVerAvisos((v) => !v)}
+            >
+              <Bell size={18} />
+              {porComprar.length > 0 && <span className="af-campana-punto" />}
+            </button>
+            {verAvisos && (
+              <>
+                {/* Capa invisible para cerrar tocando fuera. */}
+                <div className="af-modal-overlay" style={{ background: "transparent" }} onClick={() => setVerAvisos(false)} />
+                <div className="af-avisos-panel">
+                  <div className="af-avisos-titulo">Por comprar</div>
+                  {porComprar.length === 0 ? (
+                    <div className="af-avisos-vacio">Todo tiene existencia. Nada urgente.</div>
+                  ) : (
+                    <div className="af-avisos-cuerpo">
+                      {porComprar.map((x) => (
+                        <div key={x.id} className="af-aviso-linea">
+                          {x.nombre}: quedan <strong>{x.texto}</strong> (aviso en {x.minimo})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} />
         </div>
       </div>
@@ -7975,7 +8104,7 @@ export default function App() {
 
         <div className="af-content">
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} />}
-          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} />}
+          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
             <MensajesView
@@ -8904,7 +9033,32 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-cuenta-total .af-cuenta-monto.positivo { color: #15803d; }
 .af-cuenta-nota { font-size: 12.5px; color: var(--ink-soft); padding-top: 10px; }
 
-/* Ventas por platillo: el pastel y, debajo, los mismos números en limpio. */
+/* Ventas por platillo: cada uno en su tarjeta, con barra para comparar. */
+.af-platillos { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.af-platillo { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.af-platillo-arriba { display: flex; align-items: center; gap: 8px; }
+.af-platillo-nombre { flex: 1; min-width: 0; font-weight: 600; font-size: 14.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-platillo-monto { font-weight: 700; font-size: 15px; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.af-platillo-barra { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--ink-soft) 14%, transparent); margin: 9px 0 7px; overflow: hidden; }
+.af-platillo-barra > div { height: 100%; border-radius: 999px; }
+.af-platillo-abajo { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--ink-soft); }
+
+/* Título a la izquierda y la acción a la derecha, como en cualquier panel. */
+.af-encabezado-accion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 10px; }
+.af-btn-accion { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--wine); font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.15s ease; }
+.af-btn-accion:hover { border-color: var(--wine); background: color-mix(in srgb, var(--wine) 8%, transparent); }
+
+/* Campana de avisos en la barra de arriba. */
+.af-campana { position: relative; }
+.af-campana-punto { position: absolute; top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--gasto, #c2410c); border: 2px solid var(--surface); }
+.af-avisos-panel { position: absolute; top: calc(100% + 8px); right: 0; width: min(320px, calc(100vw - 24px)); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px rgba(0,0,0,0.16); z-index: 60; overflow: hidden; }
+.af-avisos-titulo { padding: 12px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--line); }
+.af-avisos-cuerpo { max-height: 320px; overflow-y: auto; padding: 6px 14px 12px; }
+.af-aviso-linea { padding: 8px 0; font-size: 13.5px; color: var(--ink); border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+.af-aviso-linea:last-child { border-bottom: none; }
+.af-avisos-vacio { padding: 18px 14px; text-align: center; font-size: 13.5px; color: var(--ink-soft); }
+
+/* Ventas por platillo (tabla anterior, aún usada en otras partes). */
 .af-tabla-platillos { margin-top: 14px; }
 .af-tabla-encabezado, .af-tabla-fila { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
 .af-tabla-encabezado { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); padding-bottom: 6px; border-bottom: 1px solid var(--line); }

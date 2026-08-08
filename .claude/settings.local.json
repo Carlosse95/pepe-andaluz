@@ -257,7 +257,31 @@
       "Bash(/usr/bin/grep -n \"Camera,\\\\|subiendoTicket, setSubiendoTicket\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"setNuevoGasto\\({ fecha: todayISO\\(\\), categoria: CATEGORIAS_GASTO\\\\[0\\\\], descripcion: \\\\\"\\\\\", monto: 0 }\\);\" src/AzafranApp.jsx)",
       "Bash(perl -i -pe 's/^    setNuevoGasto\\\\\\(\\\\{ fecha: todayISO\\\\\\(\\\\\\), categoria: CATEGORIAS_GASTO\\\\[0\\\\], descripcion: \"\", monto: 0 \\\\}\\\\\\);/    setNuevoGasto\\({ fecha: todayISO\\(\\), categoria: CATEGORIAS_GASTO[0], descripcion: \"\", monto: 0, tienda: \"\", ticket: null, ambito: \"negocio\" }\\);/ if $.==3334' src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"const eliminarGasto\\\\|const guardarGastoNuevo\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"const eliminarGasto\\\\|const guardarGastoNuevo\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's{^- \\\\[Pendientes de la lista de agosto 2026\\\\].*$}{- [Fotos en Supabase Storage]\\(fotos-en-supabase-storage.md\\) — bucket privado `tickets`; nunca meter imágenes en la tabla almacen}' /Users/carlosseguraflores/.claude/projects/-Users-carlosseguraflores-Downloads-pepe-andaluz-app/memory/MEMORY.md)",
+      "Bash(perl -i -pe 's/function AgendaView\\\\\\(\\\\{ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido \\\\}\\\\\\)/function AgendaView\\({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }\\)/; s/\\(<AgendaView pedidos=\\\\{pedidos\\\\}[^\\\\/]*?\\) onNuevoPedido=\\\\{\\\\\\(\\\\\\) => goToNuevoPedido\\\\\\(\\\\\\)\\\\}/$1/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function AgendaView\\\\|<AgendaView\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const CATEGORIAS_GASTO\\\\|const migrarGasto\\\\|CATEGORIAS_RENOMBRADAS\" -A 6 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"tiendasUsadas\\\\|tiendaOtra\\\\|tiendasParaElegir\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  const \\\\[subiendoTicket, setSubiendoTicket\\\\] = useState\\\\\\(false\\\\\\);$/  const [subiendoTicket, setSubiendoTicket] = useState\\(false\\);\\\\n  const [tiendaOtra, setTiendaOtra] = useState\\(false\\);/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"tiendaOtra, setTiendaOtra\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'setNuevoGasto\\({ fecha: todayISO\\(\\), categoria: CATEGORIAS_GASTO\\\\[0\\\\], descripcion: \"\", monto: 0, tienda: \"\", ticket: null, ambito: \"negocio\" }\\);' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^\\(    setNuevoGasto\\\\\\(\\\\{ fecha: todayISO\\\\\\(\\\\\\).*ambito: \"negocio\" \\\\}\\\\\\);\\)$/$1\\\\n    setTiendaOtra\\(false\\);/ if $.==3358' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"porProducto\\\\|datosPaella\\\\|COLORES_PASTEL\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  const \\\\[sectorPlatillo, setSectorPlatillo\\\\] = useState\\\\\\(null\\\\\\);$/  const [sectorPlatillo, setSectorPlatillo] = useState\\(null\\);\\\\n  const [vistaVentas, setVistaVentas] = useState\\(\"paellas\"\\);/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"vistaVentas, setVistaVentas\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"hayPorComprar\" -B 3 -A 22 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Por comprar\" -B 6 -A 22 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-topbar-right\" -A 10 src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  const \\\\[cobroModal, setCobroModal\\\\] = useState\\\\\\(null\\\\\\); \\\\/\\\\/ \\\\{ pedido, faltante \\\\} o null$/  const [cobroModal, setCobroModal] = useState\\(null\\); \\\\/\\\\/ { pedido, faltante } o null\\\\n  const [verAvisos, setVerAvisos] = useState\\(false\\);/' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera,$/  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell,/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"verAvisos, setVerAvisos\\\\|Bell,\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Agregar gasto\\\\|af-section-title\\\\\">Gastos\\\\|esAdmin && \\(\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  const \\\\[tiendaOtra, setTiendaOtra\\\\] = useState\\\\\\(false\\\\\\);$/  const [tiendaOtra, setTiendaOtra] = useState\\(false\\);\\\\n  const [abrirGasto, setAbrirGasto] = useState\\(false\\);/' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^    setTiendaOtra\\\\\\(false\\\\\\);$/    setTiendaOtra\\(false\\);\\\\n    setAbrirGasto\\(false\\);/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"abrirGasto\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"setTiendaOtra\\(false\\);\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"setAbrirGasto\" src/AzafranApp.jsx)"
     ]
   }
 }
