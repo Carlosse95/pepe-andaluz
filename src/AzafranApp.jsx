@@ -104,6 +104,10 @@ const DEFAULT_CONFIG = {
   mensajes: MENSAJES_DEFAULT,
   // Dónde recoger: se manda al crear el pedido y al avisar que está listo.
   local: LOCAL_DEFAULT,
+  // Datos para pedir facturas. Van vacíos a propósito: son datos fiscales de
+  // una persona y este repositorio es público, así que no pueden vivir en el
+  // código. Se capturan una vez en Ajustes y se guardan en la base privada.
+  fiscal: { rfc: "", razonSocial: "", codigoPostal: "", regimen: "626", usoCFDI: "G01", correo: "" },
   // Ingredientes con stock y consumo por kilo de cada paella (porKg[paellaId] = cantidad).
   ingredientes: [],
   extrasPaella: [
@@ -2759,7 +2763,85 @@ const normalizarNombreGasto = (texto) =>
 
 // Tiendas de las que sí se pide factura. En las demás (el mercado, la tienda
 // de la esquina) no dan, así que no tiene caso perseguirlas.
-const TIENDAS_FACTURABLES = ["Chedraui", "Aki", "Costco", "Soriana", "Sam's"];
+// Cada tienda factura en su propio portal y pide datos distintos del ticket.
+// Esto se sacó de guías de facturación, no de los portales oficiales, así que
+// puede cambiar: por eso `pide` es un texto que se le muestra a la persona,
+// no una regla que el programa dé por segura.
+//
+// `dias` es el plazo para facturar. Es lo que más importa: pasado ese día el
+// gasto ya no se puede deducir. Cuando el plazo es "fin del mes de compra" se
+// calcula aparte, porque no son días corridos.
+const TIENDAS_INFO = [
+  {
+    nombre: "Chedraui",
+    portal: "https://www.masfacturaweb.com.mx/Chedraui/Chedraui_MFW.aspx",
+    pide: "El folio de 19 dígitos, hasta abajo del ticket, arriba del código de barras.",
+    plazo: "finDeMes+10",
+  },
+  {
+    nombre: "Costco",
+    portal: "https://www3.costco.com.mx/facturacion",
+    pide: "Número de ticket (debajo del código de barras), la fecha y el total exacto, sin redondear.",
+    plazo: "finDeMes",
+  },
+  {
+    nombre: "Soriana",
+    portal: "https://factura.soriana.com",
+    pide: "El número de ticket, justo debajo del código de barras.",
+    dias: 30,
+  },
+  {
+    nombre: "Sam's",
+    portal: "https://facturacion.walmartmexico.com.mx",
+    pide: "DOS números: el TC# de 20 dígitos (abajo, sobre el código de barras) y el TR# de 3 o 4 dígitos (arriba).",
+    dias: 30,
+  },
+  {
+    nombre: "Aki",
+    portal: "https://factura.superaki.mx",
+    pide: "Los datos del ticket de compra.",
+    dias: 30,
+  },
+];
+const TIENDAS_FACTURABLES = TIENDAS_INFO.map((t) => t.nombre);
+
+// Qué tienda es, para saber a qué portal mandar y qué plazo aplica.
+const infoDeTienda = (tienda) => {
+  const t = normalizarNombreGasto(tienda || "").replace(/[^a-z0-9 ]/g, "");
+  if (!t) return null;
+  return (
+    TIENDAS_INFO.find((f) => {
+      const n = normalizarNombreGasto(f.nombre).replace(/[^a-z0-9 ]/g, "");
+      return t.includes(n) || n.includes(t);
+    }) || null
+  );
+};
+
+// Hasta qué día se puede facturar esa compra.
+const ultimoDiaParaFacturar = (gasto) => {
+  const info = infoDeTienda(gasto?.tienda);
+  if (!info || !gasto?.fecha) return null;
+  const [a, m, d] = gasto.fecha.split("-").map(Number);
+  if (info.dias) {
+    const f = new Date(a, m - 1, d);
+    f.setDate(f.getDate() + info.dias);
+    return f;
+  }
+  // Fin del mes de la compra (y en Chedraui, 10 días más del siguiente).
+  const finDeMes = new Date(a, m, 0);
+  if (info.plazo === "finDeMes+10") finDeMes.setDate(finDeMes.getDate() + 10);
+  return finDeMes;
+};
+
+// Días que quedan. Negativo = ya se venció.
+const diasParaFacturar = (gasto) => {
+  const limite = ultimoDiaParaFacturar(gasto);
+  if (!limite) return null;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  limite.setHours(0, 0, 0, 0);
+  return Math.round((limite - hoy) / 86400000);
+};
 // Se compara sin acentos ni mayúsculas y por pedazos, para que "sams",
 // "SAM'S CLUB" o "chedraui montejo" también cuenten: el nombre lo escribe
 // una persona con prisa y nunca sale igual dos veces.
@@ -2898,7 +2980,7 @@ const COLOR_INK_SOFT = "#64758F";
 const chartTooltipStyle = { borderRadius: 10, border: `1px solid ${COLOR_LINE_CHART}`, fontSize: 12, boxShadow: "0 4px 14px rgba(43,32,21,0.12)" };
 const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 
-function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig }) {
+function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig, showToast }) {
   const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("ventas");
   const [anio, setAnio] = useState(new Date().getFullYear());
@@ -2923,6 +3005,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [tiendaOtra, setTiendaOtra] = useState(false);
   const [abrirGasto, setAbrirGasto] = useState(false);
   const [abrirFiltros, setAbrirFiltros] = useState(false);
+  const [datosParaCopiar, setDatosParaCopiar] = useState(null);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
 
@@ -3082,7 +3165,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Compras que hay que facturar y todavía no se han facturado. Se miran
   // todos los años, no solo el que se está viendo: una compra de diciembre
   // sigue pendiente en enero y ahí es cuando corre prisa.
-  const porFacturar = gastos.filter(faltaFacturar).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  // Se ordenan por lo que está por vencer, no por fecha de compra: lo urgente
+  // es lo que pierde el plazo, y un ticket vencido ya no se puede deducir.
+  const porFacturar = gastos
+    .filter(faltaFacturar)
+    .map((g) => ({ ...g, quedan: diasParaFacturar(g) }))
+    .sort((a, b) => (a.quedan ?? 999) - (b.quedan ?? 999));
   const totalPorFacturar = sumar(porFacturar);
 
   const totalDelAmbito = sumar(gastosDelAmbito);
@@ -3420,6 +3508,49 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     onGuardarGastos(gastos.map((g) => (g.id === id ? { ...g, facturado: true, ticket: null } : g)));
     if (gasto && gasto.ticket) borrarTicket(gasto.ticket).catch(() => {});
     showToast("Marcado como facturado");
+  };
+
+  // Deja en el portapapeles todo lo que piden los portales, para pegarlo en
+  // vez de andar buscándolo en la Constancia cada vez.
+  const copiarDatosFiscales = (gasto) => {
+    const f = config?.fiscal || {};
+    if (!f.rfc) {
+      showToast("Primero captura tus datos en Ajustes → Datos", "aviso");
+      return;
+    }
+    const lineas = [
+      `RFC: ${f.rfc}`,
+      f.razonSocial ? `Nombre: ${f.razonSocial}` : null,
+      f.codigoPostal ? `Código postal: ${f.codigoPostal}` : null,
+      f.regimen ? `Régimen: ${f.regimen}` : null,
+      f.usoCFDI ? `Uso: ${f.usoCFDI}` : null,
+      f.correo ? `Correo: ${f.correo}` : null,
+      "",
+      `Compra: ${fmtDateHuman(gasto.fecha)} · ${money(gasto.monto)}`,
+    ].filter((x) => x !== null);
+    const texto = lineas.join("\n");
+    // Safari viejo y algunas vistas dentro de apps no dejan usar el
+    // portapapeles moderno. El respaldo de toda la vida (un campo escondido y
+    // "copiar") sí funciona ahí, y si tampoco, al menos se muestra el texto
+    // para copiarlo a mano en vez de dejar a la persona sin nada.
+    const porLasMalas = () => {
+      try {
+        const area = document.createElement("textarea");
+        area.value = texto;
+        area.style.cssText = "position:fixed;top:-1000px;opacity:0";
+        document.body.appendChild(area);
+        area.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(area);
+        if (ok) { showToast("Copiado. Pégalo en el portal."); return; }
+      } catch (e) { /* sigue al último recurso */ }
+      setDatosParaCopiar(texto);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(() => showToast("Copiado. Pégalo en el portal.")).catch(porLasMalas);
+    } else {
+      porLasMalas();
+    }
   };
 
   // El almacén es privado, así que se pide una liga temporal para ver la foto.
@@ -4594,27 +4725,50 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <p className="af-ink-soft text-sm mb-3">
                 Compras en {TIENDAS_FACTURABLES.join(", ")} que todavía no tienen factura.
               </p>
-              {porFacturar.map((g) => (
-                <div key={g.id} className="af-factura-row">
-                  <div className="flex-1 min-w-0">
-                    <div className="af-confirmar-nombre">{g.tienda}</div>
+              {porFacturar.map((g) => {
+                const info = infoDeTienda(g.tienda);
+                const q = g.quedan;
+                const urgencia = q == null ? "" : q < 0 ? " vencido" : q <= 5 ? " urge" : "";
+                return (
+                  <div key={g.id} className={"af-factura" + urgencia}>
+                    <div className="af-factura-arriba">
+                      <span className="af-confirmar-nombre">{g.tienda}</span>
+                      {q != null && (
+                        <span className={"af-chip" + (q < 0 ? " af-chip-vencido" : q <= 5 ? " af-chip-sin-ticket" : " af-chip-neutral")}>
+                          {q < 0 ? "Ya venció" : q === 0 ? "Vence hoy" : `Quedan ${q} día${q === 1 ? "" : "s"}`}
+                        </span>
+                      )}
+                    </div>
                     <div className="af-ink-soft text-sm">
                       {money(g.monto)} · {fmtDateHuman(g.fecha)}
                       {g.descripcion ? ` · ${g.descripcion}` : ""}
                     </div>
+                    {/* Qué pide ese portal en concreto: cada tienda es distinta
+                        y de memoria no se acuerda uno. */}
+                    {info && <div className="af-factura-pide">{info.pide}</div>}
+                    <div className="af-factura-acciones">
+                      {info && (
+                        <a className="af-chip af-chip-portal" href={info.portal} target="_blank" rel="noopener noreferrer">
+                          Abrir portal
+                        </a>
+                      )}
+                      {g.ticket ? (
+                        <button className="af-chip af-chip-neutral" onClick={() => abrirTicket(g.ticket)}>
+                          <Receipt size={12} /> Ver ticket
+                        </button>
+                      ) : (
+                        <span className="af-chip af-chip-sin-ticket">Sin foto</span>
+                      )}
+                      <button className="af-chip af-chip-neutral" onClick={() => copiarDatosFiscales(g)}>
+                        <ClipboardPaste size={12} /> Copiar mis datos
+                      </button>
+                      <button className="af-chip af-chip-wa-mini" onClick={() => marcarFacturado(g.id)}>
+                        <Check size={12} /> Ya facturé
+                      </button>
+                    </div>
                   </div>
-                  {g.ticket ? (
-                    <button className="af-chip af-chip-neutral" onClick={() => abrirTicket(g.ticket)}>
-                      <Receipt size={12} /> Ver ticket
-                    </button>
-                  ) : (
-                    <span className="af-chip af-chip-sin-ticket">Sin foto</span>
-                  )}
-                  <button className="af-chip af-chip-wa-mini" onClick={() => marcarFacturado(g.id)}>
-                    <Check size={12} /> Ya facturé
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
@@ -4839,6 +4993,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Último recurso si el navegador no deja copiar: se muestra el texto
+            ya seleccionado para copiarlo a mano. */}
+        {datosParaCopiar && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setDatosParaCopiar(null)}>
+            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-titulo mb-2">Cópialo desde aquí</div>
+              <p className="af-ink-soft text-sm mb-3">Tu navegador no dejó copiar solo. Selecciónalo y cópialo.</p>
+              <textarea
+                className="af-input"
+                rows={8}
+                readOnly
+                value={datosParaCopiar}
+                onFocus={(e) => e.target.select()}
+                autoFocus
+              />
+              <button className="af-btn-primary w-full mt-3" onClick={() => setDatosParaCopiar(null)}>Listo</button>
+            </div>
           </div>
         )}
 
@@ -5092,6 +5266,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       pago: draft.pago || { banco: "", titular: "", clabe: "" },
       mensajes: { ...MENSAJES_DEFAULT, ...(draft.mensajes || {}) },
       local: { ...LOCAL_DEFAULT, ...(draft.local || {}) },
+      fiscal: { ...DEFAULT_CONFIG.fiscal, ...(draft.fiscal || {}) },
     };
     onGuardarConfig(limpio);
     setDraft(limpio);
@@ -5153,6 +5328,53 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <button className="af-btn-primary w-full" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos de pago"}
+            </button>
+          </div>
+
+          <div className="af-section-title">Datos para pedir facturas</div>
+          <div className="af-card p-4 mb-4">
+            <p className="af-ink-soft text-sm mb-3">
+              Se capturan una vez y después se copian de un toque en el portal de cada tienda.
+              Viven solo en tu base de datos, nunca en el código de la app.
+            </p>
+            {[
+              { k: "rfc", label: "RFC", ph: "Con homoclave" },
+              { k: "razonSocial", label: "Nombre o razón social", ph: "Igual que en tu Constancia" },
+              { k: "codigoPostal", label: "Código postal fiscal", ph: "5 dígitos" },
+              { k: "correo", label: "Correo donde llega la factura", ph: "tu@correo.com" },
+            ].map((c) => (
+              <div className="af-field" key={c.k}>
+                <label>{c.label}</label>
+                <input
+                  className="af-input"
+                  placeholder={c.ph}
+                  value={(draft.fiscal || {})[c.k] || ""}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, fiscal: { ...(prev.fiscal || {}), [c.k]: e.target.value } }))}
+                />
+              </div>
+            ))}
+            <div className="af-field">
+              <label>Régimen fiscal</label>
+              <input
+                className="af-input"
+                placeholder="Ej. 626"
+                value={(draft.fiscal || {}).regimen || ""}
+                onChange={(e) => setDraft((prev) => ({ ...prev, fiscal: { ...(prev.fiscal || {}), regimen: e.target.value } }))}
+              />
+              <p className="af-ink-soft text-xs mt-1">626 es Simplificado de Confianza (RESICO).</p>
+            </div>
+            <div className="af-field">
+              <label>Uso de la factura</label>
+              <input
+                className="af-input"
+                placeholder="Ej. G01"
+                value={(draft.fiscal || {}).usoCFDI || ""}
+                onChange={(e) => setDraft((prev) => ({ ...prev, fiscal: { ...(prev.fiscal || {}), usoCFDI: e.target.value } }))}
+              />
+              <p className="af-ink-soft text-xs mt-1">G01 es Adquisición de mercancías.</p>
+            </div>
+            <button className="af-btn-primary w-full" onClick={guardar}>
+              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos fiscales"}
             </button>
           </div>
 
@@ -8347,7 +8569,7 @@ export default function App() {
               avisosPendientes={avisosPendientes}
             />
           )}
-          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} />}
+          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} showToast={showToast} />}
           {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} onNuevo={() => goToNuevoPresupuesto()} />}
           {view === "ajustes" && (
             <AjustesView
@@ -8804,6 +9026,17 @@ const AZAFRAN_CSS = `
 .af-factura-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
 .af-factura-row:last-child { border-bottom: none; }
 .af-chip-sin-ticket { background: color-mix(in srgb, #f59e0b 16%, transparent); color: #b45309; font-weight: 700; }
+.af-chip-vencido { background: color-mix(in srgb, #dc2626 16%, transparent); color: #b91c1c; font-weight: 700; }
+.af-chip-portal { background: color-mix(in srgb, var(--wine) 13%, transparent); color: var(--wine); font-weight: 700; text-decoration: none; }
+
+/* Cada compra por facturar, con lo que urge y qué pide su portal. */
+.af-factura { padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.af-factura:last-child { border-bottom: none; }
+.af-factura.urge, .af-factura.vencido { border-left: 3px solid #f59e0b; padding-left: 10px; margin-left: -10px; }
+.af-factura.vencido { border-left-color: #dc2626; opacity: 0.85; }
+.af-factura-arriba { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.af-factura-pide { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; padding: 7px 10px; background: color-mix(in srgb, var(--ink-soft) 7%, transparent); border-radius: 9px; }
+.af-factura-acciones { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .af-ticket-campo { background: color-mix(in srgb, var(--wine) 5%, transparent); border-radius: 12px; padding: 12px; }
 .af-ticket-listo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #15803d; }
 

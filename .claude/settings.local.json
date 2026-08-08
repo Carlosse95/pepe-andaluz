@@ -318,7 +318,28 @@
       "Bash(/usr/bin/grep -n \"const enviarAvisoWhatsApp\" -A 16 src/AzafranApp.jsx)",
       "Bash(perl -i -pe 's/^  const \\\\[verAvisos, setVerAvisos\\\\] = useState\\\\\\(false\\\\\\);$/  const [verAvisos, setVerAvisos] = useState\\(false\\);\\\\n  const [subiendoRecibo, setSubiendoRecibo] = useState\\(false\\);/' src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"subiendoRecibo\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"<AvisoPendienteModal\" -A 5 src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"<AvisoPendienteModal\" -A 5 src/AzafranApp.jsx)",
+      "Bash(curl -s --max-time 20 -o /dev/null -w \"%{http_code}\\\\n\" https://api.github.com/repos/carlosse95/pepe-andaluz)",
+      "Bash(/usr/bin/grep -n \"const LOCAL_DEFAULT\" -B 2 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"local: LOCAL_DEFAULT,\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const TIENDAS_FACTURABLES\" -A 16 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'local: { ...LOCAL_DEFAULT, ...\\(draft.local || {}\\) },' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^      local: \\\\{ \\\\.\\\\.\\\\.LOCAL_DEFAULT, \\\\.\\\\.\\\\.\\\\\\(draft\\\\.local \\\\|\\\\| \\\\{\\\\}\\\\\\) \\\\},$/      local: { ...LOCAL_DEFAULT, ...\\(draft.local || {}\\) },\\\\n      fiscal: { ...DEFAULT_CONFIG.fiscal, ...\\(draft.fiscal || {}\\) },/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"fiscal: { ...DEFAULT_CONFIG.fiscal\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const porFacturar = gastos.filter\" -A 3 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-factura-row\" -B 8 -A 22 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function Toast\" -A 8 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function ReportesView\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"showToast\" src/AzafranApp.jsx)",
+      "Bash(awk -F: '$1>3100 && $1<3500')",
+      "Bash(/usr/bin/grep -n \"<ReportesView\" -A 3 src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=2983 && NR<=4830 && /showToast/ {print NR\": \"$0}' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^function ReportesView\\\\\\(\\\\{ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig \\\\}\\\\\\) \\\\{$/function ReportesView\\({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig, showToast }\\) {/' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/\\(<ReportesView pedidos=\\\\{pedidos\\\\}.*?\\)onGuardarConfig=\\\\{guardarConfig\\\\} \\\\/>/$1onGuardarConfig={guardarConfig} showToast={showToast} \\\\/>/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"showToast={showToast}\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  const \\\\[abrirFiltros, setAbrirFiltros\\\\] = useState\\\\\\(false\\\\\\);$/  const [abrirFiltros, setAbrirFiltros] = useState\\(false\\);\\\\n  const [datosParaCopiar, setDatosParaCopiar] = useState\\(null\\);/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"datosParaCopiar\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"SAFJ651201\" src/AzafranApp.jsx)"
     ]
   }
 }
