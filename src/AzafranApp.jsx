@@ -955,25 +955,42 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
       <div className="af-tear" />
 
       <div className="flex items-center gap-2 flex-wrap mb-2">
+        {/* En los pedidos a domicilio, el chip ABRE el mapa. Antes solo había
+            liga cuando el pedido traía ubicación guardada; si el cliente dio
+            su dirección escrita y no un mapa, no salía nada y había que ir a
+            buscarla al abrir el pedido, justo cuando uno va saliendo a
+            entregar. Con la dirección escrita se abre la búsqueda en el mapa. */}
         {pedido.entrega ? (
-          <span className="af-chip af-chip-domicilio">
-            <Truck size={12} /> A domicilio
-          </span>
+          (() => {
+            const destino = pedido.ubicacion
+              ? pedido.ubicacion
+              : (pedido.direccion || "").trim()
+                ? `https://maps.google.com/?q=${encodeURIComponent(pedido.direccion.trim())}`
+                : null;
+            if (!destino) {
+              return (
+                <span className="af-chip af-chip-domicilio">
+                  <Truck size={12} /> A domicilio
+                </span>
+              );
+            }
+            return (
+              <a
+                href={destino}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="af-chip af-chip-domicilio"
+                onClick={(e) => e.stopPropagation()}
+                title="Abrir en el mapa"
+              >
+                <MapPin size={12} /> A domicilio · Ver mapa
+              </a>
+            );
+          })()
         ) : (
           <span className="af-chip af-chip-neutral">
             <Store size={12} /> Recoger
           </span>
-        )}
-        {pedido.entrega && pedido.ubicacion && (
-          <a
-            href={pedido.ubicacion}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="af-chip af-chip-gold"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MapPin size={12} /> Abrir ubicación
-          </a>
         )}
         {hayPaellera && (
           <span className={"af-chip " + (todasDevueltas ? "af-chip-olive" : "af-chip-gold")}>
@@ -7997,8 +8014,14 @@ export default function App() {
     const nav = navRef.current;
     const boton = botonActivoRef.current;
     if (!nav || !boton || nav.scrollWidth <= nav.clientWidth) return;
+    // Solo si la pestaña marcada quedó fuera de vista. Antes se deslizaba
+    // siempre, y con animación: en el iPad los botones se movían bajo el dedo
+    // y el siguiente toque se perdía, así que había que picarle de nuevo.
+    const izq = boton.offsetLeft - nav.scrollLeft;
+    const der = izq + boton.offsetWidth;
+    if (izq >= 0 && der <= nav.clientWidth) return;
     const centro = boton.offsetLeft - (nav.clientWidth - boton.offsetWidth) / 2;
-    nav.scrollTo({ left: Math.max(0, centro), behavior: "smooth" });
+    nav.scrollTo({ left: Math.max(0, centro) });
   }, [view]);
 
   const irAVista = (v) => {
@@ -8648,6 +8671,12 @@ export default function App() {
 const AZAFRAN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
 
+/* Safari espera un instante en cada toque por si viene un segundo toque (el
+   de acercar la pantalla). Con esto responde al primero, sin esperar. */
+.af-app button, .af-app a, .af-app label, .af-app select, .af-app input[type="checkbox"] {
+  touch-action: manipulation;
+}
+
 .af-app {
   --bg: #EEF3FC;
   --surface: #FFFFFF;
@@ -8719,7 +8748,6 @@ const AZAFRAN_CSS = `
   display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0;
   background: var(--wine-soft); box-shadow: 0 2px 8px rgba(22,35,63,0.15); transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.af-avatar-btn:hover { transform: scale(1.06); box-shadow: 0 4px 12px rgba(22,35,63,0.22); }
 .af-avatar-img { width: 100%; height: 100%; object-fit: cover; }
 .af-avatar-fallback { font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--wine); font-size: 14px; }
 .af-avatar-modal { background: var(--surface); border-radius: 20px; width: 300px; max-width: 90vw; padding: 0 0 18px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); overflow: hidden; }
@@ -8797,7 +8825,6 @@ const AZAFRAN_CSS = `
 
 /* Botón para desplegar/ocultar secciones secundarias (entregados, paelleras) */
 .af-colapsable-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-soft); cursor: pointer; font-family: 'Space Grotesk', sans-serif; transition: all 0.15s ease; }
-.af-colapsable-btn:hover { border-color: var(--gold); color: var(--ink); }
 
 .af-produccion-box { background: var(--olive-soft); border-radius: 12px; padding: 10px 14px; margin-top: 6px; }
 .af-produccion-row { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; font-size: 13.5px; color: var(--ink); }
@@ -8810,7 +8837,6 @@ const AZAFRAN_CSS = `
 .af-metodo-row { display: flex; gap: 6px; margin-top: 10px; }
 .af-metodo-pill { flex: 1; padding: 8px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
 .af-metodo-pill.active { background: var(--olive); border-color: var(--olive); color: white; }
-.af-metodo-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
 .af-abonos-lista { margin-bottom: 4px; }
 .af-abono-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
@@ -8839,7 +8865,6 @@ const AZAFRAN_CSS = `
 
 .af-estado-pills { display: flex; flex-wrap: wrap; gap: 8px; }
 .af-estado-pill { border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; background: var(--surface); color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
-.af-estado-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); transform: translateY(-1px); }
 .af-estado-pill.active.af-estado-pendiente { background: var(--neutral-soft); color: var(--ink-soft); border-color: transparent; }
 .af-estado-pill.active.af-estado-preparacion { background: var(--gold); color: white; border-color: transparent; }
 .af-estado-pill.active.af-estado-avisado { background: var(--azul); color: white; border-color: transparent; }
@@ -8867,7 +8892,7 @@ const AZAFRAN_CSS = `
 .af-sug-wrap { position: relative; flex: 1; min-width: 0; }
 .af-sug-lista { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); max-height: 216px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
 .af-sug-item { display: block; width: 100%; text-align: left; padding: 9px 13px; background: none; border: none; color: var(--ink); font-size: 13.5px; }
-.af-sug-item:hover, .af-sug-item.activo { background: color-mix(in srgb, var(--wine) 10%, transparent); }
+.af-sug-item.activo { background: color-mix(in srgb, var(--wine) 10%, transparent); }
 
 /* ---- Gastos: totales por categoría, buscador y meses plegables ---- */
 .af-pill-total { margin-left: 5px; opacity: 0.75; font-weight: 700; font-size: 10.5px; }
@@ -9016,7 +9041,6 @@ const AZAFRAN_CSS = `
 .af-import-lista { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; }
 .af-import-fila { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: none; border: none; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); text-align: left; cursor: pointer; }
 .af-import-fila:last-child { border-bottom: none; }
-.af-import-fila:hover { background: color-mix(in srgb, var(--wine) 6%, transparent); }
 .af-import-fila.elegido { background: color-mix(in srgb, var(--wine) 10%, transparent); }
 .af-import-check { flex-shrink: 0; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line); display: flex; align-items: center; justify-content: center; color: #fff; }
 .af-import-fila.elegido .af-import-check { background: var(--wine); border-color: var(--wine); }
@@ -9045,10 +9069,8 @@ const AZAFRAN_CSS = `
 .af-confirmar-nombre { font-weight: 700; font-size: 14px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .af-chip-wa-mini { background: color-mix(in srgb, #25D366 18%, transparent); color: #0b7a3b; font-weight: 700; border: none; cursor: pointer; gap: 4px; }
-.af-chip-wa-mini:hover { background: color-mix(in srgb, #25D366 28%, transparent); }
 
 .af-fab { position: absolute; bottom: 78px; right: 20px; background: var(--wine); color: white; width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 6px 16px rgba(193,66,31,0.35); z-index: 10; transition: transform 0.18s ease, box-shadow 0.18s ease; cursor: pointer; }
-.af-fab:hover { transform: scale(1.07); box-shadow: 0 8px 22px rgba(193,90,52,0.45); }
 .af-fab:active { transform: scale(0.96); }
 
 /* min-width:0 para que el campo pueda encogerse dentro de una rejilla. Sin
@@ -9086,14 +9108,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-suggest-list { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin-top: 6px; overflow: hidden; }
 .af-suggest-item { display: flex; justify-content: space-between; padding: 10px 13px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .af-suggest-item:last-child { border-bottom: none; }
-.af-suggest-item:hover { background: var(--gold-soft); }
 
 .af-cliente-chip { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 13px; }
 
 .af-ubic-row { display: flex; align-items: center; gap: 8px; }
 .af-ubic-row .af-input { flex: 1; }
 .af-paste-btn { flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--wine); display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.af-paste-btn:hover { background: var(--wine-soft); border-color: var(--wine); }
 
 .af-tag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .af-tag-btn { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px; font-size: 13px; font-weight: 600; text-align: left; color: var(--wine); }
@@ -9112,7 +9132,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 .af-toggle-btn { flex: 1; padding: 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px; color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
 .af-toggle-btn.active { background: var(--wine); border-color: var(--wine); color: white; }
-.af-toggle-btn:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
 /* Ojo: se escribe con doble clase para ganarle a ".af-field label", que es
    más específico y si no convierte la fila en bloque y en MAYÚSCULAS —
@@ -9135,28 +9154,19 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-error { background: var(--wine-soft); color: var(--wine); border-radius: 10px; padding: 10px 13px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 
 .af-btn-primary { background: var(--wine); color: white; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14.5px; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 3px 10px -3px rgba(193,90,52,0.4); cursor: pointer; transition: all 0.15s ease; }
-.af-btn-primary:hover { background: #A64826; transform: translateY(-1px); box-shadow: 0 6px 16px -4px rgba(193,90,52,0.5); }
 .af-btn-primary:active { transform: translateY(0); }
 .af-btn-secondary { background: var(--gold-soft); color: #7A5A1E; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.15s ease; }
-.af-btn-secondary:hover { background: #F3E2A8; transform: translateY(-1px); }
 .af-btn-ghost { background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13.5px; padding: 6px 0; cursor: pointer; transition: opacity 0.15s ease; }
-.af-btn-ghost:hover { text-decoration: underline; opacity: 0.85; }
 .af-btn-danger { background: none; border: 1px solid var(--wine); color: var(--wine); font-weight: 700; border-radius: 12px; padding: 12px; font-size: 13.5px; cursor: pointer; transition: all 0.15s ease; }
-.af-btn-danger:hover { background: var(--wine-soft); }
 .af-btn-chip { background: var(--olive); color: white; border: none; border-radius: 10px; padding: 8px 12px; font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.af-btn-chip:hover { background: #4A5C42; }
 .af-icon-btn { background: none; border: none; color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 4px; cursor: pointer; border-radius: 6px; transition: all 0.15s ease; }
-.af-icon-btn:hover { background: var(--neutral-soft); color: var(--wine); transform: scale(1.08); }
 .af-tag-btn { cursor: pointer; }
-.af-tag-btn:hover { border-color: var(--gold); }
-.af-card.cursor-pointer:hover { border-color: var(--gold); box-shadow: 0 6px 18px -6px rgba(36,27,20,0.2); transform: translateY(-2px); }
 
 .af-back-row { display: flex; align-items: center; gap: 6px; color: var(--wine); font-weight: 600; font-size: 13.5px; margin-bottom: 14px; cursor: pointer; }
 
 /* Selector de cliente tipo combobox */
 .af-combo-row { display: flex; align-items: center; gap: 10px; }
 .af-combo-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; cursor: pointer; text-align: left; font-family: 'Inter', sans-serif; }
-.af-combo-trigger:hover { border-color: var(--gold); }
 .af-combo-placeholder { color: var(--ink-soft); font-size: 14.5px; }
 .af-avatar-badge { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--wine-soft); color: var(--wine); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; font-family: 'Space Grotesk', sans-serif; }
 .af-combo-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; margin-top: 6px; box-shadow: 0 10px 24px -10px rgba(36,27,20,0.28); overflow: hidden; }
@@ -9164,9 +9174,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-combo-list { max-height: 260px; overflow-y: auto; }
 .af-combo-item { display: flex; align-items: center; gap: 10px; padding: 10px 13px; cursor: pointer; border-bottom: 1px solid var(--line); }
 .af-combo-item:last-child { border-bottom: none; }
-.af-combo-item:hover { background: var(--gold-soft); }
 .af-combo-new { display: flex; align-items: center; gap: 8px; padding: 12px 13px; color: var(--wine); font-weight: 700; font-size: 13.5px; cursor: pointer; border-top: 1px solid var(--line); background: var(--bg); }
-.af-combo-new:hover { background: var(--gold-soft); }
 
 /* Tabla de ítems del pedido/cotización */
 .af-items-table { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
@@ -9175,7 +9183,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-items-col-nombre { flex: 1; min-width: 0; }
 .af-items-col-total { width: 78px; text-align: right; font-family: 'Space Grotesk', sans-serif; font-weight: 700; flex-shrink: 0; }
 .af-add-item-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 12px; border-radius: 12px; border: 1.5px dashed var(--wine); background: var(--wine-soft); color: var(--wine); font-weight: 700; font-size: 14px; cursor: pointer; }
-.af-add-item-btn:hover { background: #F3D3BE; }
 
 /* Modal "Agregar ítem" */
 .af-modal-overlay { position: fixed; inset: 0; background: rgba(36,27,20,0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
@@ -9201,18 +9208,15 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-category-pills::-webkit-scrollbar { display: none; }
 .af-category-pill { flex-shrink: 0; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; white-space: nowrap; transition: all 0.15s ease; }
 .af-category-pill.active { background: var(--wine); border-color: var(--wine); color: white; }
-.af-category-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
 .af-picker-group-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin: 14px 2px 6px; }
 .af-picker-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border-radius: 10px; cursor: pointer; gap: 8px; transition: background 0.15s ease; }
-.af-picker-item:hover { background: var(--gold-soft); }
 .af-picker-item.active { background: var(--wine-soft); }
 .af-picker-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ink-soft); padding: 50px 20px; text-align: center; font-size: 13.5px; height: 100%; }
 .af-picker-form { padding: 2px; }
 .af-picker-back-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13px; padding: 0 0 14px; cursor: pointer; }
 .af-add-card-row { flex-direction: row; min-height: unset; padding: 12px; margin-top: 8px; }
 .af-picker-add-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--wine); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; transition: transform 0.15s ease, background 0.15s ease; }
-.af-picker-add-btn:hover { transform: scale(1.1); background: #A64826; }
 .af-carrito-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: var(--wine-soft); border: none; border-radius: 12px; padding: 10px 14px; margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--wine); cursor: pointer; text-align: left; }
 .af-carrito-bar-link { flex-shrink: 0; }
 .af-carrito-lista { display: flex; flex-direction: column; }
@@ -9222,19 +9226,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Extras de paella dentro del pedido */
 .af-extra-line { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--olive); font-weight: 600; background: var(--olive-soft); border-radius: 999px; padding: 2px 6px 2px 10px; margin: 3px 6px 0 0; }
 .af-extra-mini-btn { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(91,112,82,0.35); background: var(--surface); color: var(--olive); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
-.af-extra-mini-btn:hover { background: var(--olive); color: white; }
 .af-extra-wrap { position: relative; display: inline-block; }
 .af-extra-btn { font-size: 12.5px; padding: 4px 0; }
 .af-extra-menu { position: absolute; left: 0; top: 100%; min-width: 210px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 24px -8px rgba(36,27,20,0.3); overflow: hidden; }
 .af-extra-menu-item { display: flex; justify-content: space-between; gap: 14px; padding: 9px 13px; font-size: 13.5px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--line); }
 .af-extra-menu-item:last-child { border-bottom: none; }
 .af-item-nota { display: flex; align-items: flex-start; gap: 4px; font-size: 12.5px; color: var(--wine); font-style: italic; margin-top: 4px; cursor: pointer; line-height: 1.4; }
-.af-extra-menu-item:hover { background: var(--gold-soft); }
 
 /* Panel de usuarios */
 .af-usuario-row { display: flex; align-items: center; gap: 10px; }
 .af-btn-chip-off { background: var(--neutral-soft); color: var(--ink-soft); }
-.af-btn-chip-off:hover { background: #E3D7BE; }
 
 /* Pantalla de login */
 .af-login { align-items: center; justify-content: center; padding: 24px; max-width: none; }
@@ -9258,13 +9259,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Botones de acción del formulario (WhatsApp, duplicar) */
 .af-btn-wa { background: #E7F6E9; color: #1F7A33; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-family: 'Space Grotesk', sans-serif; cursor: pointer; }
-.af-btn-wa:hover { background: #D4EFD9; }
 .af-folio-tag { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 11.5px; color: var(--ink-soft); background: var(--neutral-soft); border-radius: 999px; padding: 3px 9px; letter-spacing: 0.03em; }
 
 /* Accesos rápidos del dashboard */
 .af-quick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 4px; }
 .af-quick-btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 13.5px; color: var(--wine); cursor: pointer; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(36,27,20,0.04); }
-.af-quick-btn:hover { border-color: var(--wine); background: var(--wine-soft); }
 
 /* Overlay invisible para cerrar dropdowns al hacer clic fuera */
 .af-clickaway { position: fixed; inset: 0; z-index: 40; }
@@ -9307,7 +9306,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-receta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
 
 .af-add-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 96px; border: 2px dashed var(--line); border-radius: 14px; background: none; color: var(--ink-soft); font-weight: 600; font-size: 13px; cursor: pointer; }
-.af-add-card:hover { border-color: var(--wine); color: var(--wine); }
 
 .af-check-row-small, .af-field label.af-check-row-small { font-size: 12.5px; gap: 6px; }
 .af-check-row-small input { width: 15px; height: 15px; }
@@ -9408,7 +9406,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 700;
   box-shadow: 0 4px 14px rgba(22,35,63,0.25);
 }
-.af-nueva-version:hover { filter: brightness(1.08); }
 
 .af-rent-costo-calc { color: var(--wine); }
 .af-rent-desglose-btn {
@@ -9417,7 +9414,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   background: none; color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
   font-family: 'Inter', sans-serif; cursor: pointer; transition: all 0.15s ease;
 }
-.af-rent-desglose-btn:hover { border-color: var(--wine); color: var(--wine); background: var(--wine-soft); }
 .af-rent-desglose-chip { background: var(--wine-soft); color: var(--wine); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; }
 .af-rent-desglose-flecha { margin-left: auto; font-size: 10px; }
 .af-rent-desglose { margin-top: 8px; padding: 12px 14px; border-radius: 12px; background: var(--neutral-soft); }
@@ -9440,7 +9436,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   background: none; color: var(--wine); font-size: 13px; font-weight: 700;
   font-family: 'Inter', sans-serif; cursor: pointer;
 }
-.af-rent-add-ing:hover { background: var(--wine-soft); }
 .af-rent-tanda-fila {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 7px 0; font-size: 13.5px; color: var(--ink);
@@ -9462,7 +9457,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* De qué bolsa sale el gasto: negocio o casa. */
 .af-ambito-switch { display: flex; gap: 6px; flex-wrap: wrap; }
 .af-ambito-btn { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.af-ambito-btn:hover { border-color: var(--wine); }
 .af-ambito-btn.active { background: var(--wine); border-color: var(--wine); color: #fff; }
 .af-ambito-btn.active .af-pill-total { color: #fff; opacity: 0.9; }
 
@@ -9495,7 +9489,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Título a la izquierda y la acción a la derecha, como en cualquier panel. */
 .af-encabezado-accion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 10px; }
 .af-btn-accion { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--wine); font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.15s ease; }
-.af-btn-accion:hover { border-color: var(--wine); background: color-mix(in srgb, var(--wine) 8%, transparent); }
 
 /* Buscar + Filtrar en una sola fila, y lo que está filtrando a la vista. */
 .af-barra-filtros { display: flex; align-items: center; gap: 8px; }
@@ -9503,7 +9496,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-filtros-cuenta { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--wine); color: #fff; font-size: 11px; font-weight: 700; }
 .af-filtros-activos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .af-chip-filtro { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; border: none; background: color-mix(in srgb, var(--wine) 13%, transparent); color: var(--wine); font-size: 12.5px; font-weight: 700; cursor: pointer; }
-.af-chip-filtro:hover { background: color-mix(in srgb, var(--wine) 22%, transparent); }
 
 /* Campana de avisos en la barra de arriba. */
 .af-campana { position: relative; }
@@ -9529,7 +9521,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Encender/apagar pestañas del menú. */
 .af-toggle-fila { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 13px; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; text-align: left; transition: border-color 0.15s ease; }
-.af-toggle-fila:hover { border-color: var(--wine); }
 .af-toggle-nombre { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-toggle-estado { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
 .af-toggle-switch { flex-shrink: 0; width: 40px; height: 23px; border-radius: 999px; background: color-mix(in srgb, var(--ink-soft) 30%, transparent); position: relative; transition: background 0.18s ease; }
@@ -9597,7 +9588,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
     font-size: 13.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
     transition: all 0.18s ease; white-space: nowrap; flex-shrink: 0;
   }
-  .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); transform: scale(1.05); position: relative; z-index: 1; }
   .af-topbar-link.active { color: white; background: var(--wine); box-shadow: 0 3px 10px -3px rgba(47,95,224,0.5); }
   .af-topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .af-nav { display: none; }
@@ -9638,4 +9628,53 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-content { max-width: 1180px; }
   .af-card-grid { grid-template-columns: 1fr 1fr 1fr; }
 }
+
+/* En pantallas táctiles no hay "pasar el cursor por encima": iOS lo simula
+   con un primer toque que solo resalta y un segundo que sí activa. Por eso
+   había que picarle dos o tres veces a los botones en el iPad y el celular.
+   Envolviendo el hover aquí, en el celular deja de existir y el primer
+   toque ya funciona; en la computadora se ve igual que siempre. */
+@media (hover: hover) and (pointer: fine) {
+  .af-avatar-btn:hover { transform: scale(1.06); box-shadow: 0 4px 12px rgba(22,35,63,0.22); }
+  .af-colapsable-btn:hover { border-color: var(--gold); color: var(--ink); }
+  .af-metodo-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); }
+  .af-estado-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); transform: translateY(-1px); }
+  .af-sug-item:hover { background: color-mix(in srgb, var(--wine) 10%, transparent); }
+  .af-import-fila:hover { background: color-mix(in srgb, var(--wine) 6%, transparent); }
+  .af-chip-wa-mini:hover { background: color-mix(in srgb, #25D366 28%, transparent); }
+  .af-fab:hover { transform: scale(1.07); box-shadow: 0 8px 22px rgba(193,90,52,0.45); }
+  .af-suggest-item:hover { background: var(--gold-soft); }
+  .af-paste-btn:hover { background: var(--wine-soft); border-color: var(--wine); }
+  .af-toggle-btn:not(.active):hover { border-color: var(--gold); color: var(--ink); }
+  .af-btn-primary:hover { background: #A64826; transform: translateY(-1px); box-shadow: 0 6px 16px -4px rgba(193,90,52,0.5); }
+  .af-btn-secondary:hover { background: #F3E2A8; transform: translateY(-1px); }
+  .af-btn-ghost:hover { text-decoration: underline; opacity: 0.85; }
+  .af-btn-danger:hover { background: var(--wine-soft); }
+  .af-btn-chip:hover { background: #4A5C42; }
+  .af-icon-btn:hover { background: var(--neutral-soft); color: var(--wine); transform: scale(1.08); }
+  .af-tag-btn:hover { border-color: var(--gold); }
+  .af-card.cursor-pointer:hover { border-color: var(--gold); box-shadow: 0 6px 18px -6px rgba(36,27,20,0.2); transform: translateY(-2px); }
+  .af-combo-trigger:hover { border-color: var(--gold); }
+  .af-combo-item:hover { background: var(--gold-soft); }
+  .af-combo-new:hover { background: var(--gold-soft); }
+  .af-add-item-btn:hover { background: #F3D3BE; }
+  .af-category-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); }
+  .af-picker-item:hover { background: var(--gold-soft); }
+  .af-picker-add-btn:hover { transform: scale(1.1); background: #A64826; }
+  .af-extra-mini-btn:hover { background: var(--olive); color: white; }
+  .af-extra-menu-item:hover { background: var(--gold-soft); }
+  .af-btn-chip-off:hover { background: #E3D7BE; }
+  .af-btn-wa:hover { background: #D4EFD9; }
+  .af-quick-btn:hover { border-color: var(--wine); background: var(--wine-soft); }
+  .af-add-card:hover { border-color: var(--wine); color: var(--wine); }
+  .af-nueva-version:hover { filter: brightness(1.08); }
+  .af-rent-desglose-btn:hover { border-color: var(--wine); color: var(--wine); background: var(--wine-soft); }
+  .af-rent-add-ing:hover { background: var(--wine-soft); }
+  .af-ambito-btn:hover { border-color: var(--wine); }
+  .af-btn-accion:hover { border-color: var(--wine); background: color-mix(in srgb, var(--wine) 8%, transparent); }
+  .af-chip-filtro:hover { background: color-mix(in srgb, var(--wine) 22%, transparent); }
+  .af-toggle-fila:hover { border-color: var(--wine); }
+  .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); transform: scale(1.05); position: relative; z-index: 1; }
+}
+
 `;

@@ -341,7 +341,18 @@
       "Bash(/usr/bin/grep -n \"datosParaCopiar\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -c \"SAFJ651201\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"esTiendaFacturable\\(nuevoGasto.tienda\\) && \\(\" -B 6 src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"¿De dónde sale?\" -B 4 src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"¿De dónde sale?\" -B 4 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-modal-overlay {\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'className=\"af-modal-overlay\" style' -B 4 -A 2 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \":hover\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \":hover\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"hover: hover\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"nav.scrollTo\" -B 8 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"touch-action\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^button, \\\\|^button {\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-app {\" -B 3 -A 2 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"ubicacion\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -i \"abrir\\\\|maps\\\\|href\\\\|window.open\")"
     ]
   }
 }
