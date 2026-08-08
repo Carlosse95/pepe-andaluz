@@ -234,7 +234,14 @@
       "Bash(/usr/bin/grep -n \"function HoyView\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"<HoyView\" -A 12 src/AzafranApp.jsx)",
       "Bash(perl -i -pe 's/function HoyView\\\\\\(\\\\{ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto \\\\}\\\\\\)/function HoyView\\({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia }\\)/; s/onNuevoPresupuesto=\\\\{\\\\\\(\\\\\\) => goToNuevoPresupuesto\\\\\\(\\\\\\)\\\\} \\\\/>\\\\}/onNuevoPresupuesto={\\(\\) => goToNuevoPresupuesto\\(\\)} onConfirmarTransferencia={confirmarTransferencia} \\\\/>}/' src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"onConfirmarTransferencia\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"onConfirmarTransferencia\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const addCliente\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"clientesParecidos\\\\|const normNombre\" -A 4 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-ausentes-aviso mb-3\" -B 14 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^}\" src/AzafranApp.jsx)",
+      "Bash(awk -F: '$1>2560 && $1<2620')",
+      "Bash(perl -i -pe 's/function ClientesView\\\\\\(\\\\{ clientes, pedidos, config, onAddCliente,/function ClientesView\\({ clientes, pedidos, config, onAddCliente, onImportarClientes,/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Upload\" src/AzafranApp.jsx)"
     ]
   }
 }

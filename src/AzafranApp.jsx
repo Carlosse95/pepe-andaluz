@@ -127,6 +127,49 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // ni espacios de más. "María López" ≈ "maria lopez" ≈ "Maria  Lopez ".
 const normNombre = (s) =>
   (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+// Lee un archivo de contactos (.vcf) como el que exporta el iPhone desde la
+// app Contactos. No hay forma de leer la agenda del teléfono desde una página
+// web —Safari no lo permite—, así que este es el único camino sin capturar
+// uno por uno: compartir los contactos a un archivo y subirlo aquí.
+//
+// El formato es de texto plano: cada contacto va entre BEGIN:VCARD y
+// END:VCARD, el nombre en FN y los teléfonos en TEL. Las líneas largas se
+// parten y continúan con un espacio al inicio, así que primero se vuelven a
+// unir. Solo se sacan nombre y teléfono: lo demás no se usa en la app.
+const leerContactosVCF = (texto) => {
+  const lineas = (texto || "").replace(/\r\n/g, "\n").replace(/\n[ \t]/g, "").split("\n");
+  const contactos = [];
+  let actual = null;
+  lineas.forEach((linea) => {
+    const l = linea.trim();
+    if (/^BEGIN:VCARD/i.test(l)) { actual = { nombre: "", telefonos: [] }; return; }
+    if (/^END:VCARD/i.test(l)) {
+      if (actual && (actual.nombre || actual.telefonos.length)) contactos.push(actual);
+      actual = null;
+      return;
+    }
+    if (!actual) return;
+    const dosPuntos = l.indexOf(":");
+    if (dosPuntos < 0) return;
+    const campo = l.slice(0, dosPuntos).toUpperCase();
+    const valor = l.slice(dosPuntos + 1).trim();
+    if (/^FN(;|$)/.test(campo)) {
+      actual.nombre = valor.replace(/\\,/g, ",").replace(/\\;/g, ";").trim();
+    } else if (/^N(;|$)/.test(campo) && !actual.nombre) {
+      // Si no hay FN, se arma con "Apellido;Nombre" que es como viene N.
+      const [ape, nom] = valor.split(";");
+      actual.nombre = [nom, ape].filter(Boolean).join(" ").trim();
+    } else if (/^TEL(;|$)/.test(campo)) {
+      const soloDigitos = valor.replace(/\D/g, "");
+      if (soloDigitos.length >= 10) actual.telefonos.push(soloDigitos.slice(-10));
+    }
+  });
+  // Un contacto sin teléfono no sirve para mandarle su pedido por WhatsApp.
+  return contactos
+    .filter((c) => c.nombre && c.telefonos.length)
+    .map((c) => ({ nombre: c.nombre, telefono: c.telefonos[0] }));
+};
+
 const clientesParecidos = (nombre, clientes) => {
   const n = normNombre(nombre);
   if (n.length < 3) return [];
@@ -2244,13 +2287,14 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
 /*  Vista: Clientes                                                       */
 /* ---------------------------------------------------------------------- */
 
-function ClientesView({ clientes, pedidos, config, onAddCliente, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
+function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClientes, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [q, setQ] = useState("");
   const [detalleId, setDetalleId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
   const [form, setForm] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
   const [confirmDup, setConfirmDup] = useState(false);
   const [soloAusentes, setSoloAusentes] = useState(false);
+  const [importando, setImportando] = useState(null); // { lista, elegidos } o null
 
   const detalle = clientes.find((c) => c.id === detalleId) || null;
 
@@ -2458,6 +2502,32 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onUpdateCliente
       >
         <Plus size={16} className="inline mr-1" /> Nuevo cliente
       </button>
+      {onImportarClientes && (
+        <>
+          <label className="af-btn-secondary w-full mb-2" style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
+            <Upload size={15} className="inline mr-1" /> Traer contactos del celular
+            <input
+              type="file"
+              accept=".vcf,text/vcard,text/x-vcard"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const archivo = e.target.files && e.target.files[0];
+                e.target.value = "";
+                if (!archivo) return;
+                const lector = new FileReader();
+                lector.onload = () => {
+                  const encontrados = leerContactosVCF(String(lector.result || ""));
+                  setImportando(encontrados.length ? { lista: encontrados, elegidos: {} } : { lista: [], elegidos: {} });
+                };
+                lector.readAsText(archivo);
+              }}
+            />
+          </label>
+          <div className="af-hint mb-3" style={{ textAlign: "center" }}>
+            Desde Contactos del iPhone: selecciona, Compartir, "Guardar en Archivos", y sube el archivo aquí.
+          </div>
+        </>
+      )}
       <div className="af-hint mb-3" style={{ textAlign: "center" }}>
         {clientes.length} cliente{clientes.length === 1 ? "" : "s"} registrado{clientes.length === 1 ? "" : "s"}
         {(term || soloAusentes) && ` · mostrando ${lista.length}`}
@@ -2533,6 +2603,86 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onUpdateCliente
           })}
         </div>
       )}
+
+      {/* Revisar antes de meter nada: una agenda de celular trae de todo
+          (el dentista, el plomero) y no todos son clientes del negocio. */}
+      {importando && (() => {
+        const yaEstan = new Set(clientes.map((c) => telWhatsApp(c.telefono).slice(-10)).filter(Boolean));
+        const nuevos = importando.lista.filter((c) => !yaEstan.has(c.telefono.slice(-10)));
+        const repetidos = importando.lista.length - nuevos.length;
+        const cuantosElegidos = nuevos.filter((c) => importando.elegidos[c.telefono]).length;
+        return (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setImportando(null)}>
+            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-titulo mb-2">Contactos del archivo</div>
+              {importando.lista.length === 0 ? (
+                <p className="af-ink-soft text-sm mb-3">
+                  No encontré contactos con teléfono en ese archivo. Asegúrate de exportarlo
+                  desde Contactos como archivo .vcf.
+                </p>
+              ) : (
+                <>
+                  <p className="af-ink-soft text-sm mb-3">
+                    Vienen {importando.lista.length}
+                    {repetidos > 0 && ` · ${repetidos} ya están en tus clientes`}.
+                    Marca los que quieras agregar.
+                  </p>
+                  {nuevos.length > 0 && (
+                    <button
+                      className="af-btn-ghost mb-2"
+                      onClick={() =>
+                        setImportando((prev) => {
+                          const todos = cuantosElegidos === nuevos.length;
+                          return {
+                            ...prev,
+                            elegidos: todos ? {} : Object.fromEntries(nuevos.map((c) => [c.telefono, true])),
+                          };
+                        })
+                      }
+                    >
+                      {cuantosElegidos === nuevos.length ? "Quitar todos" : "Marcar todos"}
+                    </button>
+                  )}
+                  <div className="af-import-lista mb-3">
+                    {nuevos.map((c) => (
+                      <button
+                        key={c.telefono}
+                        className={"af-import-fila" + (importando.elegidos[c.telefono] ? " elegido" : "")}
+                        onClick={() =>
+                          setImportando((prev) => ({
+                            ...prev,
+                            elegidos: { ...prev.elegidos, [c.telefono]: !prev.elegidos[c.telefono] },
+                          }))
+                        }
+                      >
+                        <span className="af-import-check">{importando.elegidos[c.telefono] ? <Check size={13} /> : null}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="af-import-nombre">{c.nombre}</span>
+                          <span className="af-ink-soft text-sm"> · {fmtTel(c.telefono)}</span>
+                        </span>
+                      </button>
+                    ))}
+                    {nuevos.length === 0 && (
+                      <p className="af-ink-soft text-sm">Todos los del archivo ya están registrados.</p>
+                    )}
+                  </div>
+                </>
+              )}
+              <button
+                className="af-btn-primary w-full"
+                disabled={cuantosElegidos === 0}
+                onClick={() => {
+                  onImportarClientes(nuevos.filter((c) => importando.elegidos[c.telefono]));
+                  setImportando(null);
+                }}
+              >
+                {cuantosElegidos > 0 ? `Agregar ${cuantosElegidos}` : "Agregar"}
+              </button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setImportando(null)}>Cancelar</button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -6996,6 +7146,23 @@ export default function App() {
     persist("avatares", nuevos);
   };
 
+  // Alta en bloque desde el archivo de contactos. Se guardan todos de una vez
+  // (no uno por uno) para no mandar una escritura a la nube por contacto.
+  const importarClientes = (nuevos) => {
+    if (!nuevos || !nuevos.length) return;
+    const creados = nuevos.map((c) => ({
+      id: uid(),
+      nombre: (c.nombre || "").trim(),
+      telefono: (c.telefono || "").trim(),
+      direccion: "",
+      ubicacion: "",
+      notas: "",
+      createdAt: Date.now(),
+    }));
+    guardarClientes([...creados, ...clientes]);
+    showToast(`Se agregaron ${creados.length} cliente${creados.length === 1 ? "" : "s"}`);
+  };
+
   const addCliente = (data) => {
     const c = {
       id: uid(),
@@ -7697,6 +7864,7 @@ export default function App() {
               pedidos={pedidos}
               config={config}
               onAddCliente={addCliente}
+              onImportarClientes={importarClientes}
               onUpdateCliente={updateCliente}
               onNuevoPedidoPara={goToNuevoPedido}
               onAbrirPedido={irAEditar}
@@ -8146,6 +8314,16 @@ const AZAFRAN_CSS = `
 .af-chat-input:focus { outline: none; border-color: var(--wine); }
 .af-chat-enviar { flex-shrink: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: var(--wine); color: #fff; }
 .af-chat-enviar:disabled { opacity: 0.4; }
+
+/* Elegir qué contactos del celular se agregan como clientes. */
+.af-import-lista { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; }
+.af-import-fila { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: none; border: none; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); text-align: left; cursor: pointer; }
+.af-import-fila:last-child { border-bottom: none; }
+.af-import-fila:hover { background: color-mix(in srgb, var(--wine) 6%, transparent); }
+.af-import-fila.elegido { background: color-mix(in srgb, var(--wine) 10%, transparent); }
+.af-import-check { flex-shrink: 0; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line); display: flex; align-items: center; justify-content: center; color: #fff; }
+.af-import-fila.elegido .af-import-check { background: var(--wine); border-color: var(--wine); }
+.af-import-nombre { font-weight: 600; color: var(--ink); }
 
 .af-confirmar-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
 .af-confirmar-row:last-child { border-bottom: none; }
