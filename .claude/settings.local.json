@@ -224,7 +224,17 @@
       "Bash(/usr/bin/grep -n \"primera llamada del día\\\\|armar una cotización\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"function PresupuestosView\" -A 12 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"<PresupuestosView\" -A 6 src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"function PresupuestosView\" -A 40 src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"function PresupuestosView\" -A 40 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"entregado\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -i \"pagad\\\\|abono\\\\|saldo\\\\|cobr\")",
+      "Bash(/usr/bin/grep -n \"estadoPagoDe\" -B 3 -A 10 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"cambiarEstadoPedido\" -A 25 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"abonos\\\\|pagado\\\\|entregado\")",
+      "Bash(/usr/bin/grep -n \"^import\\\\|Wallet\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function HoyView\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"<HoyView\" -A 12 src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/function HoyView\\\\\\(\\\\{ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto \\\\}\\\\\\)/function HoyView\\({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia }\\)/; s/onNuevoPresupuesto=\\\\{\\\\\\(\\\\\\) => goToNuevoPresupuesto\\\\\\(\\\\\\)\\\\} \\\\/>\\\\}/onNuevoPresupuesto={\\(\\) => goToNuevoPresupuesto\\(\\)} onConfirmarTransferencia={confirmarTransferencia} \\\\/>}/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"onConfirmarTransferencia\" src/AzafranApp.jsx)"
     ]
   }
 }

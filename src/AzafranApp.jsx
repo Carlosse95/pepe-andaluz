@@ -1266,6 +1266,38 @@ const TITULO_AVISO = {
   nuevo: "Pedido guardado",
 };
 
+// Al entregar un pedido que todavía debe algo, se pregunta cómo se cerró en
+// vez de suponerlo. Suponer "efectivo" hacía que una transferencia que aún no
+// caía quedara registrada como cobrada y nadie la volviera a revisar.
+function CobroEntregaModal({ cobro, onElegir, onCerrar }) {
+  if (!cobro) return null;
+  const { pedido, faltante } = cobro;
+  return (
+    <div className="af-modal-overlay af-modal-overlay-center" onClick={onCerrar}>
+      <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="af-alerta-icon"><Wallet size={26} /></div>
+        <div className="af-alerta-titulo">¿Cómo quedó el pago?</div>
+        <p className="af-alerta-texto">
+          <strong>{pedido.clienteNombre}</strong> debía <strong>{money(faltante)}</strong>.
+        </p>
+        <button className="af-btn-primary w-full" onClick={() => onElegir("efectivo")}>
+          Pagó en efectivo
+        </button>
+        <button className="af-btn-secondary w-full mt-2" onClick={() => onElegir("transferencia")}>
+          Dice que transfirió — confirmar después
+        </button>
+        <button className="af-btn-secondary w-full mt-2" onClick={() => onElegir("nada")}>
+          Todavía no paga
+        </button>
+        <p className="af-ink-soft text-xs mt-3">
+          Si eligió transferencia, el pedido queda apuntado como cobrado pero marcado
+          <strong> por confirmar</strong>, y sale en Hoy hasta que veas el dinero en el banco.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function AvisoPendienteModal({ aviso, onEnviar, onCerrar }) {
   if (!aviso) return null;
   const { pedido, tipo } = aviso;
@@ -1565,7 +1597,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
@@ -1573,6 +1605,17 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   // Lo que falta por comprar sí conviene verlo de entrada: es lo único que
   // hay que resolver antes de que sea tarde.
   const [verCompras, setVerCompras] = useState(false);
+  const [verPorConfirmar, setVerPorConfirmar] = useState(true);
+
+  // Transferencias apuntadas que todavía no se han visto en el banco. Se
+  // buscan en todos los pedidos, no solo los de hoy: el dinero de un pedido
+  // de la semana pasada sigue sin caer aunque ya no salga en esta pantalla.
+  const porConfirmar = [];
+  (pedidos || []).forEach((p) => {
+    (p.abonos || []).forEach((a) => {
+      if (a.porConfirmar) porConfirmar.push({ pedido: p, abono: a });
+    });
+  });
   // Filtro por estado: se maneja aquí (y no en Agenda) porque estos son los
   // pedidos que se están trabajando hoy.
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -1713,6 +1756,38 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               {bajoStock.map((d) => (
                 <div key={d.id} className="af-plegable-linea">
                   {d.nombre}: quedan <strong>{d.stock}</strong> (aviso en {d.minimo})
+                </div>
+              ))}
+            </PanelPlegable>
+          )}
+
+          {/* Dinero que el cliente dice haber transferido y que todavía no se
+              ha visto en el banco. Va arriba y abierto: es lo único de esta
+              lista donde se puede perder dinero por no revisarlo. */}
+          {porConfirmar.length > 0 && (
+            <PanelPlegable
+              tono="alerta"
+              icono={<Wallet size={15} />}
+              titulo="Transferencias por confirmar"
+              resumen={money(porConfirmar.reduce((a, x) => a + x.abono.monto, 0))}
+              abierto={verPorConfirmar}
+              onToggle={() => setVerPorConfirmar((v) => !v)}
+            >
+              {porConfirmar.map(({ pedido, abono }) => (
+                <div key={abono.id} className="af-confirmar-row">
+                  <div className="flex-1 min-w-0">
+                    <div className="af-confirmar-nombre">{pedido.clienteNombre}</div>
+                    <div className="af-ink-soft text-sm">
+                      {fmtFolio(pedido.folio, "#")} · {money(abono.monto)}
+                      {abono.fecha ? ` · ${fmtDateHuman(abono.fecha)}` : ""}
+                    </div>
+                  </div>
+                  <button
+                    className="af-chip af-chip-wa-mini"
+                    onClick={() => onConfirmarTransferencia && onConfirmarTransferencia(pedido.id, abono.id)}
+                  >
+                    <Check size={12} /> Ya cayó
+                  </button>
                 </div>
               ))}
             </PanelPlegable>
@@ -6583,6 +6658,7 @@ export default function App() {
 
   const [alertaFranja, setAlertaFranja] = useState(null); // { total, hora } o null
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
+  const [cobroModal, setCobroModal] = useState(null); // { pedido, faltante } o null
 
   // Sesión (solo aplica en modo nube; en modo local no hay login).
   const [sesion, setSesion] = useState(null);
@@ -6970,19 +7046,19 @@ export default function App() {
   const cambiarEstadoPedido = (pedidoId, estado) => {
     const estadoAnterior = (pedidos.find((p) => p.id === pedidoId) || {}).estado || "pendiente";
     let pedidoActualizado = null;
+    let cobroPendiente = null;
     guardarPedidos(
       pedidos.map((p) => {
         if (p.id !== pedidoId) return p;
         let nuevo = { ...p, estado };
-        // Al entregar, si aún falta saldo, se completa solo (efectivo por
-        // defecto) — se puede corregir el método después si fue de otra forma.
+        // Antes, al entregar se daba por cobrado en efectivo lo que faltara.
+        // Era cómodo pero mentía: si el cliente dijo "ya te transferí" y el
+        // dinero todavía no caía, el pedido quedaba como pagado en efectivo y
+        // nadie volvía a revisarlo. Ahora se pregunta cómo se cerró, y las
+        // transferencias quedan marcadas hasta verlas en el banco.
         if (estado === "entregado") {
-          const pagadoActual = sumaAbonos(p.abonos);
-          const faltante = Math.round((p.total - pagadoActual) * 100) / 100;
-          if (faltante > 0.5) {
-            const abonos = [...(p.abonos || []), { id: uid(), monto: faltante, metodo: "efectivo" }];
-            nuevo = { ...nuevo, abonos, pagado: sumaAbonos(abonos), saldo: 0, estadoPago: "pagado" };
-          }
+          const faltante = Math.round((p.total - sumaAbonos(p.abonos)) * 100) / 100;
+          if (faltante > 0.5) cobroPendiente = { pedido: nuevo, faltante };
         }
         pedidoActualizado = nuevo;
         return nuevo;
@@ -7002,9 +7078,60 @@ export default function App() {
       const { [pedidoId]: _quitado, ...resto } = prev;
       return resto;
     });
-    if (esNuevoAviso && pedidoActualizado && pedidoActualizado.clienteTelefono) {
+    // Primero se resuelve el cobro y después se ofrece el WhatsApp: el aviso
+    // de entrega puede esperar, saber si el dinero entró no.
+    if (cobroPendiente) setCobroModal(cobroPendiente);
+    else if (esNuevoAviso && pedidoActualizado && pedidoActualizado.clienteTelefono) {
       setAvisoModal({ pedido: pedidoActualizado, tipo: estado });
     }
+  };
+
+  // Cierra el cobro de un pedido que se acaba de entregar. `comoPago` puede
+  // ser "efectivo", "transferencia" (queda por confirmar en el banco) o
+  // "nada" si el cliente todavía debe.
+  const cerrarCobroEntrega = (comoPago) => {
+    if (!cobroModal) return;
+    const { pedido, faltante } = cobroModal;
+    setCobroModal(null);
+    if (comoPago !== "nada") {
+      const abono = {
+        id: uid(),
+        monto: faltante,
+        metodo: comoPago,
+        fecha: todayISO(),
+        // La transferencia se apunta, pero no se da por buena hasta verla en
+        // el banco: es justo el caso de "ya te mandé" que no siempre llega.
+        porConfirmar: comoPago === "transferencia",
+      };
+      const lista = pedidos.map((p) => {
+        if (p.id !== pedido.id) return p;
+        const abonos = [...(p.abonos || []), abono];
+        const pagado = sumaAbonos(abonos);
+        return { ...p, abonos, pagado, saldo: Math.max(p.total - pagado, 0), estadoPago: estadoPagoDe(pagado, p.total) };
+      });
+      guardarPedidos(lista);
+      showToast(
+        comoPago === "transferencia"
+          ? "Apuntado. Queda por confirmar en el banco."
+          : `Cobrado ${money(faltante)} en efectivo`
+      );
+    } else {
+      showToast(`Queda debiendo ${money(faltante)}`, "aviso");
+    }
+    // Ya resuelto el dinero, ahora sí se ofrece avisarle al cliente.
+    if (pedido.clienteTelefono) setAvisoModal({ pedido, tipo: "entregado" });
+  };
+
+  // Marca que la transferencia ya se vio en el banco.
+  const confirmarTransferencia = (pedidoId, abonoId) => {
+    guardarPedidos(
+      pedidos.map((p) =>
+        p.id !== pedidoId
+          ? p
+          : { ...p, abonos: (p.abonos || []).map((a) => (a.id === abonoId ? { ...a, porConfirmar: false } : a)) }
+      )
+    );
+    showToast("Confirmado, ya cayó el dinero");
   };
 
   // `tipo` decide qué mensaje se manda; `extra` trae lo que ese mensaje
@@ -7550,7 +7677,7 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
@@ -7634,6 +7761,11 @@ export default function App() {
 
         <Toast toast={toast} />
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
+        <CobroEntregaModal
+          cobro={cobroModal}
+          onElegir={cerrarCobroEntrega}
+          onCerrar={() => cerrarCobroEntrega("nada")}
+        />
         <AvisoPendienteModal
           aviso={avisoModal}
           onEnviar={() => { enviarAvisoWhatsApp(avisoModal.pedido, avisoModal.tipo, { abono: avisoModal.abono }); setAvisoModal(null); }}
@@ -8014,6 +8146,10 @@ const AZAFRAN_CSS = `
 .af-chat-input:focus { outline: none; border-color: var(--wine); }
 .af-chat-enviar { flex-shrink: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: var(--wine); color: #fff; }
 .af-chat-enviar:disabled { opacity: 0.4; }
+
+.af-confirmar-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.af-confirmar-row:last-child { border-bottom: none; }
+.af-confirmar-nombre { font-weight: 700; font-size: 14px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .af-chip-wa-mini { background: color-mix(in srgb, #25D366 18%, transparent); color: #0b7a3b; font-weight: 700; border: none; cursor: pointer; gap: 4px; }
 .af-chip-wa-mini:hover { background: color-mix(in srgb, #25D366 28%, transparent); }
