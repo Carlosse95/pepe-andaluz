@@ -196,7 +196,24 @@
       "Bash(/usr/bin/grep -n \"function ClientesView\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"<ClientesView\" -A 2 src/AzafranApp.jsx)",
       "Bash(perl -i -pe 's/function ClientesView\\\\\\(\\\\{ clientes, pedidos, onAddCliente,/function ClientesView\\({ clientes, pedidos, config, onAddCliente,/' src/AzafranApp.jsx)",
-      "Bash(perl -i -pe 's/^\\(\\\\s*\\)<ClientesView$/$1<ClientesView/' src/AzafranApp.jsx)"
+      "Bash(perl -i -pe 's/^\\(\\\\s*\\)<ClientesView$/$1<ClientesView/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'tab === \"finanzas\"\\\\|tab === \"ventas\"\\\\|tab === \"clientes\"\\\\|tab === \"rentabilidad\"\\\\|setTab\\(' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"CATEGORIAS_GASTO\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"totalGastosAnio\\\\|utilidadAnio\\\\|ingresosAnio\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"gastosAnio\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"filtroCategoria\\\\|buscaGasto\\\\|mesGasto\\\\|diaGasto\" src/AzafranApp.jsx)",
+      "Bash(perl -i -0pe 's/  const mesesConGastos = \\\\[\\\\.\\\\.\\\\.new Set\\\\\\(\\\\n    gastosAnio\\\\n/  const mesesConGastos = [...new Set\\(\\\\n    gastosDelAmbito\\\\n/; s/  CATEGORIAS_GASTO\\\\.forEach\\\\\\(\\\\\\(c\\\\\\) => \\\\{ totalPorCategoria\\\\[c\\\\] = 0; \\\\}\\\\\\);\\\\n  gastosAnio\\\\.forEach/  CATEGORIAS_GASTO.forEach\\(\\(c\\) => { totalPorCategoria[c] = 0; }\\);\\\\n  gastosDelAmbito.forEach/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"gastosAnio\\\\b\\\\|gastosDelAmbito\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'Todos <span className=\"af-pill-total\"' -B 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"nombresUsados\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const agregarGasto\" -A 16 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"montoTexto\" -B 4 -A 8 src/AzafranApp.jsx)",
+      "Bash(perl -i -0pe 's/\\(      const montoTexto = String\\\\\\(parseFloat\\\\\\(g\\\\.monto\\\\\\) \\\\|\\\\| 0\\\\\\);\\\\n      return \\\\\\(\\\\n        normalizarNombreGasto\\\\\\(g\\\\.descripcion\\\\\\)\\\\.includes\\\\\\(q\\\\\\) \\\\|\\\\|\\\\n\\)/$1        normalizarNombreGasto\\(g.tienda || \"\"\\).includes\\(q\\) ||\\\\n/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-gasto-row\\\\|af-gasto-desc\\\\|af-gasto-cat\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"gastoEditando\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"datosPaella\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"COLOR_WINE\\\\s*=\\\\|COLOR_GASTO\\\\s*=\\\\|COLORES_DONA\\\\|COLOR_INK_SOFT\\\\s*=\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const \\\\[sectorDona\" src/AzafranApp.jsx)"
     ]
   }
 }

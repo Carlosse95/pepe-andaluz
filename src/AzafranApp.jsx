@@ -2465,6 +2465,22 @@ const esPedidoDeIA = (pedido) => (pedido?.notas || "").includes("tomado por IA")
 
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Familiar/Personal", "Otros"];
 
+// El gasto familiar no es del negocio. Mezclados, la despensa y la escuela se
+// restan de las ventas y el negocio aparece en números rojos aunque vaya bien.
+// Cada gasto dice de dónde sale, y las cuentas del negocio solo miran los
+// suyos. Se guarda en el gasto (no se deduce de la categoría) para poder
+// mandar un gasto suelto al otro lado sin inventar categorías nuevas.
+const AMBITOS = [
+  { id: "negocio", label: "Del negocio" },
+  { id: "familia", label: "Familiar" },
+];
+const CATEGORIAS_FAMILIARES = ["Familiar/Personal"];
+// Los gastos capturados antes de que existiera esta separación no traen
+// ámbito: se deduce de su categoría, que es como se venía distinguiendo.
+const ambitoDe = (g) =>
+  g?.ambito || (CATEGORIAS_FAMILIARES.includes(g?.categoria) ? "familia" : "negocio");
+const esDelNegocio = (g) => ambitoDe(g) === "negocio";
+
 // La categoría se llamaba "Gas/Servicios". Los gastos viejos se leen con el
 // nombre nuevo para que no queden fuera de los totales de su categoría.
 const CATEGORIAS_RENOMBRADAS = { "Gas/Servicios": "Servicios" };
@@ -2614,11 +2630,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [mesComparar, setMesComparar] = useState(new Date().getMonth());
   const [diaSel, setDiaSel] = useState(todayISO());
+  const [filtroAmbito, setFiltroAmbito] = useState("negocio");
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
   const [buscaGasto, setBuscaGasto] = useState("");
   const [mesGasto, setMesGasto] = useState("todos");
   const [diaGasto, setDiaGasto] = useState("");
   const [sectorDona, setSectorDona] = useState(null);
+  const [sectorPlatillo, setSectorPlatillo] = useState(null);
   const [mesesPlegados, setMesesPlegados] = useState({});
   const [posibleDuplicado, setPosibleDuplicado] = useState(null);
   // null = apartado cerrado; objeto = capturando o editando un gasto fijo.
@@ -2671,27 +2689,52 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const datosComparar = aniosAscendente.map((a) => ({ anio: String(a), valor: valorMes(a, mesComparar).valor }));
 
-  const porPaella = {};
+  // Qué se vende de cada cosa: cuánto dinero dejó y en cuántos pedidos salió.
+  // Entran todos los platillos, no solo las paellas: las croquetas y los
+  // postres también son venta y antes no se veían por ningún lado.
+  const porProducto = {};
   pedidos.forEach((p) => {
     const [y] = p.fecha.split("-").map(Number);
     if (y !== anio) return;
+    // Un pedido con dos paellas del mismo tipo cuenta como UN pedido de ese
+    // platillo, no dos: la pregunta es a cuánta gente le gusta.
+    const vistosEnEstePedido = new Set();
     p.items.forEach((it) => {
-      if (it.tipo === "paella") porPaella[it.paellaNombre] = (porPaella[it.paellaNombre] || 0) + it.subtotal;
+      const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
+      if (!nombre) return;
+      if (!porProducto[nombre]) porProducto[nombre] = { nombre, valor: 0, pedidos: 0 };
+      porProducto[nombre].valor += it.tipo === "paella" ? it.subtotal : it.subtotal || 0;
+      if (!vistosEnEstePedido.has(nombre)) {
+        vistosEnEstePedido.add(nombre);
+        porProducto[nombre].pedidos += 1;
+      }
     });
   });
-  const datosPaella = Object.entries(porPaella)
-    .map(([nombre, valor]) => ({ nombre, valor }))
-    .sort((a, b) => b.valor - a.valor);
+  const datosPaella = Object.values(porProducto).sort((a, b) => b.valor - a.valor);
+  const totalPorProducto = datosPaella.reduce((a, x) => a + x.valor, 0);
+  // Una rebanada por platillo, con colores que se distinguen entre sí.
+  const COLORES_PASTEL = ["#2F5FE0", "#E0524A", "#F2A03D", "#31A66B", "#8B5CF6", "#0EA5E9", "#EC4899", "#84CC16"];
 
   // --- Finanzas: gastos, utilidad y crecimiento de clientes ---
-  const gastosAnio = gastos.filter((g) => Number(g.fecha.split("-")[0]) === anio);
-  const totalGastosAnio = gastosAnio.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
+  const gastosAnioTodos = gastos.filter((g) => Number(g.fecha.split("-")[0]) === anio);
+  // Lo del negocio y lo de la casa se cuentan aparte: si se suman, lo que
+  // gasta la familia se come la utilidad y el negocio parece estar perdiendo.
+  const gastosAnio = gastosAnioTodos.filter(esDelNegocio);
+  const gastosFamiliaAnio = gastosAnioTodos.filter((g) => !esDelNegocio(g));
+  const sumar = (lista) => lista.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
+  const totalGastosAnio = sumar(gastosAnio);
+  const totalFamiliaAnio = sumar(gastosFamiliaAnio);
   const utilidadAnio = totalAnio - totalGastosAnio;
+  // Lo que de verdad queda en la bolsa después de mantener también la casa.
+  const sobranteAnio = utilidadAnio - totalFamiliaAnio;
 
   const gastoPorMes = Array(12).fill(0);
-  gastosAnio.forEach((g) => {
+  const familiaPorMes = Array(12).fill(0);
+  gastosAnioTodos.forEach((g) => {
     const m = Number(g.fecha.split("-")[1]) - 1;
-    if (m >= 0 && m < 12) gastoPorMes[m] += parseFloat(g.monto) || 0;
+    if (m < 0 || m > 11) return;
+    if (esDelNegocio(g)) gastoPorMes[m] += parseFloat(g.monto) || 0;
+    else familiaPorMes[m] += parseFloat(g.monto) || 0;
   });
   const datosFinanzasMensual = MESES.map((nombre, i) => ({
     mes: nombre.slice(0, 3),
@@ -2708,7 +2751,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   });
   const datosClientesMensual = MESES.map((nombre, i) => ({ mes: nombre.slice(0, 3), nuevos: nuevosPorMes[i] }));
 
-  const gastosFiltrados = gastosAnio
+  // La lista sí muestra los dos mundos, pero de uno en uno: se empieza en el
+  // del negocio, que es el que se revisa a diario.
+  const gastosDelAmbito = gastosAnioTodos.filter(
+    (g) => filtroAmbito === "todos" || ambitoDe(g) === filtroAmbito
+  );
+
+  const gastosFiltrados = gastosDelAmbito
     .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
     // El día manda sobre el mes: si se eligió una fecha exacta, se muestra
     // solo ese día. Va aparte del texto porque son dos búsquedas distintas.
@@ -2722,6 +2771,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       const montoTexto = String(parseFloat(g.monto) || 0);
       return (
         normalizarNombreGasto(g.descripcion).includes(q) ||
+        normalizarNombreGasto(g.tienda || "").includes(q) ||
         normalizarNombreGasto(g.categoria).includes(q) ||
         montoTexto.startsWith(q.replace(/\D/g, "") || " ")
       );
@@ -2730,7 +2780,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   // Meses que de verdad tienen gastos, para no ofrecer los doce vacíos.
   const mesesConGastos = [...new Set(
-    gastosAnio
+    gastosDelAmbito
       .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
       .map((g) => Number(g.fecha.split("-")[1]) - 1)
   )].sort((a, b) => a - b);
@@ -2738,10 +2788,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Cuánto se lleva gastado en cada categoría, para verlo sin sacar cuentas.
   const totalPorCategoria = {};
   CATEGORIAS_GASTO.forEach((c) => { totalPorCategoria[c] = 0; });
-  gastosAnio.forEach((g) => {
+  gastosDelAmbito.forEach((g) => {
     const cat = CATEGORIAS_GASTO.includes(g.categoria) ? g.categoria : "Otros";
     totalPorCategoria[cat] = (totalPorCategoria[cat] || 0) + (parseFloat(g.monto) || 0);
   });
+  const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
   // Si hay algún filtro puesto, "no hay nada" significa "no encontré", no
   // "todavía no capturas gastos".
@@ -2963,6 +3014,21 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   })();
   const nombresUsados = usosPorNombre.map((v) => v.texto);
 
+  // Las tiendas ya usadas, para escribirlas siempre igual y poder filtrar por
+  // ellas. Se ordenan por las veces que aparecen: arriba las de siempre.
+  const tiendasUsadas = (() => {
+    const vistos = new Map();
+    gastos.forEach((g) => {
+      const n = (g.tienda || "").trim();
+      if (!n) return;
+      const clave = normalizarNombreGasto(n);
+      const actual = vistos.get(clave);
+      if (!actual) vistos.set(clave, { texto: n, veces: 1 });
+      else { actual.veces += 1; if (n.length > actual.texto.length) actual.texto = n; }
+    });
+    return [...vistos.values()].sort((a, b) => b.veces - a.veces).map((v) => v.texto);
+  })();
+
   // Grupos de nombres que se escriben casi igual y seguramente son lo mismo.
   // No se tocan solos: se le muestran a quien lleva las cuentas para que
   // decida, porque solo él sabe si de verdad son el mismo gasto.
@@ -3007,6 +3073,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     const g = {
       id: uid(),
       fecha: nuevoGasto.fecha,
+      ambito: nuevoGasto.ambito || "negocio",
+      tienda: (nuevoGasto.tienda || "").trim(),
       categoria: nuevoGasto.categoria,
       descripcion: nuevoGasto.descripcion.trim(),
       monto: parseFloat(nuevoGasto.monto),
@@ -3030,7 +3098,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     onGuardarGastos(
       gastos.map((g) =>
         g.id === gastoEditando.id
-          ? { ...g, fecha: gastoEditando.fecha, categoria: gastoEditando.categoria, descripcion: (gastoEditando.descripcion || "").trim(), monto: parseFloat(gastoEditando.monto) }
+          ? { ...g, fecha: gastoEditando.fecha, ambito: gastoEditando.ambito || ambitoDe(g), tienda: (gastoEditando.tienda || "").trim(), categoria: gastoEditando.categoria, descripcion: (gastoEditando.descripcion || "").trim(), monto: parseFloat(gastoEditando.monto) }
           : g
       )
     );
@@ -3613,16 +3681,71 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
       {datosPaella.length > 0 && (
         <div className="af-card p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">Ventas por tipo de paella — {anio}</div>
-          <ResponsiveContainer width="100%" height={Math.max(160, datosPaella.length * 44)}>
-            <BarChart data={datosPaella} layout="vertical" margin={{ top: 5, right: 24, left: 4, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} tickFormatter={miles} />
-              <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12, fill: "#16233F" }} axisLine={false} tickLine={false} width={104} />
-              <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(47,95,224,0.06)" }} />
-              <Bar dataKey="valor" radius={[0, 6, 6, 0]} fill={COLOR_WINE} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="af-chart-title">Qué se vendió — {anio}</div>
+          <div className="af-dona-grafica">
+            <ResponsiveContainer width="100%" height={230}>
+              <PieChart>
+                <Pie
+                  data={datosPaella}
+                  dataKey="valor"
+                  nameKey="nombre"
+                  innerRadius={62}
+                  outerRadius={96}
+                  paddingAngle={2}
+                  stroke="none"
+                  onMouseEnter={(_, i) => setSectorPlatillo(i)}
+                  onMouseLeave={() => setSectorPlatillo(null)}
+                >
+                  {datosPaella.map((d, i) => (
+                    <Cell
+                      key={d.nombre}
+                      fill={COLORES_PASTEL[i % COLORES_PASTEL.length]}
+                      opacity={sectorPlatillo === null || sectorPlatillo === i ? 1 : 0.35}
+                    />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            {/* El detalle va en el centro, quieto: una ventanita flotante se
+                encimaba con lo que ya decía ahí. */}
+            <div className="af-dona-centro">
+              {sectorPlatillo !== null && datosPaella[sectorPlatillo] ? (
+                <>
+                  <div className="af-dona-centro-label">{datosPaella[sectorPlatillo].nombre}</div>
+                  <div className="af-dona-centro-monto positivo">{money(datosPaella[sectorPlatillo].valor)}</div>
+                  <div className="af-dona-centro-pct">
+                    {datosPaella[sectorPlatillo].pedidos} {datosPaella[sectorPlatillo].pedidos === 1 ? "pedido" : "pedidos"}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="af-dona-centro-label">Vendido</div>
+                  <div className="af-dona-centro-monto positivo">{money(totalPorProducto)}</div>
+                  <div className="af-dona-centro-pct">en {datosPaella.length} platillos</div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* La misma información en números, que es lo que se acaba copiando
+              a la libreta: cuántos pedidos y cuánto dejó cada platillo. */}
+          <div className="af-tabla-platillos">
+            <div className="af-tabla-encabezado">
+              <span>Platillo</span>
+              <span>Pedidos</span>
+              <span>Vendido</span>
+            </div>
+            {datosPaella.map((d, i) => (
+              <div key={d.nombre} className="af-tabla-fila">
+                <span className="af-tabla-nombre">
+                  <span className="af-punto-color" style={{ background: COLORES_PASTEL[i % COLORES_PASTEL.length] }} />
+                  {d.nombre}
+                </span>
+                <span className="af-tabla-num">{d.pedidos}</span>
+                <span className="af-tabla-num fuerte">{money(d.valor)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       </div>
@@ -3636,19 +3759,59 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
         </div>
 
+        {/* Cómo le fue al NEGOCIO: aquí no entra nada de la casa, para que la
+            utilidad diga de verdad si el negocio se sostiene solo. */}
+        <div className="af-cuenta-titulo">Cómo va el negocio</div>
+        <div className="af-cuenta">
+          <div className="af-cuenta-fila">
+            <span className="af-cuenta-concepto">Entró por ventas</span>
+            <span className="af-cuenta-monto positivo">{money(totalAnio)}</span>
+          </div>
+          <div className="af-cuenta-fila">
+            <span className="af-cuenta-concepto">Gastos del negocio</span>
+            <span className="af-cuenta-monto negativo">− {money(totalGastosAnio)}</span>
+          </div>
+          <div className="af-cuenta-fila af-cuenta-total">
+            <span className="af-cuenta-concepto">Le quedó al negocio</span>
+            <span className={"af-cuenta-monto " + (utilidadAnio >= 0 ? "positivo" : "negativo")}>
+              {money(utilidadAnio)}
+            </span>
+          </div>
+          {totalAnio > 0 && utilidadAnio >= 0 && (
+            <div className="af-cuenta-nota">
+              De cada $100 que entraron, le quedaron {Math.round((utilidadAnio / totalAnio) * 100)}.
+            </div>
+          )}
+        </div>
+
+        {/* Y aparte, lo de la casa: se resta al final, no de las ventas. */}
+        <div className="af-cuenta-titulo">Y después de la casa</div>
+        <div className="af-cuenta">
+          <div className="af-cuenta-fila">
+            <span className="af-cuenta-concepto">Le quedó al negocio</span>
+            <span className={"af-cuenta-monto " + (utilidadAnio >= 0 ? "positivo" : "negativo")}>
+              {money(utilidadAnio)}
+            </span>
+          </div>
+          <div className="af-cuenta-fila">
+            <span className="af-cuenta-concepto">Gastos familiares</span>
+            <span className="af-cuenta-monto negativo">− {money(totalFamiliaAnio)}</span>
+          </div>
+          <div className="af-cuenta-fila af-cuenta-total">
+            <span className="af-cuenta-concepto">Sobró en la bolsa</span>
+            <span className={"af-cuenta-monto " + (sobranteAnio >= 0 ? "positivo" : "negativo")}>
+              {money(sobranteAnio)}
+            </span>
+          </div>
+          {totalFamiliaAnio === 0 && (
+            <div className="af-cuenta-nota">
+              Todavía no hay gastos marcados como familiares. Al capturar un gasto puedes
+              decir si es del negocio o de la casa.
+            </div>
+          )}
+        </div>
+
         <div className="af-kpi-grid mb-5">
-          <div className="af-kpi-card">
-            <div className="af-kpi-label">Ingresos</div>
-            <div className="af-kpi-value af-kpi-up">{money(totalAnio)}</div>
-          </div>
-          <div className="af-kpi-card">
-            <div className="af-kpi-label">Gastos</div>
-            <div className="af-kpi-value af-kpi-down">{money(totalGastosAnio)}</div>
-          </div>
-          <div className="af-kpi-card">
-            <div className="af-kpi-label">Utilidad neta</div>
-            <div className={"af-kpi-value" + (utilidadAnio >= 0 ? " af-kpi-up" : " af-kpi-down")}>{money(utilidadAnio)}</div>
-          </div>
           <div className="af-kpi-card">
             <div className="af-kpi-label">Clientes nuevos</div>
             <div className="af-kpi-value">{clientesNuevosAnio}</div>
@@ -3888,9 +4051,44 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         <div className="af-section-title">Agregar gasto</div>
         <div className="af-card p-4 mb-5">
+          {/* Lo primero es de qué bolsa sale: es lo que decide si este gasto
+              cuenta contra el negocio o contra la casa. */}
+          <div className="af-field">
+            <label>¿De dónde sale?</label>
+            <div className="af-ambito-switch">
+              {AMBITOS.map((a) => (
+                <button
+                  key={a.id}
+                  className={"af-ambito-btn" + ((nuevoGasto.ambito || "negocio") === a.id ? " active" : "")}
+                  onClick={() => setNuevoGasto({ ...nuevoGasto, ambito: a.id })}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="af-field">
             <label>Fecha</label>
             <input type="date" className="af-input" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
+          </div>
+          <div className="af-field">
+            <label>¿En qué tienda?</label>
+            {/* Separar la tienda de la descripción deja buscar "todo lo de
+                Chedraui" sin depender de cómo se haya escrito el detalle. */}
+            <CampoConSugerencias
+              value={nuevoGasto.tienda || ""}
+              placeholder="Ej. Chedraui, Costco, mercado..."
+              sugerencias={tiendasUsadas}
+              onChange={(tienda) => setNuevoGasto({ ...nuevoGasto, tienda })}
+              onBlur={() => {
+                const escrito = normalizarNombreGasto(nuevoGasto.tienda || "");
+                if (!escrito) return;
+                const igual = tiendasUsadas.find((n) => normalizarNombreGasto(n) === escrito);
+                if (igual && igual !== nuevoGasto.tienda) {
+                  setNuevoGasto((prev) => ({ ...prev, tienda: igual }));
+                }
+              }}
+            />
           </div>
           <div className="af-field">
             <label>Categoría</label>
@@ -3931,10 +4129,33 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         <div className="af-section-title">Gastos de {anio}</div>
 
+        {/* Primero se elige de qué bolsa se está hablando; lo demás filtra
+            dentro de eso. Así no se revuelven la despensa y los camarones. */}
+        <div className="af-ambito-switch mb-3">
+          <button
+            className={"af-ambito-btn" + (filtroAmbito === "negocio" ? " active" : "")}
+            onClick={() => { setFiltroAmbito("negocio"); setFiltroCategoria("todos"); }}
+          >
+            Del negocio <span className="af-pill-total">{money(totalGastosAnio)}</span>
+          </button>
+          <button
+            className={"af-ambito-btn" + (filtroAmbito === "familia" ? " active" : "")}
+            onClick={() => { setFiltroAmbito("familia"); setFiltroCategoria("todos"); }}
+          >
+            De la casa <span className="af-pill-total">{money(totalFamiliaAnio)}</span>
+          </button>
+          <button
+            className={"af-ambito-btn" + (filtroAmbito === "todos" ? " active" : "")}
+            onClick={() => { setFiltroAmbito("todos"); setFiltroCategoria("todos"); }}
+          >
+            Todo
+          </button>
+        </div>
+
         {/* Cada categoría trae su total, para no tener que sacar la cuenta. */}
         <div className="af-mes-pills mb-3">
           <button className={"af-mes-pill" + (filtroCategoria === "todos" ? " active" : "")} onClick={() => setFiltroCategoria("todos")}>
-            Todos <span className="af-pill-total">{money(totalGastosAnio)}</span>
+            Todos <span className="af-pill-total">{money(totalDelAmbito)}</span>
           </button>
           {CATEGORIAS_GASTO.map((c) => (
             <button key={c} className={"af-mes-pill" + (filtroCategoria === c ? " active" : "")} onClick={() => setFiltroCategoria(c)}>
@@ -4062,8 +4283,19 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   {!plegado && grupo.lista.map((g) => (
                     <div key={g.id} className="af-card p-3 mb-2 af-gasto-row">
                       <div className="flex-1 min-w-0">
-                        <div className="af-cliente-nombre">{g.categoria}{g.descripcion ? ` · ${g.descripcion}` : ""}</div>
-                        <div className="af-ink-soft text-sm">{fmtDateHuman(g.fecha)}</div>
+                        {/* Arriba lo que identifica el gasto de un vistazo: la
+                            tienda si la hay, si no de qué fue. */}
+                        <div className="af-cliente-nombre">
+                          {g.tienda || g.descripcion || g.categoria}
+                        </div>
+                        <div className="af-gasto-meta">
+                          <span className="af-chip af-chip-neutral">{g.categoria}</span>
+                          {filtroAmbito === "todos" && !esDelNegocio(g) && (
+                            <span className="af-chip af-chip-familia">Casa</span>
+                          )}
+                          {g.tienda && g.descripcion && <span className="af-ink-soft">{g.descripcion}</span>}
+                          <span className="af-ink-soft">{fmtDateHuman(g.fecha)}</span>
+                        </div>
                       </div>
                       <div className="af-gasto-monto">{money(g.monto)}</div>
                       {esAdmin && (
@@ -4113,8 +4345,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
               <div className="af-alerta-titulo mb-3">Editar gasto</div>
               <div className="af-field">
+                <label>¿De dónde sale?</label>
+                <div className="af-ambito-switch">
+                  {AMBITOS.map((a) => (
+                    <button
+                      key={a.id}
+                      className={"af-ambito-btn" + (ambitoDe(gastoEditando) === a.id ? " active" : "")}
+                      onClick={() => setGastoEditando({ ...gastoEditando, ambito: a.id })}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="af-field">
                 <label>Fecha</label>
                 <input type="date" className="af-input" value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
+              </div>
+              <div className="af-field">
+                <label>¿En qué tienda?</label>
+                <input className="af-input" placeholder="Ej. Chedraui, Costco..." value={gastoEditando.tienda || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, tienda: e.target.value })} />
               </div>
               <div className="af-field">
                 <label>Categoría</label>
@@ -8054,6 +8304,43 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-editar-modal { background: var(--surface); border-radius: 20px; width: 360px; max-width: 92vw; max-height: 88vh; overflow-y: auto; padding: 22px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); }
 
 .af-gasto-row { display: flex; align-items: center; gap: 10px; }
+.af-gasto-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; font-size: 12.5px; }
+.af-chip-familia { background: color-mix(in srgb, #8b5cf6 16%, transparent); color: #6d28d9; font-weight: 700; }
+
+/* De qué bolsa sale el gasto: negocio o casa. */
+.af-ambito-switch { display: flex; gap: 6px; flex-wrap: wrap; }
+.af-ambito-btn { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af-ambito-btn:hover { border-color: var(--wine); }
+.af-ambito-btn.active { background: var(--wine); border-color: var(--wine); color: #fff; }
+.af-ambito-btn.active .af-pill-total { color: #fff; opacity: 0.9; }
+
+/* La cuenta de "cuánto entró, cuánto salió, cuánto quedó", en renglones que
+   se leen de corrido en vez de cuadritos sueltos. */
+.af-cuenta-titulo { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin: 18px 0 8px; }
+.af-cuenta { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 4px 16px 12px; margin-bottom: 8px; }
+.af-cuenta-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.af-cuenta-fila:last-of-type { border-bottom: none; }
+.af-cuenta-concepto { color: var(--ink-soft); font-size: 14px; }
+.af-cuenta-monto { font-weight: 700; font-size: 15.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.af-cuenta-monto.positivo { color: var(--ink); }
+.af-cuenta-monto.negativo { color: var(--gasto, #c2410c); }
+.af-cuenta-total { border-top: 2px solid var(--line); border-bottom: none; margin-top: 2px; padding-top: 13px; }
+.af-cuenta-total .af-cuenta-concepto { color: var(--ink); font-weight: 700; font-size: 15px; }
+.af-cuenta-total .af-cuenta-monto { font-size: 20px; }
+.af-cuenta-total .af-cuenta-monto.positivo { color: #15803d; }
+.af-cuenta-nota { font-size: 12.5px; color: var(--ink-soft); padding-top: 10px; }
+
+/* Ventas por platillo: el pastel y, debajo, los mismos números en limpio. */
+.af-tabla-platillos { margin-top: 14px; }
+.af-tabla-encabezado, .af-tabla-fila { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+.af-tabla-encabezado { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.af-tabla-encabezado span:not(:first-child), .af-tabla-num { text-align: right; }
+.af-tabla-fila { padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font-size: 13.5px; }
+.af-tabla-fila:last-child { border-bottom: none; }
+.af-tabla-nombre { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-tabla-num { font-variant-numeric: tabular-nums; color: var(--ink-soft); white-space: nowrap; }
+.af-tabla-num.fuerte { color: var(--ink); font-weight: 700; }
+.af-punto-color { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .af-gasto-monto { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; white-space: nowrap; color: #E0524A; }
 .af-mes-nombre { font-weight: 700; font-size: 14px; }
 .af-mes-auto-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; color: var(--wine); }
