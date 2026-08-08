@@ -3007,7 +3007,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
   const [buscaGasto, setBuscaGasto] = useState("");
   const [mesGasto, setMesGasto] = useState("todos");
-  const [diaGasto, setDiaGasto] = useState("");
+  // Rango de fechas en vez de un solo día: "lo de la semana pasada" no se
+  // podía buscar con una fecha exacta.
+  const [desdeGasto, setDesdeGasto] = useState("");
+  const [hastaGasto, setHastaGasto] = useState("");
+  const [filtroTienda, setFiltroTienda] = useState("todas");
   const [sectorDona, setSectorDona] = useState(null);
   const [sectorPlatillo, setSectorPlatillo] = useState(null);
   const [vistaVentas, setVistaVentas] = useState("paellas");
@@ -3144,23 +3148,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     (g) => filtroAmbito === "todos" || ambitoDe(g) === filtroAmbito
   );
 
+  const hayRango = Boolean(desdeGasto || hastaGasto);
   const gastosFiltrados = gastosDelAmbito
     .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
-    // El día manda sobre el mes: si se eligió una fecha exacta, se muestra
-    // solo ese día. Va aparte del texto porque son dos búsquedas distintas.
-    .filter((g) => (diaGasto ? g.fecha === diaGasto : true))
-    .filter((g) => diaGasto || mesGasto === "todos" || Number(g.fecha.split("-")[1]) - 1 === Number(mesGasto))
+    .filter((g) => filtroTienda === "todas" || normalizarNombreGasto(g.tienda || "") === normalizarNombreGasto(filtroTienda))
+    // Un rango de fechas manda sobre el mes: si se pidieron dias concretos,
+    // eso es lo que se quiere ver. Buscar "lo de la semana pasada" con un solo
+    // dia no servia; con desde/hasta si.
+    .filter((g) => (desdeGasto ? g.fecha >= desdeGasto : true))
+    .filter((g) => (hastaGasto ? g.fecha <= hastaGasto : true))
+    .filter((g) => hayRango || mesGasto === "todos" || Number(g.fecha.split("-")[1]) - 1 === Number(mesGasto))
     .filter((g) => {
       const q = normalizarNombreGasto(buscaGasto);
       if (!q) return true;
-      // Solo por lo que uno recuerda del gasto: cómo se llama, de qué es, o
-      // cuánto costó. La fecha ya se filtra con el mes de arriba.
+      // Por lo que uno recuerda del gasto: de que fue, en que tienda, de que
+      // categoria, o cuanto costo.
       const montoTexto = String(parseFloat(g.monto) || 0);
       return (
         normalizarNombreGasto(g.descripcion).includes(q) ||
         normalizarNombreGasto(g.tienda || "").includes(q) ||
         normalizarNombreGasto(g.categoria).includes(q) ||
-        montoTexto.startsWith(q.replace(/\D/g, "") || " ")
+        montoTexto.startsWith(q.replace(/\D/g, "") || " ")
       );
     })
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
@@ -3190,24 +3198,46 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     .sort((a, b) => (a.quedan ?? 999) - (b.quedan ?? 999));
   const totalPorFacturar = sumar(porFacturar);
 
+  // Cuánto se lleva gastado en cada tienda, para verlo en el filtro sin
+  // tener que elegirla primero.
+  const totalPorTienda = {};
+  gastosDelAmbito.forEach((g) => {
+    const clave = normalizarNombreGasto(g.tienda || "");
+    if (!clave) return;
+    totalPorTienda[clave] = (totalPorTienda[clave] || 0) + (parseFloat(g.monto) || 0);
+  });
+
   const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
-  // Si hay algún filtro puesto, "no hay nada" significa "no encontré", no
-  // "todavía no capturas gastos".
-  const hayFiltro = Boolean(buscaGasto.trim() || diaGasto || mesGasto !== "todos" || filtroCategoria !== "todos");
-
-  // Cuántos filtros están puestos, para el número del botón. El texto no
-  // cuenta: se ve en su propio campo, ahí no hace falta recordarlo.
+  // Cuántos filtros están puestos, para el número del botón.
   const cuantosFiltros =
     (filtroAmbito !== "todos" ? 1 : 0) +
     (filtroCategoria !== "todos" ? 1 : 0) +
-    (mesGasto !== "todos" && !diaGasto ? 1 : 0) +
-    (diaGasto ? 1 : 0);
+    (filtroTienda !== "todas" ? 1 : 0) +
+    (mesGasto !== "todos" && !hayRango ? 1 : 0) +
+    (hayRango ? 1 : 0) +
+    (buscaGasto.trim() ? 1 : 0);
+  // Si hay algún filtro puesto, "no hay nada" significa "no encontré", no
+  // "todavía no capturas gastos".
+  const hayFiltro = cuantosFiltros > 0;
   const limpiarFiltros = () => {
     setFiltroAmbito("todos");
     setFiltroCategoria("todos");
+    setFiltroTienda("todas");
     setMesGasto("todos");
-    setDiaGasto("");
+    setDesdeGasto("");
+    setHastaGasto("");
+    setBuscaGasto("");
+  };
+  // Atajos de fechas, que es como uno piensa: "esta semana", "este mes".
+  const rangoRapido = (dias) => {
+    const hoy = new Date();
+    const desde = new Date();
+    desde.setDate(desde.getDate() - dias);
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    setMesGasto("todos");
+    setDesdeGasto(fmt(desde));
+    setHastaGasto(fmt(hoy));
   };
 
   // La lista se parte por mes: de corrido se hace larguísima y no se encuentra
@@ -4794,35 +4824,39 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             apiladas (bolsa, categorías, meses, texto y fecha) antes de ver un
             solo gasto; ahora se entra viendo la lista y los filtros se abren
             solo si hacen falta. */}
+        {/* Un solo botón para todo. Antes había una barra de buscar aparte del
+            filtro, y no quedaba claro qué hacía cada cosa: ahora la búsqueda
+            por texto es un filtro más, dentro del mismo panel. */}
         <div className="af-barra-filtros mb-3">
-          <div className="af-buscador-gastos flex-1">
-            <Search size={16} />
-            <input
-              className="af-input"
-              placeholder="Buscar gasto, tienda o monto…"
-              value={buscaGasto}
-              onChange={(e) => setBuscaGasto(e.target.value)}
-            />
-            {buscaGasto && (
-              <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscaGasto("")}><X size={16} /></button>
-            )}
-          </div>
           <button
-            className={"af-btn-accion" + (cuantosFiltros > 0 ? " con-filtros" : "")}
+            className={"af-btn-accion af-btn-filtrar" + (cuantosFiltros > 0 ? " con-filtros" : "")}
             onClick={() => setAbrirFiltros((v) => !v)}
           >
-            <Filter size={15} /> Filtrar
+            <Filter size={15} /> {abrirFiltros ? "Cerrar filtros" : "Buscar y filtrar"}
             {cuantosFiltros > 0 && <span className="af-filtros-cuenta">{cuantosFiltros}</span>}
           </button>
+          <span className="af-filtros-resultado">
+            {gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · {money(totalFiltrado)}
+          </span>
         </div>
 
         {/* Lo que está filtrando ahora mismo, siempre a la vista aunque el
             panel esté cerrado: si no, uno no entiende por qué faltan gastos. */}
         {cuantosFiltros > 0 && (
           <div className="af-filtros-activos mb-3">
+            {buscaGasto.trim() && (
+              <button className="af-chip-filtro" onClick={() => setBuscaGasto("")}>
+                “{buscaGasto.trim()}” <X size={12} />
+              </button>
+            )}
             {filtroAmbito !== "todos" && (
               <button className="af-chip-filtro" onClick={() => setFiltroAmbito("todos")}>
                 {filtroAmbito === "negocio" ? "Del negocio" : "De la casa"} <X size={12} />
+              </button>
+            )}
+            {filtroTienda !== "todas" && (
+              <button className="af-chip-filtro" onClick={() => setFiltroTienda("todas")}>
+                {filtroTienda} <X size={12} />
               </button>
             )}
             {filtroCategoria !== "todos" && (
@@ -4830,14 +4864,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 {filtroCategoria} <X size={12} />
               </button>
             )}
-            {mesGasto !== "todos" && !diaGasto && (
+            {mesGasto !== "todos" && !hayRango && (
               <button className="af-chip-filtro" onClick={() => setMesGasto("todos")}>
                 {MESES[mesGasto]} <X size={12} />
               </button>
             )}
-            {diaGasto && (
-              <button className="af-chip-filtro" onClick={() => setDiaGasto("")}>
-                {fmtDateHuman(diaGasto)} <X size={12} />
+            {hayRango && (
+              <button className="af-chip-filtro" onClick={() => { setDesdeGasto(""); setHastaGasto(""); }}>
+                {desdeGasto ? fmtDateHuman(desdeGasto) : "Desde el principio"}
+                {" — "}
+                {hastaGasto ? fmtDateHuman(hastaGasto) : "hoy"} <X size={12} />
               </button>
             )}
             <button className="af-btn-ghost" onClick={limpiarFiltros}>Quitar todos</button>
@@ -4846,8 +4882,22 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {abrirFiltros && (
           <div className="af-card p-4 mb-3">
+            <div className="af-mini-label">Buscar por nombre, tienda o monto</div>
+            <div className="af-buscador-gastos mb-4">
+              <Search size={16} />
+              <input
+                className="af-input"
+                placeholder="Ej. camarón, Costco, 900…"
+                value={buscaGasto}
+                onChange={(e) => setBuscaGasto(e.target.value)}
+              />
+              {buscaGasto && (
+                <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscaGasto("")}><X size={16} /></button>
+              )}
+            </div>
+
             <div className="af-mini-label">¿De qué bolsa?</div>
-            <div className="af-ambito-switch mb-3">
+            <div className="af-ambito-switch mb-4">
               <button
                 className={"af-ambito-btn" + (filtroAmbito === "negocio" ? " active" : "")}
                 onClick={() => { setFiltroAmbito("negocio"); setFiltroCategoria("todos"); }}
@@ -4868,10 +4918,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </button>
             </div>
 
+            {/* La tienda faltaba y es de lo más útil: "todo lo de Costco". */}
+            {tiendasUsadas.length > 0 && (
+              <>
+                <div className="af-mini-label">¿En qué tienda?</div>
+                <div className="af-mes-pills mb-4">
+                  <button className={"af-mes-pill" + (filtroTienda === "todas" ? " active" : "")} onClick={() => setFiltroTienda("todas")}>
+                    Todas
+                  </button>
+                  {tiendasUsadas.map((t) => (
+                    <button key={t} className={"af-mes-pill" + (filtroTienda === t ? " active" : "")} onClick={() => setFiltroTienda(t)}>
+                      {t} <span className="af-pill-total">{money(totalPorTienda[normalizarNombreGasto(t)] || 0)}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             <div className="af-mini-label">¿De qué fue?</div>
-            <div className="af-mes-pills mb-3">
+            <div className="af-mes-pills mb-4">
               <button className={"af-mes-pill" + (filtroCategoria === "todos" ? " active" : "")} onClick={() => setFiltroCategoria("todos")}>
-                Todos <span className="af-pill-total">{money(totalDelAmbito)}</span>
+                Todas <span className="af-pill-total">{money(totalDelAmbito)}</span>
               </button>
               {CATEGORIAS_GASTO.map((c) => (
                 <button key={c} className={"af-mes-pill" + (filtroCategoria === c ? " active" : "")} onClick={() => setFiltroCategoria(c)}>
@@ -4880,30 +4947,49 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               ))}
             </div>
 
-            {mesesConGastos.length > 1 && (
-              <>
-                <div className="af-mini-label">¿De qué mes?</div>
-                <div className="af-mes-pills mb-3">
-                  <button className={"af-mes-pill" + (mesGasto === "todos" ? " active" : "")} onClick={() => setMesGasto("todos")}>
-                    Todo el año
-                  </button>
-                  {mesesConGastos.map((m) => (
-                    <button key={m} className={"af-mes-pill" + (String(mesGasto) === String(m) ? " active" : "")} onClick={() => setMesGasto(m)}>
-                      {MESES[m].slice(0, 3)}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className="af-mini-label">Un día exacto</div>
-            <div className="af-buscador-gastos">
-              <CalendarDays size={16} />
-              <input type="date" className="af-input" value={diaGasto} onChange={(e) => setDiaGasto(e.target.value)} />
-              {diaGasto && (
-                <button className="af-icon-btn" title="Ver todos los días" onClick={() => setDiaGasto("")}><X size={16} /></button>
-              )}
+            <div className="af-mini-label">¿De cuándo?</div>
+            {/* Atajos primero, porque es como uno lo piensa. */}
+            <div className="af-mes-pills mb-2">
+              <button className="af-mes-pill" onClick={() => rangoRapido(7)}>Última semana</button>
+              <button className="af-mes-pill" onClick={() => rangoRapido(30)}>Último mes</button>
+              <button className="af-mes-pill" onClick={() => rangoRapido(90)}>Últimos 3 meses</button>
             </div>
+            {mesesConGastos.length > 1 && (
+              <div className="af-mes-pills mb-2">
+                <button
+                  className={"af-mes-pill" + (mesGasto === "todos" && !hayRango ? " active" : "")}
+                  onClick={() => { setMesGasto("todos"); setDesdeGasto(""); setHastaGasto(""); }}
+                >
+                  Todo el año
+                </button>
+                {mesesConGastos.map((m) => (
+                  <button
+                    key={m}
+                    className={"af-mes-pill" + (String(mesGasto) === String(m) && !hayRango ? " active" : "")}
+                    onClick={() => { setMesGasto(m); setDesdeGasto(""); setHastaGasto(""); }}
+                  >
+                    {MESES[m].slice(0, 3)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="af-rango-fechas">
+              <label className="af-rango-campo">
+                <span>Desde</span>
+                <input type="date" className="af-input" value={desdeGasto} onChange={(e) => setDesdeGasto(e.target.value)} />
+              </label>
+              <label className="af-rango-campo">
+                <span>Hasta</span>
+                <input type="date" className="af-input" value={hastaGasto} onChange={(e) => setHastaGasto(e.target.value)} />
+              </label>
+            </div>
+
+            <button className="af-btn-primary w-full mt-4" onClick={() => setAbrirFiltros(false)}>
+              Ver {gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · {money(totalFiltrado)}
+            </button>
+            {cuantosFiltros > 0 && (
+              <button className="af-btn-secondary w-full mt-2" onClick={limpiarFiltros}>Quitar todos los filtros</button>
+            )}
           </div>
         )}
 
@@ -9491,7 +9577,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-btn-accion { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--wine); font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.15s ease; }
 
 /* Buscar + Filtrar en una sola fila, y lo que está filtrando a la vista. */
-.af-barra-filtros { display: flex; align-items: center; gap: 8px; }
+.af-barra-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.af-btn-filtrar { flex-shrink: 0; }
+.af-filtros-resultado { font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.af-rango-fechas { display: flex; gap: 10px; flex-wrap: wrap; }
+.af-rango-campo { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 4px; }
+.af-rango-campo > span { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
 .af-btn-accion.con-filtros { border-color: var(--wine); background: color-mix(in srgb, var(--wine) 10%, transparent); }
 .af-filtros-cuenta { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--wine); color: #fff; font-size: 11px; font-weight: 700; }
 .af-filtros-activos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }

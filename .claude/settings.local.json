@@ -352,7 +352,14 @@
       "Bash(/usr/bin/grep -n \"^button, \\\\|^button {\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"af-app {\" -B 3 -A 2 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"ubicacion\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -i \"abrir\\\\|maps\\\\|href\\\\|window.open\")"
+      "Bash(/usr/bin/grep -i \"abrir\\\\|maps\\\\|href\\\\|window.open\")",
+      "Bash(/usr/bin/grep -n \"const gastosFiltrados = gastosDelAmbito\" -A 24 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"filtroTienda === \" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const \\\\[diaGasto\\\\|const \\\\[mesGasto\\\\|const \\\\[buscaGasto\\\\|const \\\\[filtroCategoria\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const cuantosFiltros\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"diaGasto\" src/AzafranApp.jsx)",
+      "Bash(awk 'NR>=4930 && NR<=4945' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const hayFiltro\\\\|const cuantosFiltros\" src/AzafranApp.jsx)"
     ]
   }
 }
