@@ -281,7 +281,15 @@
       "Bash(perl -i -pe 's/^    setTiendaOtra\\\\\\(false\\\\\\);$/    setTiendaOtra\\(false\\);\\\\n    setAbrirGasto\\(false\\);/' src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"abrirGasto\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"setTiendaOtra\\(false\\);\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"setAbrirGasto\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"setAbrirGasto\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'af-section-title\">Gastos de {anio}' -A 4 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-buscador-gastos\\\\|gastosPorMes.map\\\\|af-mes-grupo\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"El mes se elige aparte del texto\" -A 40 src/AzafranApp.jsx)",
+      "Bash(perl -i -ne 'print unless $. >= 4724 && $. <= 4765' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  const \\\\[abrirGasto, setAbrirGasto\\\\] = useState\\\\\\(false\\\\\\);$/  const [abrirGasto, setAbrirGasto] = useState\\(false\\);\\\\n  const [abrirFiltros, setAbrirFiltros] = useState\\(false\\);/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Filter\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell,$/  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell, Filter,/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Bell, Filter\" src/AzafranApp.jsx)"
     ]
   }
 }
