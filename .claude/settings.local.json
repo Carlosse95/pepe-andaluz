@@ -213,7 +213,18 @@
       "Bash(/usr/bin/grep -n \"gastoEditando\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"datosPaella\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"COLOR_WINE\\\\s*=\\\\|COLOR_GASTO\\\\s*=\\\\|COLORES_DONA\\\\|COLOR_INK_SOFT\\\\s*=\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"const \\\\[sectorDona\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"const \\\\[sectorDona\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"navItems\" -A 14 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"jsPDF\\\\|descargarPDF\\\\|generarPDF\\\\|Descargar PDF\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Enviar resumen por WhatsApp\" -B 6 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const saldoForm\\\\|const pagadoForm\\\\|sumaAbonos\\(form\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"onClick={descargarPDF}\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"botón +\\\\|boton +\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/: \"Toca el botón \\\\+ para registrar la primera llamada del día\\\\.\"/: \"Usa \\\\x27Nuevo pedido\\\\x27 para registrar la primera llamada del día.\"/; s/subtitle=\"Toca el botón \\\\+ para armar una cotización y mandarla en PDF\\\\.\"/subtitle=\"Usa \\\\x27Nuevo presupuesto\\\\x27 en Hoy para armar una cotización y mandarla en PDF.\"/' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"primera llamada del día\\\\|armar una cotización\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function PresupuestosView\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"<PresupuestosView\" -A 6 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function PresupuestosView\" -A 40 src/AzafranApp.jsx)"
     ]
   }
 }

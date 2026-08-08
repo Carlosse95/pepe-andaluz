@@ -1677,7 +1677,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               ? 'Prueba con otro filtro o toca "Todos".'
               : entregadosHoy.length > 0
               ? "Buen trabajo. Los entregados están aquí abajo."
-              : "Toca el botón + para registrar la primera llamada del día."
+              : "Usa 'Nuevo pedido' para registrar la primera llamada del día."
           }
         />
       ) : (
@@ -2055,23 +2055,36 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
   );
 }
 
-function PresupuestosView({ presupuestos, onAbrir, onAceptar }) {
+function PresupuestosView({ presupuestos, onAbrir, onAceptar, onNuevo }) {
+  const botonNuevo = onNuevo && (
+    <div className="af-quick-row mb-4">
+      <button className="af-quick-btn" onClick={onNuevo}>
+        <FileText size={16} /> Nuevo presupuesto
+      </button>
+    </div>
+  );
   if (presupuestos.length === 0) {
     return (
-      <EmptyState
-        icon={<FileText size={28} />}
-        title="Aún no hay presupuestos"
-        subtitle="Toca el botón + para armar una cotización y mandarla en PDF."
-      />
+      <div>
+        {botonNuevo}
+        <EmptyState
+          icon={<FileText size={28} />}
+          title="Aún no hay presupuestos"
+          subtitle="Arma una cotización y mándala por WhatsApp o en PDF."
+        />
+      </div>
     );
   }
   const ordenados = presupuestos.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return (
+    <>
+    {botonNuevo}
     <div className="af-card-grid">
       {ordenados.map((p) => (
         <PresupuestoCard key={p.id} presupuesto={p} onClick={() => onAbrir(p)} onAceptar={onAceptar} />
       ))}
     </div>
+    </>
   );
 }
 
@@ -2470,6 +2483,16 @@ const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Ser
 // Cada gasto dice de dónde sale, y las cuentas del negocio solo miran los
 // suyos. Se guarda en el gasto (no se deduce de la categoría) para poder
 // mandar un gasto suelto al otro lado sin inventar categorías nuevas.
+// Pestañas que se pueden esconder desde Ajustes cuando no se usan. Hoy y
+// Ajustes no están: sin ellas no habría por dónde volver a encenderlas.
+const NAV_ESCONDIBLES = [
+  { key: "agenda", label: "Agenda" },
+  { key: "mensajes", label: "Mensajes" },
+  { key: "presupuestos", label: "Presupuestos" },
+  { key: "clientes", label: "Clientes" },
+  { key: "reportes", label: "Reportes" },
+];
+
 const AMBITOS = [
   { id: "negocio", label: "Del negocio" },
   { id: "familia", label: "Familiar" },
@@ -4626,6 +4649,45 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </button>
           </div>
 
+          <div className="af-section-title">Qué se ve en el menú</div>
+          <div className="af-card p-4 mb-4">
+            <p className="af-ink-soft text-sm mb-3">
+              Apaga lo que no uses y desaparece de la barra de arriba. No se borra nada:
+              lo que hubiera ahí sigue guardado y vuelve a aparecer al encenderlo.
+            </p>
+            {NAV_ESCONDIBLES.map((n) => {
+              const ocultas = draft.navOcultas || [];
+              const visible = !ocultas.includes(n.key);
+              return (
+                <button
+                  key={n.key}
+                  className={"af-toggle-fila" + (visible ? " encendido" : "")}
+                  // Se parte de lo último guardado, no de lo que se leyó al
+                  // dibujar: apagando dos seguidas, la segunda pisaba a la
+                  // primera y solo se quedaba una apagada.
+                  onClick={() =>
+                    setDraft((prev) => {
+                      const actuales = prev.navOcultas || [];
+                      return {
+                        ...prev,
+                        navOcultas: actuales.includes(n.key)
+                          ? actuales.filter((k) => k !== n.key)
+                          : [...actuales, n.key],
+                      };
+                    })
+                  }
+                >
+                  <span className="af-toggle-nombre">{n.label}</span>
+                  <span className="af-toggle-estado">{visible ? "Se ve" : "Escondido"}</span>
+                  <span className="af-toggle-switch" />
+                </button>
+              );
+            })}
+            <button className="af-btn-primary w-full mt-3" onClick={guardar}>
+              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar el menú"}
+            </button>
+          </div>
+
           <div className="af-section-title">Dónde recoger</div>
           <div className="af-card p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
@@ -5752,7 +5814,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     }));
   };
 
-  const descargarPDF = () => {
+  // Un mismo documento sirve para las dos cosas: el presupuesto que se manda
+  // antes, y el recibo que piden después de pagar. Cambian el título, lo que
+  // se dice del dinero y el pie; el cuerpo (quién, qué y cuánto) es el mismo.
+  const descargarPDF = (tipoDoc = "presupuesto") => {
+    const esRecibo = tipoDoc === "recibo";
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 18;
@@ -5771,11 +5837,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.setTextColor(43, 32, 21);
-    doc.text("Presupuesto", margin, y);
+    doc.text(esRecibo ? "Recibo de pago" : "Presupuesto", margin, y);
     if (form.folio) {
       doc.setFontSize(12);
       doc.setTextColor(138, 120, 96);
-      doc.text(fmtFolio(form.folio, "Folio P-"), pageWidth - margin, y, { align: "right" });
+      doc.text(fmtFolio(form.folio, esRecibo ? "Pedido " : "Folio P-"), pageWidth - margin, y, { align: "right" });
     }
 
     y += 7;
@@ -5870,6 +5936,40 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     doc.text("Total", margin, y);
     doc.text(money(total), pageWidth - margin - 3, y, { align: "right" });
 
+    // En el recibo se desglosa cómo pagó y se deja constancia de que ya no
+    // debe nada: es justo lo que el cliente lleva a comprobar.
+    if (esRecibo) {
+      y += 10;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(43, 32, 21);
+      doc.text("CÓMO SE PAGÓ", margin, y);
+      y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      (form.abonos || []).forEach((ab) => {
+        doc.setTextColor(138, 120, 96);
+        doc.text(
+          `${METODO_PAGO_LABEL[ab.metodo] || "Pago"}${ab.fecha ? ` · ${fmtDateHuman(ab.fecha)}` : ""}`,
+          margin + 3,
+          y
+        );
+        doc.setTextColor(43, 32, 21);
+        doc.text(money(ab.monto), pageWidth - margin - 3, y, { align: "right" });
+        y += 6.5;
+      });
+
+      y += 4;
+      doc.setFillColor(232, 245, 233);
+      doc.rect(margin, y - 6, pageWidth - margin * 2, 13, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(21, 128, 61);
+      doc.text("PAGADO EN SU TOTALIDAD", margin + 3, y + 2.5);
+      doc.text(money(sumaAbonos(form.abonos)), pageWidth - margin - 3, y + 2.5, { align: "right" });
+      y += 11;
+    }
+
     if (form.terminos) {
       y += 14;
       doc.setFont("helvetica", "bold");
@@ -5884,7 +5984,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       y += lineasNotas.length * 4.5;
     }
 
-    if (config.pago && (config.pago.clabe || "").trim()) {
+    // En el recibo no van los datos para depositar: ya está pagado.
+    if (!esRecibo && config.pago && (config.pago.clabe || "").trim()) {
       y += 9;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
@@ -5906,10 +6007,16 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     y = Math.max(y + 18, 265);
     doc.setFontSize(8.5);
     doc.setTextColor(138, 120, 96);
-    doc.text(`Presupuesto generado el ${fmtDateHuman(todayISO())}. Sujeto a disponibilidad del día.`, margin, y);
+    doc.text(
+      esRecibo
+        ? `Recibo emitido el ${fmtDateHuman(todayISO())}. Gracias por su preferencia.`
+        : `Presupuesto generado el ${fmtDateHuman(todayISO())}. Sujeto a disponibilidad del día.`,
+      margin,
+      y
+    );
 
-    const nombreArchivo = `Presupuesto-${(form.clienteNombre || "cliente").replace(/[^a-zA-Z0-9]+/g, "_")}-${form.fecha}.pdf`;
-    doc.save(nombreArchivo);
+    const limpio = (form.clienteNombre || "cliente").replace(/[^a-zA-Z0-9]+/g, "_");
+    doc.save(`${esRecibo ? "Recibo" : "Presupuesto"}-${limpio}-${form.fecha}.pdf`);
   };
 
   const editando = !!form.pedidoId;
@@ -6305,7 +6412,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         <>
           {form.clienteId && form.items.length > 0 && (
             <div className="flex gap-2 mt-2">
-              <button className="af-btn-secondary flex-1" onClick={descargarPDF}>
+              <button className="af-btn-secondary flex-1" onClick={() => descargarPDF("presupuesto")}>
                 <Download size={16} className="inline mr-1" /> PDF
               </button>
               <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago, config.mensajes))}>
@@ -6349,6 +6456,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </>
       ) : (
         <>
+          {/* El recibo solo aparece cuando ya no debe nada: es lo que el
+              cliente pide "de comprobante" al terminar de pagar. */}
+          {editando && form.items.length > 0 && pagadoNum > 0 && pagadoNum >= total && (
+            <button className="af-btn-secondary w-full mt-2" onClick={() => descargarPDF("recibo")}>
+              <Download size={16} className="inline mr-1" /> Recibo de pagado (PDF)
+            </button>
+          )}
           {form.clienteId && form.items.length > 0 && (
             <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago, config.mensajes, config.local))}>
               <MessageCircle size={16} className="inline mr-1" /> Enviar resumen por WhatsApp
@@ -6915,6 +7029,12 @@ export default function App() {
   // En pantallas angostas (iPad de pie) la barra de arriba no alcanza para las
   // siete pestañas y se desliza. Sin esto, al entrar a una de las últimas la
   // pestaña marcada se queda fuera de vista y parece que no pasó nada.
+  // Si se esconde desde Ajustes la pestaña en la que uno está, la app se
+  // quedaría en una pantalla que ya no tiene botón para salir.
+  useEffect(() => {
+    if ((config?.navOcultas || []).includes(view)) setView("hoy");
+  }, [config?.navOcultas, view]);
+
   const navRef = useRef(null);
   const botonActivoRef = useRef(null);
   useEffect(() => {
@@ -7352,7 +7472,7 @@ export default function App() {
 
   const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", reportes: "Reportes", ajustes: "Ajustes" };
 
-  const navItems = [
+  const navTodos = [
     { key: "hoy", icon: <Home size={20} />, label: "Hoy" },
     { key: "agenda", icon: <CalendarDays size={20} />, label: "Agenda" },
     { key: "mensajes", icon: <MessageCircle size={20} />, label: "Mensajes", badge: pendientesWhatsApp },
@@ -7361,6 +7481,9 @@ export default function App() {
     { key: "reportes", icon: <TrendingUp size={20} />, label: "Reportes" },
     { key: "ajustes", icon: <Settings size={20} />, label: "Ajustes" },
   ];
+  // Las pestañas que no se usan se pueden esconder desde Ajustes. Hoy y
+  // Ajustes nunca se esconden: sin ellas no habría por dónde volver.
+  const navItems = navTodos.filter((n) => !(config?.navOcultas || []).includes(n.key));
 
   return (
     <div className="af-app">
@@ -7457,7 +7580,7 @@ export default function App() {
             />
           )}
           {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} />}
-          {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} />}
+          {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} onNuevo={() => goToNuevoPresupuesto()} />}
           {view === "ajustes" && (
             <AjustesView
               config={config}
@@ -8341,6 +8464,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-tabla-num { font-variant-numeric: tabular-nums; color: var(--ink-soft); white-space: nowrap; }
 .af-tabla-num.fuerte { color: var(--ink); font-weight: 700; }
 .af-punto-color { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* Encender/apagar pestañas del menú. */
+.af-toggle-fila { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 13px; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; text-align: left; transition: border-color 0.15s ease; }
+.af-toggle-fila:hover { border-color: var(--wine); }
+.af-toggle-nombre { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-toggle-estado { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.af-toggle-switch { flex-shrink: 0; width: 40px; height: 23px; border-radius: 999px; background: color-mix(in srgb, var(--ink-soft) 30%, transparent); position: relative; transition: background 0.18s ease; }
+.af-toggle-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: #fff; transition: transform 0.18s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.af-toggle-fila.encendido .af-toggle-switch { background: var(--wine); }
+.af-toggle-fila.encendido .af-toggle-switch::after { transform: translateX(17px); }
 .af-gasto-monto { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; white-space: nowrap; color: #E0524A; }
 .af-mes-nombre { font-weight: 700; font-size: 14px; }
 .af-mes-auto-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; color: var(--wine); }
