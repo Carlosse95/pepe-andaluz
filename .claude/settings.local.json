@@ -241,7 +241,23 @@
       "Bash(/usr/bin/grep -n \"^}\" src/AzafranApp.jsx)",
       "Bash(awk -F: '$1>2560 && $1<2620')",
       "Bash(perl -i -pe 's/function ClientesView\\\\\\(\\\\{ clientes, pedidos, config, onAddCliente,/function ClientesView\\({ clientes, pedidos, config, onAddCliente, onImportarClientes,/' src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"Upload\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"Upload\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -o 'assets/index-[A-Za-z0-9_-]*\\\\.js' dist/index.html)",
+      "Bash(curl -s --max-time 25 https://carlosse95.github.io/pepe-andaluz/)",
+      "Bash(/usr/bin/grep -o 'assets/index-[A-Za-z0-9_-]*\\\\.js')",
+      "mcp__773e028c-e5d4-4132-9911-77f96c4124ca__execute_sql",
+      "mcp__773e028c-e5d4-4132-9911-77f96c4124ca__apply_migration",
+      "Bash(/usr/bin/grep -n \"from \\\\\"./nube\" -A 6 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const normalizarNombreGasto\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const TIENDAS_FACTURABLES\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Camera\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const \\\\[nuevoGasto\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil,/  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera,/' src/AzafranApp.jsx)",
+      "Bash(perl -i -pe \"s/  const \\\\[nuevoGasto, setNuevoGasto\\\\] = useState\\\\\\(\\\\{ fecha: todayISO\\\\\\(\\\\\\), categoria: CATEGORIAS_GASTO\\\\[0\\\\], descripcion: \\\\\"\\\\\", monto: 0 \\\\}\\\\\\);/  const [nuevoGasto, setNuevoGasto] = useState\\({ fecha: todayISO\\(\\), categoria: CATEGORIAS_GASTO[0], descripcion: \\\\\"\\\\\", monto: 0 }\\);\\\\n  const [subiendoTicket, setSubiendoTicket] = useState\\(false\\);/\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Camera,\\\\|subiendoTicket, setSubiendoTicket\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"setNuevoGasto\\({ fecha: todayISO\\(\\), categoria: CATEGORIAS_GASTO\\\\[0\\\\], descripcion: \\\\\"\\\\\", monto: 0 }\\);\" src/AzafranApp.jsx)",
+      "Bash(perl -i -pe 's/^    setNuevoGasto\\\\\\(\\\\{ fecha: todayISO\\\\\\(\\\\\\), categoria: CATEGORIAS_GASTO\\\\[0\\\\], descripcion: \"\", monto: 0 \\\\}\\\\\\);/    setNuevoGasto\\({ fecha: todayISO\\(\\), categoria: CATEGORIAS_GASTO[0], descripcion: \"\", monto: 0, tienda: \"\", ticket: null, ambito: \"negocio\" }\\);/ if $.==3334' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const eliminarGasto\\\\|const guardarGastoNuevo\" src/AzafranApp.jsx)"
     ]
   }
 }

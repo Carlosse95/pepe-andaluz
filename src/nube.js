@@ -154,6 +154,40 @@ export const suscribirBandejaWhatsApp = (callback) => {
   return () => supabase.removeChannel(canal);
 };
 
+/* --------------------- Fotos de tickets (facturas) --------------------- */
+// Las fotos NO van en `almacen`: ahí cada clave guarda un JSON completo que se
+// reescribe entero en cada guardado, así que meter imágenes lo volvería
+// pesadísimo. Van en Storage, en un bucket privado, y en el gasto solo se
+// guarda la ruta.
+
+// Sube la foto y devuelve la ruta con la que después se recupera.
+export const subirTicket = async (archivo) => {
+  if (!nubeActiva) throw new Error("Sin conexión a la nube no se pueden guardar fotos.");
+  const ext = (archivo.name.split(".").pop() || "jpg").toLowerCase();
+  // El nombre lleva la fecha para poder localizarlo desde el panel de Supabase
+  // si algún día hay que buscarlo a mano.
+  const ruta = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("tickets").upload(ruta, archivo, {
+    contentType: archivo.type || "image/jpeg",
+    upsert: false,
+  });
+  if (error) throw error;
+  return ruta;
+};
+
+// El bucket es privado, así que para verla se pide una liga temporal.
+export const verTicket = async (ruta) => {
+  if (!nubeActiva || !ruta) return null;
+  const { data, error } = await supabase.storage.from("tickets").createSignedUrl(ruta, 60 * 60);
+  if (error) throw error;
+  return data.signedUrl;
+};
+
+export const borrarTicket = async (ruta) => {
+  if (!nubeActiva || !ruta) return;
+  await supabase.storage.from("tickets").remove([ruta]);
+};
+
 /* ----------------------------- Sesión ----------------------------- */
 
 export const obtenerSesion = async () => {

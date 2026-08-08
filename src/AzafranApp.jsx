@@ -5,7 +5,7 @@ import {
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet,
-  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil,
+  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import jsPDF from "jspdf";
@@ -16,6 +16,7 @@ import {
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
+  subirTicket, verTicket, borrarTicket,
 } from "./nube.js";
 
 /* ---------------------------------------------------------------------- */
@@ -2748,6 +2749,23 @@ const normalizarNombreGasto = (texto) =>
     .replace(/\s+/g, " ")
     .trim();
 
+// Tiendas de las que sí se pide factura. En las demás (el mercado, la tienda
+// de la esquina) no dan, así que no tiene caso perseguirlas.
+const TIENDAS_FACTURABLES = ["Chedraui", "Aki", "Costco", "Soriana", "Sam's"];
+// Se compara sin acentos ni mayúsculas y por pedazos, para que "sams",
+// "SAM'S CLUB" o "chedraui montejo" también cuenten: el nombre lo escribe
+// una persona con prisa y nunca sale igual dos veces.
+const esTiendaFacturable = (tienda) => {
+  const t = normalizarNombreGasto(tienda || "").replace(/[^a-z0-9 ]/g, "");
+  if (!t) return false;
+  return TIENDAS_FACTURABLES.some((f) => {
+    const n = normalizarNombreGasto(f).replace(/[^a-z0-9 ]/g, "");
+    return t.includes(n) || n.includes(t);
+  });
+};
+// Falta facturar cuando es de una de esas tiendas y todavía no se marca hecho.
+const faltaFacturar = (g) => esTiendaFacturable(g?.tienda) && !g?.facturado;
+
 // Cuántos cambios de letra hay entre dos palabras. Sirve para caer en la
 // cuenta de que "chedragui" y "chedraui" son el mismo lugar escrito de dos
 // formas (una sola letra de diferencia).
@@ -2892,6 +2910,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Lo ya generado en esta sesión, para no repetirlo mientras la nube confirma.
   const yaGeneradosEnEstaSesion = useRef(new Set());
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
+  const [subiendoTicket, setSubiendoTicket] = useState(false);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
 
@@ -3040,6 +3059,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     const cat = CATEGORIAS_GASTO.includes(g.categoria) ? g.categoria : "Otros";
     totalPorCategoria[cat] = (totalPorCategoria[cat] || 0) + (parseFloat(g.monto) || 0);
   });
+  // Compras que hay que facturar y todavía no se han facturado. Se miran
+  // todos los años, no solo el que se está viendo: una compra de diciembre
+  // sigue pendiente en enero y ahí es cuando corre prisa.
+  const porFacturar = gastos.filter(faltaFacturar).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const totalPorFacturar = sumar(porFacturar);
+
   const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
   // Si hay algún filtro puesto, "no hay nada" significa "no encontré", no
@@ -3312,7 +3337,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const guardarGastoNuevo = (g) => {
     onGuardarGastos([g, ...gastos]);
-    setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
+    setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0, tienda: "", ticket: null, ambito: "negocio" });
     setPosibleDuplicado(null);
   };
 
@@ -3326,6 +3351,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       categoria: nuevoGasto.categoria,
       descripcion: nuevoGasto.descripcion.trim(),
       monto: parseFloat(nuevoGasto.monto),
+      // Ruta de la foto en el almacén de la nube (no la foto en sí).
+      ticket: nuevoGasto.ticket || null,
+      facturado: false,
     };
     // Antes de guardar se avisa si ya hay uno igual o muy parecido: es fácil
     // apuntar dos veces el mismo gasto, sobre todo si lo capturan dos personas.
@@ -3337,6 +3365,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     guardarGastoNuevo(g);
   };
   const eliminarGasto = (id) => onGuardarGastos(gastos.filter((g) => g.id !== id));
+
+  // Ya se facturó: sale de la lista de pendientes. La foto se borra de la
+  // nube porque ya cumplió su única función y no tiene caso pagar por
+  // guardarla; el gasto se queda, que es lo que importa para las cuentas.
+  const marcarFacturado = (id) => {
+    const gasto = gastos.find((g) => g.id === id);
+    onGuardarGastos(gastos.map((g) => (g.id === id ? { ...g, facturado: true, ticket: null } : g)));
+    if (gasto && gasto.ticket) borrarTicket(gasto.ticket).catch(() => {});
+    showToast("Marcado como facturado");
+  };
+
+  // El almacén es privado, así que se pide una liga temporal para ver la foto.
+  const abrirTicket = async (ruta) => {
+    try {
+      const url = await verTicket(ruta);
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      else showToast("No encontré la foto", "error");
+    } catch (e) {
+      showToast("No se pudo abrir la foto: " + (e.message || ""), "error");
+    }
+  };
 
   // Editar un gasto ya registrado, para no tener que borrarlo y volverlo a
   // capturar cuando solo se equivocaron en un dato.
@@ -4370,9 +4419,90 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <label>Monto</label>
             <NumberField value={nuevoGasto.monto} min={0} className="af-input" onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })} />
           </div>
+
+          {/* La foto solo se ofrece en las tiendas donde sí dan factura: en el
+              mercado pedirla no lleva a nada y sería un paso de más. */}
+          {esTiendaFacturable(nuevoGasto.tienda) && (
+            <div className="af-field af-ticket-campo">
+              <label>Foto del ticket (para facturar)</label>
+              {nuevoGasto.ticket ? (
+                <div className="af-ticket-listo">
+                  <Receipt size={15} /> Ticket guardado
+                  <button className="af-btn-ghost" onClick={() => setNuevoGasto({ ...nuevoGasto, ticket: null })}>
+                    Quitar
+                  </button>
+                </div>
+              ) : (
+                <label className="af-btn-secondary w-full" style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
+                  {subiendoTicket ? "Subiendo…" : <><Camera size={15} className="inline mr-1" /> Tomar o elegir foto</>}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: "none" }}
+                    disabled={subiendoTicket}
+                    onChange={async (e) => {
+                      const archivo = e.target.files && e.target.files[0];
+                      e.target.value = "";
+                      if (!archivo) return;
+                      setSubiendoTicket(true);
+                      try {
+                        const ruta = await subirTicket(archivo);
+                        setNuevoGasto((prev) => ({ ...prev, ticket: ruta }));
+                      } catch (err) {
+                        showToast("No se pudo guardar la foto: " + (err.message || ""), "error");
+                      }
+                      setSubiendoTicket(false);
+                    }}
+                  />
+                </label>
+              )}
+              <p className="af-ink-soft text-xs mt-1">
+                Se guarda para que no se pierda el ticket antes de facturarlo. Puedes agregar el
+                gasto sin foto y subirla después.
+              </p>
+            </div>
+          )}
+
           <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
         </div>
         </>
+        )}
+
+        {/* Lo que falta facturar. Va antes de la lista de gastos porque es
+            trabajo pendiente con fecha límite, no historia. */}
+        {porFacturar.length > 0 && (
+          <>
+            <div className="af-section-title">
+              Por facturar <span className="af-pill-total">{money(totalPorFacturar)}</span>
+            </div>
+            <div className="af-card p-4 mb-5">
+              <p className="af-ink-soft text-sm mb-3">
+                Compras en {TIENDAS_FACTURABLES.join(", ")} que todavía no tienen factura.
+              </p>
+              {porFacturar.map((g) => (
+                <div key={g.id} className="af-factura-row">
+                  <div className="flex-1 min-w-0">
+                    <div className="af-confirmar-nombre">{g.tienda}</div>
+                    <div className="af-ink-soft text-sm">
+                      {money(g.monto)} · {fmtDateHuman(g.fecha)}
+                      {g.descripcion ? ` · ${g.descripcion}` : ""}
+                    </div>
+                  </div>
+                  {g.ticket ? (
+                    <button className="af-chip af-chip-neutral" onClick={() => abrirTicket(g.ticket)}>
+                      <Receipt size={12} /> Ver ticket
+                    </button>
+                  ) : (
+                    <span className="af-chip af-chip-sin-ticket">Sin foto</span>
+                  )}
+                  <button className="af-chip af-chip-wa-mini" onClick={() => marcarFacturado(g.id)}>
+                    <Check size={12} /> Ya facturé
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         <div className="af-section-title">Gastos de {anio}</div>
@@ -8324,6 +8454,13 @@ const AZAFRAN_CSS = `
 .af-import-check { flex-shrink: 0; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line); display: flex; align-items: center; justify-content: center; color: #fff; }
 .af-import-fila.elegido .af-import-check { background: var(--wine); border-color: var(--wine); }
 .af-import-nombre { font-weight: 600; color: var(--ink); }
+
+/* Compras que falta facturar. */
+.af-factura-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.af-factura-row:last-child { border-bottom: none; }
+.af-chip-sin-ticket { background: color-mix(in srgb, #f59e0b 16%, transparent); color: #b45309; font-weight: 700; }
+.af-ticket-campo { background: color-mix(in srgb, var(--wine) 5%, transparent); border-radius: 12px; padding: 12px; }
+.af-ticket-listo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #15803d; }
 
 .af-confirmar-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
 .af-confirmar-row:last-child { border-bottom: none; }
