@@ -339,7 +339,9 @@
       "Bash(/usr/bin/grep -c \"showToast={showToast}\" src/AzafranApp.jsx)",
       "Bash(perl -i -pe 's/^  const \\\\[abrirFiltros, setAbrirFiltros\\\\] = useState\\\\\\(false\\\\\\);$/  const [abrirFiltros, setAbrirFiltros] = useState\\(false\\);\\\\n  const [datosParaCopiar, setDatosParaCopiar] = useState\\(null\\);/' src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"datosParaCopiar\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -c \"SAFJ651201\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -c \"SAFJ651201\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"esTiendaFacturable\\(nuevoGasto.tienda\\) && \\(\" -B 6 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"¿De dónde sale?\" -B 4 src/AzafranApp.jsx)"
     ]
   }
 }
