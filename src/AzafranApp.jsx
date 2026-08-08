@@ -6308,199 +6308,285 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     const esRecibo = tipoDoc === "recibo";
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 18;
+    const anchoUtil = pageWidth - margin * 2;
 
-    doc.setFillColor(158, 52, 23);
-    doc.rect(0, 0, pageWidth, 32, "F");
-    const logoW = 48;
+    // Los mismos colores de la app, para que el papel y la pantalla se vean
+    // del mismo negocio. Antes el PDF seguía con la paleta vieja (café y
+    // naranja) y desentonaba con todo lo demás.
+    const AZUL = [47, 95, 224];
+    const TINTA = [22, 35, 63];
+    const SUAVE = [100, 117, 143];
+    const LINEA = [226, 232, 245];
+    const FONDO = [244, 247, 253];
+    const VERDE = [21, 128, 61];
+    const VERDE_FONDO = [232, 245, 233];
+
+    const tinta = (c) => doc.setTextColor(c[0], c[1], c[2]);
+    const relleno = (c) => doc.setFillColor(c[0], c[1], c[2]);
+
+    // El pie va siempre pegado abajo, en su sitio, y no donde acabe el
+    // contenido: así nunca se encima con lo último que se escribió.
+    const pie = () => {
+      doc.setDrawColor(LINEA[0], LINEA[1], LINEA[2]);
+      doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      tinta(SUAVE);
+      doc.text(
+        esRecibo
+          ? `Recibo emitido el ${fmtDateHuman(todayISO())} · Pepe Andaluz`
+          : `Presupuesto generado el ${fmtDateHuman(todayISO())} · Sujeto a disponibilidad del día`,
+        margin,
+        pageHeight - 14
+      );
+    };
+
+    // Antes, con muchos platillos el texto se salía de la hoja y se encimaba
+    // con el pie. Ahora, cuando ya no cabe, se abre página nueva.
+    let y = 0;
+    const cabe = (alto) => {
+      if (y + alto < pageHeight - 26) return;
+      pie();
+      doc.addPage();
+      y = margin + 6;
+    };
+
+    /* ---- Encabezado ---- */
+    relleno(AZUL);
+    doc.rect(0, 0, pageWidth, 34, "F");
+    const logoW = 46;
     const logoH = logoW * (497 / 945);
     try {
-      doc.addImage(`data:image/png;base64,${LOGO_MASK_B64}`, "PNG", margin, (32 - logoH) / 2, logoW, logoH);
+      doc.addImage(`data:image/png;base64,${LOGO_MASK_B64}`, "PNG", margin, (34 - logoH) / 2, logoW, logoH);
     } catch (e) {
       // si por lo que sea la imagen falla, el PDF se genera igual sin el logo
     }
-
-    let y = 44;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(43, 32, 21);
-    doc.text(esRecibo ? "Recibo de pago" : "Presupuesto", margin, y);
+    doc.setFontSize(13);
+    doc.setTextColor(255, 255, 255);
+    doc.text(esRecibo ? "RECIBO DE PAGO" : "PRESUPUESTO", pageWidth - margin, 17, { align: "right" });
     if (form.folio) {
-      doc.setFontSize(12);
-      doc.setTextColor(138, 120, 96);
-      doc.text(fmtFolio(form.folio, esRecibo ? "Pedido " : "Folio P-"), pageWidth - margin, y, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(fmtFolio(form.folio, esRecibo ? "Pedido " : "Folio P-"), pageWidth - margin, 24, { align: "right" });
     }
 
-    y += 7;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(138, 120, 96);
-    doc.text(`${fmtDateHuman(form.fecha)}  ·  ${fmtHora12(form.hora)}`, margin, y);
+    /* ---- Cliente y entrega, en dos columnas ---- */
+    y = 48;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    tinta(SUAVE);
+    doc.text("CLIENTE", margin, y);
+    doc.text(esRecibo ? "FECHA DEL PEDIDO" : "PARA EL DÍA", pageWidth / 2 + 4, y);
 
-    y += 9;
-    doc.setDrawColor(233, 220, 192);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 9;
-
+    y += 6;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
-    doc.setTextColor(43, 32, 21);
-    doc.text(form.clienteNombre || "Cliente", margin, y);
-    y += 6;
+    tinta(TINTA);
+    // El nombre se queda dentro de su columna: un nombre largo (una empresa,
+    // por ejemplo) se metía encima de la fecha, a la derecha.
+    const anchoColumna = pageWidth / 2 - 4 - margin;
+    const lineasNombre = doc.splitTextToSize(form.clienteNombre || "Cliente", anchoColumna).slice(0, 2);
+    doc.text(lineasNombre, margin, y);
+    doc.text(fmtDateHuman(form.fecha), pageWidth / 2 + 4, y);
+    // Si el nombre ocupó dos renglones, lo de abajo se recorre para no encimarse.
+    const extraNombre = (lineasNombre.length - 1) * 5.5;
+
+    y += 5.5 + extraNombre;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(138, 120, 96);
-    if (form.clienteTelefono) { doc.text(form.clienteTelefono, margin, y); y += 5; }
-    doc.text(form.entrega ? "Entrega a domicilio" : "Para recoger en el local", margin, y);
+    doc.setFontSize(9.5);
+    tinta(SUAVE);
+    if (form.clienteTelefono) doc.text(fmtTel(form.clienteTelefono), margin, y);
+    doc.text(
+      `${fmtHora12(form.hora)} · ${form.entrega ? "A domicilio" : "Para recoger"}`,
+      pageWidth / 2 + 4,
+      y
+    );
     y += 5;
     if (form.entrega && form.direccion) {
-      const lineasDir = doc.splitTextToSize(form.direccion, pageWidth - margin * 2);
-      doc.text(lineasDir, margin, y);
-      y += lineasDir.length * 5;
+      const lineasDir = doc.splitTextToSize(form.direccion, anchoColumna).slice(0, 3);
+      doc.text(lineasDir, pageWidth / 2 + 4, y);
+      y += lineasDir.length * 4.5;
     }
 
-    y += 5;
-    doc.setFillColor(248, 241, 225);
-    doc.rect(margin, y, pageWidth - margin * 2, 8, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(43, 32, 21);
-    doc.text("PLATILLO", margin + 3, y + 5.5);
-    doc.text("CANT.", pageWidth - margin - 82, y + 5.5);
-    doc.text("P. UNITARIO", pageWidth - margin - 38, y + 5.5, { align: "right" });
-    doc.text("SUBTOTAL", pageWidth - margin - 3, y + 5.5, { align: "right" });
-    y += 13;
+    /* ---- Tabla de platillos ---- */
+    y += 6;
+    // La columna de cantidad se separa bien de la de precio: con "10 personas"
+    // a un lado y "$240.00/persona" al otro, pegadas se encimaban.
+    const colCant = pageWidth - margin - 95;
+    const colUnit = pageWidth - margin - 34;
+    const colSub = pageWidth - margin;
+    // El nombre del platillo se recorta si no cabe, para que nunca invada la
+    // columna de al lado.
+    const anchoConcepto = colCant - (margin + 3) - 4;
 
-    doc.setFont("helvetica", "normal");
+    relleno(FONDO);
+    doc.rect(margin, y, anchoUtil, 9, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    tinta(SUAVE);
+    doc.text("CONCEPTO", margin + 3, y + 6);
+    doc.text("CANTIDAD", colCant, y + 6);
+    doc.text("PRECIO", colUnit, y + 6, { align: "right" });
+    doc.text("IMPORTE", colSub - 3, y + 6, { align: "right" });
+    y += 15;
+
     doc.setFontSize(10);
     form.items.forEach((it) => {
+      cabe(9);
       const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
       const cant = it.tipo === "paella" ? fmtPersonas(it.kg).replace("para ", "") : it.unidad === "kg" ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
       const unitario = it.tipo === "paella" ? `${money(it.precioKg / 2)}/persona` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
       // Para paellas con extras, la fila muestra solo la base; los extras van
       // en renglones propios para que la suma cuadre a la vista.
       const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
-      doc.setTextColor(43, 32, 21);
-      doc.text(nombre, margin + 3, y);
-      doc.setTextColor(138, 120, 96);
-      doc.text(cant, pageWidth - margin - 82, y);
-      doc.text(unitario, pageWidth - margin - 38, y, { align: "right" });
-      doc.setTextColor(43, 32, 21);
-      doc.text(money(subtotalFila), pageWidth - margin - 3, y, { align: "right" });
-      y += 7.5;
+      doc.setFont("helvetica", "bold");
+      tinta(TINTA);
+      doc.text(doc.splitTextToSize(nombre, anchoConcepto)[0], margin + 3, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      tinta(SUAVE);
+      doc.text(cant, colCant, y);
+      doc.text(unitario, colUnit, y, { align: "right" });
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      tinta(TINTA);
+      doc.text(money(subtotalFila), colSub - 3, y, { align: "right" });
+      y += 7;
+
       (it.extras || []).forEach((e) => {
-        doc.setTextColor(138, 120, 96);
-        doc.text(`   + Extra ${e.nombre}`, margin + 3, y);
-        doc.text(`x${e.cantidad}`, pageWidth - margin - 82, y);
-        doc.text(money(e.precio), pageWidth - margin - 38, y, { align: "right" });
-        doc.setTextColor(43, 32, 21);
-        doc.text(money(e.precio * e.cantidad), pageWidth - margin - 3, y, { align: "right" });
-        y += 7.5;
+        cabe(9);
+        doc.setFont("helvetica", "normal");
+        tinta(SUAVE);
+        doc.text(`   + ${e.nombre}`, margin + 3, y);
+        doc.text(`x${e.cantidad}`, colCant, y);
+        doc.text(money(e.precio), colUnit, y, { align: "right" });
+        doc.text(money(e.precio * e.cantidad), colSub - 3, y, { align: "right" });
+        y += 6.5;
       });
+
+      if (it.nota) {
+        cabe(8);
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(9);
+        tinta(SUAVE);
+        const lineasNota = doc.splitTextToSize(`Nota: ${it.nota}`, anchoUtil - 8);
+        doc.text(lineasNota, margin + 6, y);
+        y += lineasNota.length * 4.5 + 1;
+        doc.setFontSize(10);
+      }
+      y += 1.5;
     });
 
-    if (envioNum > 0) {
-      doc.setTextColor(43, 32, 21);
-      doc.text("Envío a domicilio", margin + 3, y);
-      doc.text(money(envioNum), pageWidth - margin - 3, y, { align: "right" });
-      y += 7.5;
-    }
-    if (ivaNum > 0) {
-      doc.setTextColor(43, 32, 21);
-      doc.text("IVA (16%)", margin + 3, y);
-      doc.text(money(ivaNum), pageWidth - margin - 3, y, { align: "right" });
-      y += 7.5;
-    }
+    /* ---- Totales ---- */
+    cabe(40);
+    y += 2;
+    doc.setDrawColor(LINEA[0], LINEA[1], LINEA[2]);
+    doc.line(colCant - 6, y, pageWidth - margin, y);
+    y += 7;
 
-    y += 3;
-    doc.setDrawColor(233, 220, 192);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 11;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(15);
-    doc.setTextColor(193, 66, 31);
-    doc.text("Total", margin, y);
-    doc.text(money(total), pageWidth - margin - 3, y, { align: "right" });
-
-    // En el recibo se desglosa cómo pagó y se deja constancia de que ya no
-    // debe nada: es justo lo que el cliente lleva a comprobar.
-    if (esRecibo) {
-      y += 10;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(43, 32, 21);
-      doc.text("CÓMO SE PAGÓ", margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    const renglonTotal = (etiqueta, monto) => {
+      tinta(SUAVE);
+      doc.text(etiqueta, colUnit, y, { align: "right" });
+      tinta(TINTA);
+      doc.text(monto, colSub - 3, y, { align: "right" });
       y += 6;
-      doc.setFont("helvetica", "normal");
+    };
+    if (envioNum > 0) renglonTotal("Envío a domicilio", money(envioNum));
+    if (ivaNum > 0) renglonTotal("IVA (16%)", money(ivaNum));
+
+    y += 2;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    tinta(AZUL);
+    doc.text("TOTAL", colUnit, y, { align: "right" });
+    doc.text(money(total), colSub - 3, y, { align: "right" });
+    y += 12;
+
+    /* ---- Recibo: cómo pagó y constancia de saldado ---- */
+    if (esRecibo) {
+      cabe(50);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      tinta(SUAVE);
+      doc.text("FORMA DE PAGO", margin, y);
+      y += 7;
+
       doc.setFontSize(10);
       (form.abonos || []).forEach((ab) => {
-        doc.setTextColor(138, 120, 96);
+        cabe(9);
+        doc.setFont("helvetica", "normal");
+        tinta(SUAVE);
         doc.text(
           `${METODO_PAGO_LABEL[ab.metodo] || "Pago"}${ab.fecha ? ` · ${fmtDateHuman(ab.fecha)}` : ""}`,
           margin + 3,
           y
         );
-        doc.setTextColor(43, 32, 21);
-        doc.text(money(ab.monto), pageWidth - margin - 3, y, { align: "right" });
+        doc.setFont("helvetica", "bold");
+        tinta(TINTA);
+        doc.text(money(ab.monto), colSub - 3, y, { align: "right" });
         y += 6.5;
       });
 
+      // La constancia: el renglón que el cliente viene a buscar.
+      cabe(24);
       y += 4;
-      doc.setFillColor(232, 245, 233);
-      doc.rect(margin, y - 6, pageWidth - margin * 2, 13, "F");
+      relleno(VERDE_FONDO);
+      doc.rect(margin, y, anchoUtil, 16, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
-      doc.setTextColor(21, 128, 61);
-      doc.text("PAGADO EN SU TOTALIDAD", margin + 3, y + 2.5);
-      doc.text(money(sumaAbonos(form.abonos)), pageWidth - margin - 3, y + 2.5, { align: "right" });
-      y += 11;
+      doc.setFontSize(12);
+      tinta(VERDE);
+      doc.text("PAGADO EN SU TOTALIDAD", margin + 5, y + 10.5);
+      doc.text(money(sumaAbonos(form.abonos)), colSub - 5, y + 10.5, { align: "right" });
+      y += 24;
     }
 
-    if (form.terminos) {
-      y += 14;
+    /* ---- Presupuesto: condiciones y datos para depositar ---- */
+    // Nada de esto va en el recibo: las condiciones hablan de un presupuesto
+    // por aceptar, y los datos para depositar no vienen al caso cuando el
+    // pedido ya está pagado.
+    if (!esRecibo && form.terminos) {
+      cabe(30);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(43, 32, 21);
-      doc.text("Notas importantes", margin, y);
-      y += 5;
+      doc.setFontSize(8);
+      tinta(SUAVE);
+      doc.text("CONDICIONES", margin, y);
+      y += 6;
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(138, 120, 96);
-      const lineasNotas = doc.splitTextToSize(form.terminos, pageWidth - margin * 2);
+      doc.setFontSize(9.5);
+      tinta(SUAVE);
+      const lineasNotas = doc.splitTextToSize(form.terminos, anchoUtil);
       doc.text(lineasNotas, margin, y);
-      y += lineasNotas.length * 4.5;
+      y += lineasNotas.length * 4.8 + 6;
     }
 
-    // En el recibo no van los datos para depositar: ya está pagado.
     if (!esRecibo && config.pago && (config.pago.clabe || "").trim()) {
-      y += 9;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(43, 32, 21);
-      doc.text("Datos de pago — 50% de anticipo para confirmar; el resto a la entrega", margin, y);
-      y += 5;
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(138, 120, 96);
+      cabe(34);
+      relleno(FONDO);
       const lineasPago = [
         config.pago.banco ? `Banco: ${config.pago.banco}` : null,
         config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
         `CLABE / Tarjeta: ${config.pago.clabe}`,
         "En el concepto de la transferencia ponga únicamente su nombre, por favor.",
       ].filter(Boolean);
-      doc.text(lineasPago, margin, y);
-      y += lineasPago.length * 4.5;
+      const alto = 14 + lineasPago.length * 5;
+      doc.rect(margin, y, anchoUtil, alto, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      tinta(TINTA);
+      doc.text("Para confirmar: 50% de anticipo, el resto a la entrega", margin + 5, y + 7);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      tinta(SUAVE);
+      doc.text(lineasPago, margin + 5, y + 13);
+      y += alto + 6;
     }
 
-    y = Math.max(y + 18, 265);
-    doc.setFontSize(8.5);
-    doc.setTextColor(138, 120, 96);
-    doc.text(
-      esRecibo
-        ? `Recibo emitido el ${fmtDateHuman(todayISO())}. Gracias por su preferencia.`
-        : `Presupuesto generado el ${fmtDateHuman(todayISO())}. Sujeto a disponibilidad del día.`,
-      margin,
-      y
-    );
+    pie();
 
     const limpio = (form.clienteNombre || "cliente").replace(/[^a-zA-Z0-9]+/g, "_");
     doc.save(`${esRecibo ? "Recibo" : "Presupuesto"}-${limpio}-${form.fecha}.pdf`);
