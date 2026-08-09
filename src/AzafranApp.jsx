@@ -6,7 +6,6 @@ import {
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet,
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell, Filter,
-  ChevronUp, ChevronDown,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import jsPDF from "jspdf";
@@ -452,29 +451,8 @@ const METODO_PAGO_LABEL = { efectivo: "Efectivo", transferencia: "Transferencia"
 
 // El orden en que están guardados los productos es el orden en que aparecen al
 // hacer un pedido. Pepe quiere poner primero lo que más vende, así que se
-// puede mover cada uno a mano; el acomodo alfabético no le dice nada a quien
+// acomodan a mano arrastrándolos; el orden alfabético no le dice nada a quien
 // está tomando el pedido con el cliente esperando.
-//
-// Se mueve solo dentro de su categoría: en el pedido salen agrupados por
-// categoría, así que cruzarlo a otra no se notaría más que como un salto raro.
-const moverEnLista = (lista, indice, direccion, mismoGrupo) => {
-  let vecino = -1;
-  for (let j = indice + direccion; j >= 0 && j < lista.length; j += direccion) {
-    if (mismoGrupo(lista[j], lista[indice])) { vecino = j; break; }
-  }
-  if (vecino < 0) return lista;
-  const copia = [...lista];
-  copia[indice] = lista[vecino];
-  copia[vecino] = lista[indice];
-  return copia;
-};
-
-const puedeMover = (lista, indice, direccion, mismoGrupo) => {
-  for (let j = indice + direccion; j >= 0 && j < lista.length; j += direccion) {
-    if (mismoGrupo(lista[j], lista[indice])) return true;
-  }
-  return false;
-};
 
 // Acomodar arrastrando, como se mueven las apps en la pantalla del iPhone: se
 // deja el dedo encima un momento, la tarjeta se despega y se lleva a su lugar.
@@ -525,7 +503,6 @@ const useAcomodarArrastrando = (lista, mismoGrupo, onCambiar) => {
         const g = gesto.current;
         if (!g) return;
         g.levantado = true;
-        g.rect = g.nodo.getBoundingClientRect();
         g.desde = { ...g.inicio };
         try { g.nodo.setPointerCapture(g.pointerId); } catch { /* sin captura igual funciona */ }
         setLevantado({ indice: g.indice, dx: 0, dy: 0 });
@@ -564,8 +541,8 @@ const useAcomodarArrastrando = (lista, mismoGrupo, onCambiar) => {
       const [movida] = nueva.splice(g.indice, 1);
       nueva.splice(destino, 0, movida);
       onCambiar(nueva);
-      // La tarjeta ya cambió de hueco: se vuelve a medir para que siga
-      // pegada al dedo en vez de dar un salto.
+      // La tarjeta ya cambió de hueco: se vuelve a medir para que siga pegada
+      // al dedo en vez de dar un salto.
       g.indice = destino;
       g.desde = punto;
       requestAnimationFrame(() => {
@@ -592,30 +569,9 @@ const useAcomodarArrastrando = (lista, mismoGrupo, onCambiar) => {
   };
 };
 
-// Flechitas para subir o bajar un producto. Botones y no arrastrar: en el iPad
-// arrastrar dentro de una lista que ya se desplaza sola sale mal más veces de
-// las que sale bien.
-const BotonesOrden = ({ lista, indice, mismoGrupo, onCambiar }) => (
-  <div className="af-orden-btns">
-    <button
-      className="af-icon-btn"
-      title="Subir"
-      disabled={!puedeMover(lista, indice, -1, mismoGrupo)}
-      onClick={() => onCambiar(moverEnLista(lista, indice, -1, mismoGrupo))}
-    >
-      <ChevronUp size={15} />
-    </button>
-    <button
-      className="af-icon-btn"
-      title="Bajar"
-      disabled={!puedeMover(lista, indice, 1, mismoGrupo)}
-      onClick={() => onCambiar(moverEnLista(lista, indice, 1, mismoGrupo))}
-    >
-      <ChevronDown size={15} />
-    </button>
-  </div>
-);
-
+// Cada producto solo se mueve dentro de su sección: en el pedido salen
+// agrupados, así que cruzarlo a otra no se vería más que como un salto raro.
+// La sección se cambia con su propio selector.
 const MISMO_SIEMPRE = () => true;
 const MISMA_CATEGORIA = (a, b) => (a.categoria || "platillo") === (b.categoria || "platillo");
 
@@ -5665,6 +5621,17 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     if (sinCambiosSinGuardar) setDraft(config);
   }, [config]);
 
+  // Borrar un producto pide confirmación: el bote está pegado al nombre y con
+  // el dedo se le da sin querer. Perder un platillo obliga a recapturarlo con
+  // su precio, su unidad y su empaque.
+  const [porBorrar, setPorBorrar] = useState(null);
+  const confirmarBorrado = () => {
+    if (!porBorrar) return;
+    const { lista, indice } = porBorrar;
+    setDraft((prev) => ({ ...prev, [lista]: (prev[lista] || []).filter((_, xi) => xi !== indice) }));
+    setPorBorrar(null);
+  };
+
   // Acomodar arrastrando (dejar el dedo encima y mover). Las flechitas se
   // quedan como respaldo: sirven en la laptop y cuando la lista es larga.
   const acomodarPaellas = useAcomodarArrastrando(
@@ -6071,13 +6038,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       setDraft({ ...draft, paellas });
                     }}
                   />
-                  <BotonesOrden
-                    lista={draft.paellas}
-                    indice={i}
-                    mismoGrupo={MISMO_SIEMPRE}
-                    onCambiar={(paellas) => setDraft({ ...draft, paellas })}
-                  />
-                  <button className="af-icon-btn" onClick={() => setDraft({ ...draft, paellas: draft.paellas.filter((_, xi) => xi !== i) })}>
+                  <button
+                    className="af-icon-btn"
+                    title="Quitar"
+                    onClick={() => setPorBorrar({ lista: "paellas", indice: i, nombre: p.nombre, que: "la paella" })}
+                  >
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -6133,13 +6098,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       setDraft({ ...draft, extras });
                     }}
                   />
-                  <BotonesOrden
-                    lista={draft.extras}
-                    indice={i}
-                    mismoGrupo={MISMA_CATEGORIA}
-                    onCambiar={(extras) => setDraft({ ...draft, extras })}
-                  />
-                  <button className="af-icon-btn" onClick={() => setDraft({ ...draft, extras: draft.extras.filter((_, xi) => xi !== i) })}>
+                  <button
+                    className="af-icon-btn"
+                    title="Quitar"
+                    onClick={() => setPorBorrar({ lista: "extras", indice: i, nombre: ex.nombre, que: "el platillo" })}
+                  >
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -6248,7 +6211,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       setDraft({ ...draft, extrasPaella });
                     }}
                   />
-                  <button className="af-icon-btn" onClick={() => setDraft({ ...draft, extrasPaella: draft.extrasPaella.filter((_, xi) => xi !== i) })}>
+                  <button
+                    className="af-icon-btn"
+                    title="Quitar"
+                    onClick={() => setPorBorrar({ lista: "extrasPaella", indice: i, nombre: ex.nombre, que: "el extra" })}
+                  >
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -6592,6 +6559,26 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
         <button className="af-btn-primary w-full mt-5" onClick={guardar}>
           {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
         </button>
+      )}
+
+      {porBorrar && (
+        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setPorBorrar(null)}>
+          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="af-alerta-icon"><Trash2 size={26} /></div>
+            <div className="af-alerta-titulo">¿Quitar {porBorrar.que}?</div>
+            <p className="af-alerta-texto">
+              <strong>{porBorrar.nombre.trim() || "Sin nombre"}</strong>
+            </p>
+            <p className="af-ink-soft text-sm mb-3">
+              Deja de aparecer al hacer un pedido. Los pedidos que ya lo llevan no se
+              tocan. Para volver a tenerlo habría que capturarlo de nuevo.
+            </p>
+            <button className="af-btn-danger w-full" onClick={confirmarBorrado}>
+              Sí, quitarlo
+            </button>
+            <button className="af-btn-secondary w-full mt-2" onClick={() => setPorBorrar(null)}>Cancelar</button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -9449,9 +9436,6 @@ const AZAFRAN_CSS = `
 }
 .af-menu-card { transition: box-shadow .15s ease, transform .12s ease; }
 .af-menu-card.levantada { transition: none; }
-.af-orden-btns { display: flex; flex-direction: column; gap: 1px; }
-.af-orden-btns .af-icon-btn { padding: 1px 3px; min-height: 0; }
-.af-orden-btns .af-icon-btn:disabled { opacity: .25; }
 .af-menu-grupo { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-top: 6px; }
 .af-fijos-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 4px 0 2px; }
 .af-fijos-resumen { display: flex; gap: 10px; flex-wrap: wrap; }

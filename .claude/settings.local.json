@@ -428,7 +428,17 @@
       "Bash(/usr/bin/grep -n \"useState\\(config\\\\|setDraft\\(config\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"Avisos\\\\|porComprar\\\\|bajoMinimo\\\\|Bell\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"af-menu-grid {\" -A 3 src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -c \"useAcomodarArrastrando\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -c \"useAcomodarArrastrando\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"ConfirmModal\\\\|Confirmar\\\\|¿Seguro\\\\|window.confirm\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"BotonesOrden\\\\|ChevronUp\\\\|af-orden-btns\\\\|puedeMover\\\\|moverEnLista\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'paellas: draft.paellas.filter\\\\|extras: draft.extras.filter\\\\|extrasPaella: \\(draft.extrasPaella' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"extrasPaella: \\(draft.extrasPaella || \\\\[\\\\]\\).filter\\(\\(_, xi\\)\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Trash2 size={15}\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"setPorBorrar\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Guardar cambios\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"El orden en que están guardados\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-btn-danger\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^.af-btn-danger\" -A 2 src/AzafranApp.jsx)"
     ]
   }
 }
