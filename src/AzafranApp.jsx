@@ -646,6 +646,9 @@ const UNIDADES_ENVASE = [
 const normalizarDesechable = (d) => ({
   ...d,
   unidad: d.unidad || "kg",
+  // Un envase puede cubrir un rango ("de 2 a 4 kg") o una medida exacta
+  // ("de 1 kg"). Los de antes son todos de rango.
+  exacto: Boolean(d.exacto),
   rangoMin: d.rangoMin != null ? d.rangoMin : d.kgMin || 0,
   rangoMax: d.rangoMax != null ? d.rangoMax : d.kgMax != null ? d.kgMax : 999,
 });
@@ -665,12 +668,63 @@ const enRango = (valor, min, max) => valor >= min && valor <= max;
 // - Platillos con empaque "pieza": un envase por cada unidad pedida.
 // - Platillos con empaque "rango": el envase cuyo rango en PIEZAS incluya el total pedido
 //   (ej. 6 piezas → contenedor chico, 7 a 24 → contenedor grande).
+// En qué se descuenta un envase, leído de lo que ya está configurado en otra
+// parte: las paellas lo toman solas por kilos, y los platillos solo si alguien
+// los vinculó desde el menú. Se calcula, no se guarda, para que no se puedan
+// contradecir.
+const usoDelEnvase = (envase, config) => {
+  const lineas = [];
+  const envases = (config.desechables || []).map(normalizarDesechable);
+  const medida = envase.exacto
+    ? `${envase.rangoMin}`
+    : `${envase.rangoMin} a ${envase.rangoMax}`;
+
+  if (envase.unidad === "kg") {
+    // Solo cuenta si de verdad le toca: otro envase puesto en la medida exacta
+    // se la gana, y entonces este ya no se usa para eso.
+    const leTocaria = envase.exacto
+      ? envaseParaMedida(envases, "kg", envase.rangoMin)?.id === envase.id
+      : true;
+    if (leTocaria) {
+      lineas.push(
+        envase.exacto
+          ? `Paellas de ${medida} kg exactos, cuando no van en paellera`
+          : `Paellas de ${medida} kg, cuando no van en paellera`
+      );
+    }
+  }
+
+  (config.extras || []).forEach((ex) => {
+    if (ex.empaqueTipo === "pieza" && ex.empaqueEnvaseId === envase.id) {
+      lineas.push(`${ex.nombre || "Un platillo sin nombre"}: uno por cada unidad`);
+    }
+    if (ex.empaqueTipo === "rango" && envase.unidad === "piezas") {
+      const piezas = ex.piezasPorUnidad > 0 ? ex.piezasPorUnidad : 1;
+      // Solo si alguna cantidad razonable de ese platillo cae en esta medida.
+      const cae = [1, 2, 3, 4, 5, 6, 8, 10].some(
+        (n) => envaseParaMedida(envases, "piezas", n * piezas)?.id === envase.id
+      );
+      if (cae) lineas.push(`${ex.nombre || "Un platillo sin nombre"}: según cuántas piezas se pidan`);
+    }
+  });
+
+  return lineas;
+};
+
+// Busca el envase para una medida. Primero el que está puesto en esa medida
+// exacta y luego el de rango: si hay un envase de "1 kg justo" y otro de "0 a
+// 2 kg", una paella de 1 kg va en el de 1 kg. Sin esto ganaba el que estuviera
+// primero en la lista, que es un orden que nadie eligió.
+const envaseParaMedida = (envases, unidad, valor) =>
+  envases.find((d) => d.unidad === unidad && d.exacto && d.rangoMin === valor) ||
+  envases.find((d) => d.unidad === unidad && !d.exacto && enRango(valor, d.rangoMin, d.rangoMax));
+
 const calcularConsumo = (items, desechables, extrasCatalogo) => {
   const consumo = {};
   const envases = (desechables || []).map(normalizarDesechable);
   (items || []).forEach((it) => {
     if (it.tipo === "paella" && !it.enPaellera) {
-      const tier = envases.find((d) => d.unidad === "kg" && enRango(it.kg, d.rangoMin, d.rangoMax));
+      const tier = envaseParaMedida(envases, "kg", it.kg);
       if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
     }
     // Platillos con empaque vinculado (ej. alioli en su envase, croquetas
@@ -682,7 +736,7 @@ const calcularConsumo = (items, desechables, extrasCatalogo) => {
         consumo[cat.empaqueEnvaseId] = (consumo[cat.empaqueEnvaseId] || 0) + Math.ceil(it.cantidad);
       } else if (cat.empaqueTipo === "rango") {
         const totalPiezas = it.piezasPorUnidad > 0 ? it.cantidad * it.piezasPorUnidad : it.cantidad;
-        const tier = envases.find((d) => d.unidad === "piezas" && enRango(totalPiezas, d.rangoMin, d.rangoMax));
+        const tier = envaseParaMedida(envases, "piezas", totalPiezas);
         if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
       }
     }
@@ -6545,9 +6599,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
           <div className="af-section-title">Envases desechables</div>
           <div className="af-hint mb-3">
-            Cada envase cubre un rango. Los envases en <strong>kilos</strong> se usan para las paellas
-            que no llevan paellera; los envases en <strong>piezas</strong> se vinculan a un platillo
-            (Menú → ese platillo → Empaque) y la app elige el que corresponda según cuántas piezas se pidan.
+            Cada envase cubre una medida exacta o un rango. Los de <strong>kilos</strong> los toman
+            solas las paellas que no van en paellera; los de <strong>piezas</strong> hay que
+            vincularlos desde el platillo (Menú → ese platillo → Empaque). Abajo de cada uno dice en
+            qué se está usando hoy.
           </div>
           <div className="af-menu-grid">
             {(draft.desechables || []).map(normalizarDesechable).map((d, i) => {
@@ -6573,22 +6628,66 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   <select className="af-input mb-2" value={d.unidad} onChange={(e) => setD({ unidad: e.target.value })}>
                     {UNIDADES_ENVASE.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
                   </select>
-                  <div className="af-menu-card-row">
-                    <span className="af-ink-soft text-sm">De</span>
-                    <NumberField
-                      value={d.rangoMin}
-                      min={0}
-                      className="af-input af-menu-kgrange"
-                      onChange={(v) => setD({ rangoMin: v })}
-                    />
-                    <span className="af-ink-soft text-sm">a</span>
-                    <NumberField
-                      value={d.rangoMax}
-                      min={0}
-                      className="af-input af-menu-kgrange"
-                      onChange={(v) => setD({ rangoMax: v })}
-                    />
-                    <span className="af-ink-soft text-sm">{uInfo.sufijo}</span>
+                  <div className="af-ambito-switch mb-2">
+                    <button
+                      className={"af-ambito-btn" + (!d.exacto ? " active" : "")}
+                      onClick={() => setD({ exacto: false })}
+                    >
+                      Un rango
+                    </button>
+                    <button
+                      className={"af-ambito-btn" + (d.exacto ? " active" : "")}
+                      onClick={() => setD({ exacto: true, rangoMax: d.rangoMin })}
+                    >
+                      Medida exacta
+                    </button>
+                  </div>
+                  {d.exacto ? (
+                    <div className="af-menu-card-row">
+                      <span className="af-ink-soft text-sm">De</span>
+                      <NumberField
+                        value={d.rangoMin}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setD({ rangoMin: v, rangoMax: v })}
+                      />
+                      <span className="af-ink-soft text-sm">{uInfo.sufijo} justos</span>
+                    </div>
+                  ) : (
+                    <div className="af-menu-card-row">
+                      <span className="af-ink-soft text-sm">De</span>
+                      <NumberField
+                        value={d.rangoMin}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setD({ rangoMin: v })}
+                      />
+                      <span className="af-ink-soft text-sm">a</span>
+                      <NumberField
+                        value={d.rangoMax}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setD({ rangoMax: v })}
+                      />
+                      <span className="af-ink-soft text-sm">{uInfo.sufijo}</span>
+                    </div>
+                  )}
+                  {/* La pregunta que nadie podía contestar mirando esta pantalla:
+                      de qué se descuenta este envase. Se arma sola de lo que ya
+                      está configurado, para que no haya dos verdades. */}
+                  <div className="af-envase-uso">
+                    <span className="af-mini-label">Se descuenta en</span>
+                    {usoDelEnvase(d, draft).length ? (
+                      <ul>
+                        {usoDelEnvase(d, draft).map((linea, li) => <li key={li}>{linea}</li>)}
+                      </ul>
+                    ) : (
+                      <p className="af-ink-soft text-xs">
+                        {d.unidad === "piezas"
+                          ? "Ningún platillo lo tiene puesto. Ve a Menú → el platillo → Empaque."
+                          : "Ninguna paella cae en esta medida."}
+                      </p>
+                    )}
                   </div>
                   <div className="af-menu-card-row">
                     <div className="flex-1">
@@ -6619,7 +6718,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               onClick={() =>
                 setDraft({
                   ...draft,
-                  desechables: [...(draft.desechables || []), { id: uid(), nombre: "", unidad: "kg", rangoMin: 0, rangoMax: 2, stock: 0, minimo: 5 }],
+                  desechables: [...(draft.desechables || []), { id: uid(), nombre: "", unidad: "kg", exacto: false, rangoMin: 0, rangoMax: 2, stock: 0, minimo: 5 }],
                 })
               }
             >
@@ -9624,6 +9723,9 @@ const AZAFRAN_CSS = `
 }
 .af-mas-detalles-nota { font-weight: 400; font-size: 12px; color: var(--ink-soft); }
 .af-detalles-gasto { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 4px; }
+.af-envase-uso { margin: 8px 0 4px; }
+.af-envase-uso ul { margin: 2px 0 0; padding-left: 16px; }
+.af-envase-uso li { font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
 .af-factura-folio { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 6px 0; }
 .af-factura-folio code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 700; letter-spacing: .02em; word-break: break-all; }
 .af-menu-grupo { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-top: 6px; }
