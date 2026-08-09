@@ -476,6 +476,122 @@ const puedeMover = (lista, indice, direccion, mismoGrupo) => {
   return false;
 };
 
+// Acomodar arrastrando, como se mueven las apps en la pantalla del iPhone: se
+// deja el dedo encima un momento, la tarjeta se despega y se lleva a su lugar.
+//
+// No se usa el arrastre de HTML5 porque en el Safari del iPad no existe para
+// el dedo. Esto va con eventos de puntero, que llegan igual del dedo, del
+// lápiz y del ratón.
+const ESPERA_PARA_LEVANTAR = 420;    // ms con el dedo quieto encima
+const MOVIMIENTO_QUE_CANCELA = 10;   // px antes de eso = está deslizando la página
+
+const useAcomodarArrastrando = (lista, mismoGrupo, onCambiar) => {
+  const nodos = useRef(new Map());
+  const gesto = useRef(null);
+  const [levantado, setLevantado] = useState(null);
+
+  // Mientras se arrastra, el dedo no debe desplazar la página de fondo.
+  useEffect(() => {
+    if (!levantado) return;
+    const parar = (e) => e.preventDefault();
+    document.addEventListener("touchmove", parar, { passive: false });
+    return () => document.removeEventListener("touchmove", parar);
+  }, [levantado]);
+
+  const soltarTodo = () => {
+    const g = gesto.current;
+    if (g?.temporizador) clearTimeout(g.temporizador);
+    if (g?.levantado && g.nodo && g.nodo.hasPointerCapture?.(g.pointerId)) {
+      try { g.nodo.releasePointerCapture(g.pointerId); } catch { /* ya se soltó */ }
+    }
+    gesto.current = null;
+    setLevantado(null);
+  };
+
+  const registrar = (i, nodo) => {
+    if (nodo) nodos.current.set(i, nodo);
+    else nodos.current.delete(i);
+  };
+
+  const alBajar = (indice) => (e) => {
+    // Los campos y botones de la tarjeta siguen funcionando como siempre.
+    if (e.target.closest("input, select, textarea, button, label, a")) return;
+    const nodo = nodos.current.get(indice);
+    if (!nodo) return;
+    const punto = { x: e.clientX, y: e.clientY };
+    gesto.current = {
+      indice, nodo, pointerId: e.pointerId, inicio: punto, levantado: false,
+      temporizador: setTimeout(() => {
+        const g = gesto.current;
+        if (!g) return;
+        g.levantado = true;
+        g.rect = g.nodo.getBoundingClientRect();
+        g.desde = { ...g.inicio };
+        try { g.nodo.setPointerCapture(g.pointerId); } catch { /* sin captura igual funciona */ }
+        setLevantado({ indice: g.indice, dx: 0, dy: 0 });
+      }, ESPERA_PARA_LEVANTAR),
+    };
+  };
+
+  const alMover = (e) => {
+    const g = gesto.current;
+    if (!g) return;
+    const punto = { x: e.clientX, y: e.clientY };
+
+    if (!g.levantado) {
+      // Si se movió antes de que la tarjeta se levantara, está deslizando.
+      const lejos = Math.abs(punto.x - g.inicio.x) > MOVIMIENTO_QUE_CANCELA ||
+                    Math.abs(punto.y - g.inicio.y) > MOVIMIENTO_QUE_CANCELA;
+      if (lejos) soltarTodo();
+      return;
+    }
+
+    setLevantado({ indice: g.indice, dx: punto.x - g.desde.x, dy: punto.y - g.desde.y });
+
+    // A qué hueco corresponde el punto donde está el dedo: la tarjeta del
+    // mismo grupo cuyo centro queda más cerca.
+    let destino = g.indice;
+    let mejor = Infinity;
+    nodos.current.forEach((nodo, i) => {
+      if (i === g.indice || !lista[i] || !mismoGrupo(lista[i], lista[g.indice])) return;
+      const r = nodo.getBoundingClientRect();
+      const d = Math.hypot(punto.x - (r.left + r.width / 2), punto.y - (r.top + r.height / 2));
+      if (d < mejor) { mejor = d; destino = i; }
+    });
+
+    if (destino !== g.indice) {
+      const nueva = [...lista];
+      const [movida] = nueva.splice(g.indice, 1);
+      nueva.splice(destino, 0, movida);
+      onCambiar(nueva);
+      // La tarjeta ya cambió de hueco: se vuelve a medir para que siga
+      // pegada al dedo en vez de dar un salto.
+      g.indice = destino;
+      g.desde = punto;
+      requestAnimationFrame(() => {
+        const actual = gesto.current;
+        if (!actual || !actual.levantado) return;
+        actual.nodo = nodos.current.get(actual.indice) || actual.nodo;
+        setLevantado({ indice: actual.indice, dx: 0, dy: 0 });
+      });
+    }
+  };
+
+  return {
+    registrar,
+    alBajar,
+    alMover,
+    alSoltar: soltarTodo,
+    // La tarjeta levantada se despega: se agranda un poco y proyecta sombra.
+    propsDe: (i) => ({
+      className: "af-menu-card" + (levantado?.indice === i ? " levantada" : ""),
+      style: levantado?.indice === i
+        ? { transform: `translate(${levantado.dx}px, ${levantado.dy}px) scale(1.03)` }
+        : undefined,
+    }),
+  };
+};
+
 // Flechitas para subir o bajar un producto. Botones y no arrastrar: en el iPad
 // arrastrar dentro de una lista que ya se desplaza sola sale mal más veces de
 // las que sale bien.
@@ -5549,6 +5665,19 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     if (sinCambiosSinGuardar) setDraft(config);
   }, [config]);
 
+  // Acomodar arrastrando (dejar el dedo encima y mover). Las flechitas se
+  // quedan como respaldo: sirven en la laptop y cuando la lista es larga.
+  const acomodarPaellas = useAcomodarArrastrando(
+    draft.paellas,
+    MISMO_SIEMPRE,
+    (paellas) => setDraft((prev) => ({ ...prev, paellas }))
+  );
+  const acomodarExtras = useAcomodarArrastrando(
+    draft.extras,
+    MISMA_CATEGORIA,
+    (extras) => setDraft((prev) => ({ ...prev, extras }))
+  );
+
   // Los platillos se muestran agrupados por categoría —igual que salen al hacer
   // un pedido— pero conservando el índice real dentro de draft.extras, que es
   // con el que trabajan los campos y las flechas de orden.
@@ -5918,9 +6047,20 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       {tab === "menu" && (
         <fieldset disabled={!esAdmin} className="af-fieldset-reset">
           <div className="af-section-title">Paellas <span className="af-ink-soft">(precio por kg)</span></div>
+          <div className="af-hint mb-2">
+            Deja el dedo encima de una y arrástrala para acomodarlas a tu gusto.
+          </div>
           <div className="af-menu-grid mb-5">
             {draft.paellas.map((p, i) => (
-              <div key={p.id} className="af-menu-card">
+              <div
+                key={p.id}
+                ref={(n) => acomodarPaellas.registrar(i, n)}
+                {...acomodarPaellas.propsDe(i)}
+                onPointerDown={acomodarPaellas.alBajar(i)}
+                onPointerMove={acomodarPaellas.alMover}
+                onPointerUp={acomodarPaellas.alSoltar}
+                onPointerCancel={acomodarPaellas.alSoltar}
+              >
                 <div className="af-menu-card-top">
                   <input
                     className="af-input af-menu-name"
@@ -5966,14 +6106,23 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
           <div className="af-section-title">Otros platillos</div>
           <div className="af-hint mb-2">
-            Con las flechitas los acomodas a tu gusto: el orden de aquí es el que verás
-            al hacer un pedido. Pon primero lo que más se vende.
+            Deja el dedo encima de un platillo un momento y arrástralo a donde quieras
+            (también sirven las flechitas). El orden de aquí es el que verás al hacer un
+            pedido: pon primero lo que más se vende. Con <strong>¿En qué sección va?</strong>{" "}
+            lo cambias entre Platillos, Entradas y Postres.
           </div>
           <div className="af-menu-grid">
             {filasExtras.map(({ ex, i, abreCategoria }) => (
               <React.Fragment key={ex.id}>
               {abreCategoria && <div className="af-menu-grupo">{CATEGORIA_LABEL[ex.categoria || "platillo"]}</div>}
-              <div key={ex.id} className="af-menu-card">
+              <div
+                ref={(n) => acomodarExtras.registrar(i, n)}
+                {...acomodarExtras.propsDe(i)}
+                onPointerDown={acomodarExtras.alBajar(i)}
+                onPointerMove={acomodarExtras.alMover}
+                onPointerUp={acomodarExtras.alSoltar}
+                onPointerCancel={acomodarExtras.alSoltar}
+              >
                 <div className="af-menu-card-top">
                   <input
                     className="af-input af-menu-name"
@@ -6003,6 +6152,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     setDraft({ ...draft, extras });
                   }}
                 />
+                <div className="af-mini-label mt-1">¿En qué sección va?</div>
                 <select
                   className="af-input"
                   value={ex.categoria || "platillo"}
@@ -9290,6 +9440,15 @@ const AZAFRAN_CSS = `
 .af-fijos-nombre { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .af-fijos-sub { font-size: 11.5px; color: var(--ink-soft); }
 .af-fijos-monto { font-size: 13.5px; font-weight: 700; color: var(--gasto, #c0392b); flex-shrink: 0; }
+/* La tarjeta que se está moviendo se despega del resto. */
+.af-menu-card.levantada {
+  z-index: 40; position: relative; cursor: grabbing;
+  box-shadow: 0 12px 28px rgba(36,27,20,0.22);
+  border-color: var(--brand, #3b5bdb);
+  touch-action: none; user-select: none;
+}
+.af-menu-card { transition: box-shadow .15s ease, transform .12s ease; }
+.af-menu-card.levantada { transition: none; }
 .af-orden-btns { display: flex; flex-direction: column; gap: 1px; }
 .af-orden-btns .af-icon-btn { padding: 1px 3px; min-height: 0; }
 .af-orden-btns .af-icon-btn:disabled { opacity: .25; }

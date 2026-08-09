@@ -417,7 +417,18 @@
       "Bash(/usr/bin/grep -n \"^} from \\\\\"lucide-react\\\\\"\\\\|from \\\\\"lucide-react\\\\\"\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -c \"BotonesOrden\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"filasExtras\\\\|</React.Fragment>\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"const guardar = \\(\\) =>\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"const guardar = \\(\\) =>\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -o 'assets/index-[^\"]*\\\\.js')",
+      "Bash(/usr/bin/grep index *)",
+      "Bash(curl -s https://carlosse95.github.io/pepe-andaluz/assets/index-CT-qjBNA.js)",
+      "Bash(/usr/bin/grep -c \"acomodas a tu gusto\")",
+      "Bash(/usr/bin/grep -n \"mensajes: {\" -A 22 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const MENSAJES_DEFAULT\" -A 30 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"env_chico\\\\|desechables: \\\\[\" -A 8 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"useState\\(config\\\\|setDraft\\(config\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Avisos\\\\|porComprar\\\\|bajoMinimo\\\\|Bell\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-menu-grid {\" -A 3 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"useAcomodarArrastrando\" src/AzafranApp.jsx)"
     ]
   }
 }
