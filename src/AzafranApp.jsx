@@ -3043,6 +3043,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [subiendoTicket, setSubiendoTicket] = useState(false);
   const [tiendaOtra, setTiendaOtra] = useState(false);
   const [abrirGasto, setAbrirGasto] = useState(false);
+  const [abrirFijos, setAbrirFijos] = useState(false);
   const [abrirFiltros, setAbrirFiltros] = useState(false);
   const [datosParaCopiar, setDatosParaCopiar] = useState(null);
   const [confirmarFactura, setConfirmarFactura] = useState(null);
@@ -3434,6 +3435,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       id: uid(),
       fecha: `${claveMes}-${String(Math.min(f.dia || 1, 28)).padStart(2, "0")}`,
       categoria: f.categoria,
+      // De qué bolsa sale: sin esto, la renta de la casa acababa contando
+      // contra el negocio y las utilidades salían más bajas de lo real.
+      ambito: f.ambito || "negocio",
       descripcion: f.descripcion,
       monto: f.monto,
       esFijo: true,
@@ -3458,11 +3462,20 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       onGuardarConfig({
         ...config,
         gastosFijos: fijos.map((f) =>
-          f.id === draftFijo.id ? { ...f, descripcion: draftFijo.descripcion.trim(), categoria: draftFijo.categoria, monto, dia } : f
+          f.id === draftFijo.id
+            ? { ...f, descripcion: draftFijo.descripcion.trim(), categoria: draftFijo.categoria, ambito: draftFijo.ambito || "negocio", monto, dia }
+            : f
         ),
       });
     } else {
-      const nuevo = { id: uid(), descripcion: draftFijo.descripcion.trim(), categoria: draftFijo.categoria, monto, dia };
+      const nuevo = {
+        id: uid(),
+        descripcion: draftFijo.descripcion.trim(),
+        categoria: draftFijo.categoria,
+        ambito: draftFijo.ambito || "negocio",
+        monto,
+        dia,
+      };
       onGuardarConfig({ ...config, gastosFijos: [...fijos, nuevo] });
     }
     setDraftFijo(null);
@@ -3473,6 +3486,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const gastosFijos = config?.gastosFijos || [];
   const totalFijosAlMes = gastosFijos.reduce((a, f) => a + (parseFloat(f.monto) || 0), 0);
+  // Separados por bolsa, que es la pregunta que de verdad se hace al revisarlos:
+  // cuánto se va cada mes en el negocio y cuánto en la casa.
+  const fijosPorAmbito = AMBITOS.map((a) => {
+    const lista = gastosFijos.filter((f) => ambitoDe(f) === a.id);
+    return { ...a, lista, total: lista.reduce((t, f) => t + (parseFloat(f.monto) || 0), 0) };
+  });
 
   // Nombres que ya se han usado, para ofrecerlos al escribir y que no acaben
   // cinco variantes del mismo lugar ("Chedraui", "chedragui", "CHEDRAUI"...).
@@ -4556,7 +4575,32 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {/* Gastos que caen igual todos los meses (renta, sueldos, servicios).
             Se capturan una vez aquí y la app los registra sola cada mes, para
             no teclearlos de nuevo ni que se olviden y descuadren los reportes. */}
-        <div className="af-section-title">Gastos fijos del mes</div>
+        {/* Minimizado por omisión: son una regla que ya funciona sola, se
+            entra a revisarlos de vez en cuando, no todos los días. */}
+        <div className="af-encabezado-accion">
+          <div className="af-section-title" style={{ margin: 0 }}>Gastos fijos del mes</div>
+          <button className="af-btn-accion" onClick={() => setAbrirFijos((v) => !v)}>
+            {abrirFijos ? <><X size={15} /> Cerrar</> : <><Pencil size={15} /> Revisar</>}
+          </button>
+        </div>
+
+        {!abrirFijos && (
+          <div className="af-card p-4 mb-5">
+            <div className="af-fijos-resumen">
+              {fijosPorAmbito.map((a) => (
+                <div key={a.id} className="af-fijos-resumen-item">
+                  <span className="af-fijos-resumen-label">{a.label}</span>
+                  <strong>{money(a.total)}</strong>
+                  <span className="af-fijos-sub">
+                    {a.lista.length} {pluralSimple("gasto", a.lista.length)} al mes
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {abrirFijos && (
         <div className="af-card p-4 mb-5">
           <div className="af-hint mb-3">
             Se registran solos cada mes. Revisa que los montos estén al día: si sube la
@@ -4569,33 +4613,57 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </div>
           ) : (
             <>
-              {gastosFijos.map((f) => (
-                <div key={f.id} className="af-fijos-row">
-                  <div className="af-fijos-txt">
-                    <div className="af-fijos-nombre">{f.descripcion}</div>
-                    <div className="af-fijos-sub">{f.categoria} · cada día {f.dia}</div>
+              {/* Separados por bolsa: lo del negocio y lo de la casa no se
+                  mezclan, que es justo lo que se viene a comprobar aquí. */}
+              {fijosPorAmbito.filter((a) => a.lista.length > 0).map((a) => (
+                <div key={a.id} className="mb-3">
+                  <div className="af-fijos-grupo">{a.label}</div>
+                  {a.lista.map((f) => (
+                    <div key={f.id} className="af-fijos-row">
+                      <div className="af-fijos-txt">
+                        <div className="af-fijos-nombre">{f.descripcion}</div>
+                        <div className="af-fijos-sub">{f.categoria} · cada día {f.dia}</div>
+                      </div>
+                      <span className="af-fijos-monto">{money(f.monto)}</span>
+                      <button
+                        className="af-icon-btn"
+                        title="Cambiar"
+                        onClick={() => setDraftFijo({ ...f, ambito: ambitoDe(f), monto: String(f.monto) })}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button className="af-icon-btn" title="Quitar" onClick={() => quitarFijo(f.id)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="af-fijos-total">
+                    {a.label}: <strong>{money(a.total)}</strong> al mes
                   </div>
-                  <span className="af-fijos-monto">{money(f.monto)}</span>
-                  <button
-                    className="af-icon-btn"
-                    title="Cambiar"
-                    onClick={() => setDraftFijo({ ...f, monto: String(f.monto) })}
-                  >
-                    <Pencil size={16} />
-                  </button>
-                  <button className="af-icon-btn" title="Quitar" onClick={() => quitarFijo(f.id)}>
-                    <Trash2 size={16} />
-                  </button>
                 </div>
               ))}
               <div className="af-fijos-total">
-                Suman <strong>{money(totalFijosAlMes)}</strong> al mes
+                Todo junto suma <strong>{money(totalFijosAlMes)}</strong> al mes
               </div>
             </>
           )}
 
           {draftFijo ? (
             <div className="af-fijos-form mt-3">
+              <div className="af-field">
+                <label>¿De dónde sale?</label>
+                <div className="af-ambito-switch">
+                  {AMBITOS.map((a) => (
+                    <button
+                      key={a.id}
+                      className={"af-ambito-btn" + ((draftFijo.ambito || "negocio") === a.id ? " active" : "")}
+                      onClick={() => setDraftFijo({ ...draftFijo, ambito: a.id })}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="af-field">
                 <label>¿De qué es?</label>
                 <CampoConSugerencias
@@ -4643,12 +4711,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           ) : (
             <button
               className="af-btn-secondary w-full"
-              onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], monto: "", dia: 1 })}
+              onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", monto: "", dia: 1 })}
             >
               <Plus size={16} className="inline mr-1" /> Agregar gasto fijo
             </button>
           )}
         </div>
+        )}
 
         </>
         )}
@@ -4687,6 +4756,51 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               ))}
             </div>
           </div>
+          {/* La foto va arriba, siempre visible y sin depender de qué tienda
+              se eligió. Antes solo aparecía después de elegir una tienda que
+              factura, y Pepe no la encontraba: el paso natural es llegar con
+              el ticket en la mano y retratarlo antes de teclear nada. */}
+          <div className="af-field af-ticket-campo">
+            <label>Foto del ticket</label>
+            {nuevoGasto.ticket ? (
+              <div className="af-ticket-listo">
+                <Receipt size={15} /> Ticket guardado
+                <button className="af-btn-ghost" onClick={() => setNuevoGasto({ ...nuevoGasto, ticket: null })}>
+                  Quitar
+                </button>
+              </div>
+            ) : (
+              <label className="af-btn-secondary w-full" style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
+                {subiendoTicket ? "Subiendo…" : <><Camera size={15} className="inline mr-1" /> Tomar o elegir foto</>}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  disabled={subiendoTicket}
+                  onChange={async (e) => {
+                    const archivo = e.target.files && e.target.files[0];
+                    e.target.value = "";
+                    if (!archivo) return;
+                    setSubiendoTicket(true);
+                    try {
+                      const ruta = await subirTicket(archivo);
+                      setNuevoGasto((prev) => ({ ...prev, ticket: ruta }));
+                    } catch (err) {
+                      showToast("No se pudo guardar la foto: " + (err.message || ""), "error");
+                    }
+                    setSubiendoTicket(false);
+                  }}
+                />
+              </label>
+            )}
+            <p className="af-ink-soft text-xs mt-1">
+              {esTiendaFacturable(nuevoGasto.tienda)
+                ? "Con la foto guardada ya puedes facturar sin buscar el papel."
+                : "Opcional. Guárdala para no perder el ticket antes de facturarlo."}
+            </p>
+          </div>
+
           <div className="af-field">
             <label>Fecha</label>
             <input type="date" className="af-input" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
@@ -4759,50 +4873,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <label>Monto</label>
             <NumberField value={nuevoGasto.monto} min={0} className="af-input" onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })} />
           </div>
-
-          {/* La foto solo se ofrece en las tiendas donde sí dan factura: en el
-              mercado pedirla no lleva a nada y sería un paso de más. */}
-          {esTiendaFacturable(nuevoGasto.tienda) && (
-            <div className="af-field af-ticket-campo">
-              <label>Foto del ticket (para facturar)</label>
-              {nuevoGasto.ticket ? (
-                <div className="af-ticket-listo">
-                  <Receipt size={15} /> Ticket guardado
-                  <button className="af-btn-ghost" onClick={() => setNuevoGasto({ ...nuevoGasto, ticket: null })}>
-                    Quitar
-                  </button>
-                </div>
-              ) : (
-                <label className="af-btn-secondary w-full" style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
-                  {subiendoTicket ? "Subiendo…" : <><Camera size={15} className="inline mr-1" /> Tomar o elegir foto</>}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    style={{ display: "none" }}
-                    disabled={subiendoTicket}
-                    onChange={async (e) => {
-                      const archivo = e.target.files && e.target.files[0];
-                      e.target.value = "";
-                      if (!archivo) return;
-                      setSubiendoTicket(true);
-                      try {
-                        const ruta = await subirTicket(archivo);
-                        setNuevoGasto((prev) => ({ ...prev, ticket: ruta }));
-                      } catch (err) {
-                        showToast("No se pudo guardar la foto: " + (err.message || ""), "error");
-                      }
-                      setSubiendoTicket(false);
-                    }}
-                  />
-                </label>
-              )}
-              <p className="af-ink-soft text-xs mt-1">
-                Se guarda para que no se pierda el ticket antes de facturarlo. Puedes agregar el
-                gasto sin foto y subirla después.
-              </p>
-            </div>
-          )}
 
           <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
         </div>
@@ -9110,6 +9180,11 @@ const AZAFRAN_CSS = `
 .af-fijos-nombre { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .af-fijos-sub { font-size: 11.5px; color: var(--ink-soft); }
 .af-fijos-monto { font-size: 13.5px; font-weight: 700; color: var(--gasto, #c0392b); flex-shrink: 0; }
+.af-fijos-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 4px 0 2px; }
+.af-fijos-resumen { display: flex; gap: 10px; flex-wrap: wrap; }
+.af-fijos-resumen-item { flex: 1 1 130px; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.af-fijos-resumen-item strong { font-size: 18px; }
+.af-fijos-resumen-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
 .af-fijos-total { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); text-align: right; }
 .af-fijos-form { padding-top: 14px; border-top: 1px solid var(--line); }
 

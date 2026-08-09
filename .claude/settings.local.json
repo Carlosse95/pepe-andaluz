@@ -385,7 +385,16 @@
       "Bash(/usr/bin/grep -n \"piezasPorUnidad\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"useState\\(DEFAULT_CONFIG\\)\\\\|const \\\\[cargando, setCargando\\\\]\\\\|const guardarConfig\\\\|setCargando\\(false\\)\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"configCargada\" src/AzafranApp.jsx)",
-      "Bash(awk 'NR>=7550 && NR<=7960 && /^  if \\\\\\(.*\\\\\\) \\\\{$|^  return \\\\\\(|^    return \\\\\\(/ {print NR\": \"substr\\($0,1,60\\)}' src/AzafranApp.jsx)"
+      "Bash(awk 'NR>=7550 && NR<=7960 && /^  if \\\\\\(.*\\\\\\) \\\\{$|^  return \\\\\\(|^    return \\\\\\(/ {print NR\": \"substr\\($0,1,60\\)}' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Gastos fijos del mes\" -B 3 -A 8 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const guardarFijo\" -A 14 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"draftFijo\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"fijosGenerados\" -B 6 -A 22 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"abrirGasto\\\\] = useState\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-fijos-grupo\\\\|af-fijos-resumen\\\\|abrirFijos\" src/AzafranApp.jsx)",
+      "Bash(npx vite *)",
+      "Bash(/usr/bin/grep -n \"af-fijos-total\\\\|af-fijos-row {\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Foto del ticket\\\\|subirTicket\\\\|ticketRuta\\\\|nuevoGasto.tienda\" src/AzafranApp.jsx)"
     ]
   }
 }
