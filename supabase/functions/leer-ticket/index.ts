@@ -42,26 +42,46 @@ const ESQUEMA = {
       description:
         "El total pagado, el renglon que dice TOTAL (no el subtotal ni el efectivo entregado ni el cambio). Solo el numero. null si no se distingue.",
     },
+    folio: {
+      anyOf: [{ type: "string" }, { type: "null" }],
+      description:
+        "El numero con el que el portal de esa tienda identifica la compra, sin espacios. null si no se distingue.",
+    },
+    folio2: {
+      anyOf: [{ type: "string" }, { type: "null" }],
+      description:
+        "Segundo numero cuando el ticket trae dos (Sam's: el TR#). null cuando no aplica.",
+    },
     confianza: {
       type: "string",
       enum: ["alta", "media", "baja"],
       description: "Que tan clara se ve la foto: alta si se lee sin esfuerzo, baja si esta borrosa o cortada.",
     },
   },
-  required: ["tienda", "fecha", "total", "confianza"],
+  required: ["tienda", "fecha", "total", "folio", "folio2", "confianza"],
   additionalProperties: false,
 };
 
 const INSTRUCCIONES = `Eres quien captura los gastos de un negocio de paellas en Mérida, Yucatán, México.
 
-Te llega la foto de un ticket de compra y devuelves tres cosas: la tienda, la fecha y el total.
+Te llega la foto de un ticket de compra. Devuelves los datos con los que después se pide la factura.
 
-Cómo leerlo:
-- El **total** es el renglón que dice TOTAL. No es el subtotal, ni el IVA, ni el efectivo que entregó el cliente, ni el cambio. Si aparecen varios, el que vale es el que se cobró.
-- La **fecha** viene en formato mexicano (día/mes/año). Devuélvela como AAAA-MM-DD.
-- La **tienda** es el nombre comercial tal como lo conoce la gente: "Chedraui", no "Tiendas Chedraui S.A. de C.V. Sucursal Montejo".
+**El total** es el renglón que dice TOTAL. No es el subtotal, ni el IVA, ni el efectivo que entregó el cliente, ni el cambio. Si aparecen varios, el que vale es el que se cobró.
 
-Un dato que no se distingue se devuelve como null. Prefiere null antes que adivinar: un número inventado se convierte en un gasto equivocado en las cuentas del negocio, y nadie lo va a notar.`;
+**La fecha** viene en formato mexicano (día/mes/año). Devuélvela como AAAA-MM-DD.
+
+**La tienda** es el nombre comercial tal como lo conoce la gente: "Chedraui", no "Tiendas Chedraui S.A. de C.V. Sucursal Montejo".
+
+**El folio** es el número con el que el portal de esa tienda identifica la compra. Cambia según la tienda:
+
+- **Chedraui**: el folio de 19 dígitos, hasta abajo, arriba del código de barras. Suele venir como ***FOLIO:2608 0811 1200 7803 0106***. Devuélvelo sin espacios ni asteriscos.
+- **Costco**: el número de ticket, debajo del código de barras.
+- **Soriana**: el número de ticket, justo debajo del código de barras.
+- **Sam's**: trae DOS. En \`folio\` va el TC# de 20 dígitos (abajo, sobre el código de barras) y en \`folio2\` el TR# de 3 o 4 dígitos (arriba).
+- **Aki**: el número de ticket o folio que aparezca.
+- Otra tienda: el número que más se parezca a un folio de ticket.
+
+Un dato que no se distingue se devuelve como null. Prefiere null antes que adivinar: un número inventado se convierte en un gasto equivocado en las cuentas del negocio, o en una factura que el portal rechaza sin decir por qué, y nadie lo va a notar.`;
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {

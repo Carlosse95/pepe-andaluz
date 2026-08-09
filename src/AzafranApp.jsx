@@ -2948,7 +2948,7 @@ const TIENDAS_INFO = [
   {
     nombre: "Chedraui",
     portal: "https://www.masfacturaweb.com.mx/Chedraui/Chedraui_MFW.aspx",
-    pide: "El folio de 19 dígitos, hasta abajo del ticket, arriba del código de barras.",
+    pide: "El folio largo, hasta abajo del ticket, arriba del código de barras.",
     plazo: "finDeMes+10",
   },
   {
@@ -3725,7 +3725,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const guardarGastoNuevo = (g) => {
     onGuardarGastos([g, ...gastos]);
-    setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0, tienda: "", ticket: null, ambito: "negocio" });
+    setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0, tienda: "", ticket: null, folio: null, folio2: null, ambito: "negocio" });
     setTiendaOtra(false);
     setAbrirGasto(false);
     setPosibleDuplicado(null);
@@ -3743,6 +3743,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       monto: parseFloat(nuevoGasto.monto),
       // Ruta de la foto en el almacén de la nube (no la foto en sí).
       ticket: nuevoGasto.ticket || null,
+      // El número con el que el portal de la tienda identifica la compra, ya
+      // leído del ticket: es el dato que había que teclear a mano.
+      folio: nuevoGasto.folio || null,
+      folio2: nuevoGasto.folio2 || null,
       facturado: false,
     };
     // Antes de guardar se avisa si ya hay uno igual o muy parecido: es fácil
@@ -5047,6 +5051,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                           fecha: leido.fecha || prev.fecha,
                           monto: leido.total > 0 ? leido.total : prev.monto,
                           categoria: categoriaDeTienda(leido.tienda) || prev.categoria,
+                          folio: leido.folio || prev.folio,
+                          folio2: leido.folio2 || prev.folio2,
                         }));
                         const partes = [
                           leido.tienda,
@@ -5170,7 +5176,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </div>
                     {/* Qué pide ese portal en concreto: cada tienda es distinta
                         y de memoria no se acuerda uno. */}
-                    {info && <div className="af-factura-pide">{info.pide}</div>}
+                    {/* Si el ticket ya se leyó, el folio está aquí y se copia de
+                        un toque: era el dato que había que teclear a mano en el
+                        portal, veinte dígitos sin equivocarse. */}
+                    {g.folio ? (
+                      <div className="af-factura-folio">
+                        <span className="af-mini-label">Folio del ticket</span>
+                        <code>{g.folio}</code>
+                        {g.folio2 && <><span className="af-mini-label">Segundo número</span><code>{g.folio2}</code></>}
+                      </div>
+                    ) : (
+                      info && <div className="af-factura-pide">{info.pide}</div>
+                    )}
                     <div className="af-factura-acciones">
                       {info && (
                         <a className="af-chip af-chip-portal" href={info.portal} target="_blank" rel="noopener noreferrer">
@@ -5183,6 +5200,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         </button>
                       ) : (
                         <span className="af-chip af-chip-sin-ticket">Sin foto</span>
+                      )}
+                      {g.folio && (
+                        <button
+                          className="af-chip af-chip-neutral"
+                          onClick={() => {
+                            navigator.clipboard.writeText(g.folio);
+                            showToast("Folio copiado", "ok");
+                          }}
+                        >
+                          <Copy size={12} /> Copiar folio
+                        </button>
                       )}
                       <button className="af-chip af-chip-neutral" onClick={() => copiarDatosFiscales(g)}>
                         <ClipboardPaste size={12} /> Copiar mis datos
@@ -9596,6 +9624,8 @@ const AZAFRAN_CSS = `
 }
 .af-mas-detalles-nota { font-weight: 400; font-size: 12px; color: var(--ink-soft); }
 .af-detalles-gasto { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 4px; }
+.af-factura-folio { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 6px 0; }
+.af-factura-folio code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 700; letter-spacing: .02em; word-break: break-all; }
 .af-menu-grupo { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-top: 6px; }
 .af-fijos-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 4px 0 2px; }
 .af-fijos-resumen { display: flex; gap: 10px; flex-wrap: wrap; }
