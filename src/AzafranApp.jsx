@@ -6,6 +6,7 @@ import {
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet,
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell, Filter,
+  ChevronUp, ChevronDown,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import jsPDF from "jspdf";
@@ -448,6 +449,59 @@ const ESTADOS_PEDIDO = [
 const ESTADO_LABEL = Object.fromEntries(ESTADOS_PEDIDO.map((e) => [e.id, e.label]));
 
 const METODO_PAGO_LABEL = { efectivo: "Efectivo", transferencia: "Transferencia", tarjeta: "Tarjeta" };
+
+// El orden en que están guardados los productos es el orden en que aparecen al
+// hacer un pedido. Pepe quiere poner primero lo que más vende, así que se
+// puede mover cada uno a mano; el acomodo alfabético no le dice nada a quien
+// está tomando el pedido con el cliente esperando.
+//
+// Se mueve solo dentro de su categoría: en el pedido salen agrupados por
+// categoría, así que cruzarlo a otra no se notaría más que como un salto raro.
+const moverEnLista = (lista, indice, direccion, mismoGrupo) => {
+  let vecino = -1;
+  for (let j = indice + direccion; j >= 0 && j < lista.length; j += direccion) {
+    if (mismoGrupo(lista[j], lista[indice])) { vecino = j; break; }
+  }
+  if (vecino < 0) return lista;
+  const copia = [...lista];
+  copia[indice] = lista[vecino];
+  copia[vecino] = lista[indice];
+  return copia;
+};
+
+const puedeMover = (lista, indice, direccion, mismoGrupo) => {
+  for (let j = indice + direccion; j >= 0 && j < lista.length; j += direccion) {
+    if (mismoGrupo(lista[j], lista[indice])) return true;
+  }
+  return false;
+};
+
+// Flechitas para subir o bajar un producto. Botones y no arrastrar: en el iPad
+// arrastrar dentro de una lista que ya se desplaza sola sale mal más veces de
+// las que sale bien.
+const BotonesOrden = ({ lista, indice, mismoGrupo, onCambiar }) => (
+  <div className="af-orden-btns">
+    <button
+      className="af-icon-btn"
+      title="Subir"
+      disabled={!puedeMover(lista, indice, -1, mismoGrupo)}
+      onClick={() => onCambiar(moverEnLista(lista, indice, -1, mismoGrupo))}
+    >
+      <ChevronUp size={15} />
+    </button>
+    <button
+      className="af-icon-btn"
+      title="Bajar"
+      disabled={!puedeMover(lista, indice, 1, mismoGrupo)}
+      onClick={() => onCambiar(moverEnLista(lista, indice, 1, mismoGrupo))}
+    >
+      <ChevronDown size={15} />
+    </button>
+  </div>
+);
+
+const MISMO_SIEMPRE = () => true;
+const MISMA_CATEGORIA = (a, b) => (a.categoria || "platillo") === (b.categoria || "platillo");
 
 // Categorías de productos que se pueden agregar a un pedido/presupuesto.
 const CATEGORIAS_ITEM = [
@@ -5495,6 +5549,22 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     if (sinCambiosSinGuardar) setDraft(config);
   }, [config]);
 
+  // Los platillos se muestran agrupados por categoría —igual que salen al hacer
+  // un pedido— pero conservando el índice real dentro de draft.extras, que es
+  // con el que trabajan los campos y las flechas de orden.
+  const filasExtras = (() => {
+    const orden = CATEGORIAS_ITEM.filter((c) => c.id !== "paella").map((c) => c.id);
+    const conIndice = draft.extras.map((ex, i) => ({ ex, i }));
+    conIndice.sort((a, b) => orden.indexOf(a.ex.categoria || "platillo") - orden.indexOf(b.ex.categoria || "platillo"));
+    let anterior = null;
+    return conIndice.map((fila) => {
+      const cat = fila.ex.categoria || "platillo";
+      const abreCategoria = cat !== anterior;
+      anterior = cat;
+      return { ...fila, abreCategoria };
+    });
+  })();
+
   const guardar = () => {
     // Se parte de `draft` entero y solo se reescribe lo que se edita aquí.
     // La configuración también guarda cosas que se manejan desde otras
@@ -5861,6 +5931,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       setDraft({ ...draft, paellas });
                     }}
                   />
+                  <BotonesOrden
+                    lista={draft.paellas}
+                    indice={i}
+                    mismoGrupo={MISMO_SIEMPRE}
+                    onCambiar={(paellas) => setDraft({ ...draft, paellas })}
+                  />
                   <button className="af-icon-btn" onClick={() => setDraft({ ...draft, paellas: draft.paellas.filter((_, xi) => xi !== i) })}>
                     <Trash2 size={15} />
                   </button>
@@ -5889,8 +5965,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           </div>
 
           <div className="af-section-title">Otros platillos</div>
+          <div className="af-hint mb-2">
+            Con las flechitas los acomodas a tu gusto: el orden de aquí es el que verás
+            al hacer un pedido. Pon primero lo que más se vende.
+          </div>
           <div className="af-menu-grid">
-            {draft.extras.map((ex, i) => (
+            {filasExtras.map(({ ex, i, abreCategoria }) => (
+              <React.Fragment key={ex.id}>
+              {abreCategoria && <div className="af-menu-grupo">{CATEGORIA_LABEL[ex.categoria || "platillo"]}</div>}
               <div key={ex.id} className="af-menu-card">
                 <div className="af-menu-card-top">
                   <input
@@ -5901,6 +5983,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
                       setDraft({ ...draft, extras });
                     }}
+                  />
+                  <BotonesOrden
+                    lista={draft.extras}
+                    indice={i}
+                    mismoGrupo={MISMA_CATEGORIA}
+                    onCambiar={(extras) => setDraft({ ...draft, extras })}
                   />
                   <button className="af-icon-btn" onClick={() => setDraft({ ...draft, extras: draft.extras.filter((_, xi) => xi !== i) })}>
                     <Trash2 size={15} />
@@ -5985,6 +6073,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   </div>
                 )}
               </div>
+              </React.Fragment>
             ))}
             <button
               className="af-add-card"
@@ -9201,6 +9290,10 @@ const AZAFRAN_CSS = `
 .af-fijos-nombre { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .af-fijos-sub { font-size: 11.5px; color: var(--ink-soft); }
 .af-fijos-monto { font-size: 13.5px; font-weight: 700; color: var(--gasto, #c0392b); flex-shrink: 0; }
+.af-orden-btns { display: flex; flex-direction: column; gap: 1px; }
+.af-orden-btns .af-icon-btn { padding: 1px 3px; min-height: 0; }
+.af-orden-btns .af-icon-btn:disabled { opacity: .25; }
+.af-menu-grupo { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-top: 6px; }
 .af-fijos-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 4px 0 2px; }
 .af-fijos-resumen { display: flex; gap: 10px; flex-wrap: wrap; }
 .af-fijos-resumen-item { flex: 1 1 130px; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }

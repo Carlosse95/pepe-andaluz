@@ -404,7 +404,20 @@
       "Bash(~/Documents/Respaldos-Pepe-Andaluz/respaldar.sh)",
       "Bash(curl -s -o /dev/null -w \"sin llave: %{http_code}\\\\n\" https://sykfhnznbneuipibatmx.supabase.co/functions/v1/respaldo)",
       "Bash(curl -s -o /dev/null -w \"llave falsa: %{http_code}\\\\n\" -H \"x-llave-respaldo: aaaaaaaa\" https://sykfhnznbneuipibatmx.supabase.co/functions/v1/respaldo)",
-      "Bash(mkdir -p supabase/functions/respaldo && cp /dev/null /dev/null *)"
+      "Bash(mkdir -p supabase/functions/respaldo && cp /dev/null /dev/null *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://carlosse95.github.io/pepe-andaluz/)",
+      "Bash(/usr/bin/grep -o 'assets/[^\"]*\\\\.js')",
+      "Bash(curl -s https://carlosse95.github.io/pepe-andaluz/assets/index-ClrrJx1-.js)",
+      "Bash(/usr/bin/grep -c \"leidasDeLaNube\\\\|todavía no se ha leído de la nube\")",
+      "Bash(/usr/bin/grep -n \"config.extras\\\\|config?.extras\\\\|\\\\.extras ||\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"config.platillos\\\\|config?.platillos\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"CATEGORIAS_EXTRA\\\\|categoria: \\\\\"entrada\\\\\"\\\\|\\\\\"postre\\\\\"\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Añadir paella\\\\|Añadir platillo\\\\|af-menu-fila\\\\|PAELLAS\\\\b\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"ChevronUp\\\\|ChevronDown\\\\|ArrowUp\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^} from \\\\\"lucide-react\\\\\"\\\\|from \\\\\"lucide-react\\\\\"\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -c \"BotonesOrden\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"filasExtras\\\\|</React.Fragment>\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const guardar = \\(\\) =>\" src/AzafranApp.jsx)"
     ]
   }
 }
