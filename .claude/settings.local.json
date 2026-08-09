@@ -397,7 +397,14 @@
       "Bash(/usr/bin/grep -n \"Foto del ticket\\\\|subirTicket\\\\|ticketRuta\\\\|nuevoGasto.tienda\" src/AzafranApp.jsx)",
       "mcp__773e028c-e5d4-4132-9911-77f96c4124ca__get_project",
       "Bash(/usr/bin/grep -n \"const persist\\\\|configCargada\\\\|aplicarClave\\(\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"leidasDeLaNube\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"leidasDeLaNube\" src/AzafranApp.jsx)",
+      "Bash(mkdir -p ~/Documents/Respaldos-Pepe-Andaluz && ls -la ~/Documents/Respaldos-Pepe-Andaluz)",
+      "mcp__773e028c-e5d4-4132-9911-77f96c4124ca__deploy_edge_function",
+      "Bash(chmod +x ~/Documents/Respaldos-Pepe-Andaluz/respaldar.sh)",
+      "Bash(~/Documents/Respaldos-Pepe-Andaluz/respaldar.sh)",
+      "Bash(curl -s -o /dev/null -w \"sin llave: %{http_code}\\\\n\" https://sykfhnznbneuipibatmx.supabase.co/functions/v1/respaldo)",
+      "Bash(curl -s -o /dev/null -w \"llave falsa: %{http_code}\\\\n\" -H \"x-llave-respaldo: aaaaaaaa\" https://sykfhnznbneuipibatmx.supabase.co/functions/v1/respaldo)",
+      "Bash(mkdir -p supabase/functions/respaldo && cp /dev/null /dev/null *)"
     ]
   }
 }
