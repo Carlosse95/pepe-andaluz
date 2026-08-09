@@ -394,7 +394,10 @@
       "Bash(/usr/bin/grep -n \"af-fijos-grupo\\\\|af-fijos-resumen\\\\|abrirFijos\" src/AzafranApp.jsx)",
       "Bash(npx vite *)",
       "Bash(/usr/bin/grep -n \"af-fijos-total\\\\|af-fijos-row {\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"Foto del ticket\\\\|subirTicket\\\\|ticketRuta\\\\|nuevoGasto.tienda\" src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"Foto del ticket\\\\|subirTicket\\\\|ticketRuta\\\\|nuevoGasto.tienda\" src/AzafranApp.jsx)",
+      "mcp__773e028c-e5d4-4132-9911-77f96c4124ca__get_project",
+      "Bash(/usr/bin/grep -n \"const persist\\\\|configCargada\\\\|aplicarClave\\(\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"leidasDeLaNube\" src/AzafranApp.jsx)"
     ]
   }
 }

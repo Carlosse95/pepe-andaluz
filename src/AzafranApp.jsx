@@ -7841,6 +7841,16 @@ export default function App() {
           almacen.get("gastos"),
         ]);
         if (cancelado) return;
+        // Una clave cuenta como leída aunque venga vacía: "no existe todavía"
+        // es una respuesta buena. Lo que no la marca es que la consulta falle.
+        const marcarLeida = (r, clave) => { if (r.status === "fulfilled") leidasDeLaNube.current.add(clave); };
+        marcarLeida(rp, "pedidos");
+        marcarLeida(rc, "clientes");
+        marcarLeida(rcfg, "config-productos");
+        marcarLeida(rh, "historico-mensual");
+        marcarLeida(rpr, "presupuestos");
+        marcarLeida(rav, "avatares");
+        marcarLeida(rg, "gastos");
         if (rp.status === "fulfilled" && rp.value) aplicarClave("pedidos", rp.value.value);
         if (rc.status === "fulfilled" && rc.value) aplicarClave("clientes", rc.value.value);
         // Los valores de fábrica SOLO se siembran cuando la consulta salió
@@ -7988,7 +7998,18 @@ export default function App() {
     // eslint-disable-next-line
   }, [cargando]);
 
+  // Candado general: una clave solo se puede guardar si antes se leyó de la
+  // nube en esta sesión. Cada clave guarda un JSON completo que se reescribe
+  // entero, así que escribir sin haber leído no corrige nada: borra lo que
+  // había. Pasa cuando la app arranca con los valores de fábrica en memoria y
+  // la lectura falla, o cuando algo la reconecta a la nube a media sesión.
+  const leidasDeLaNube = useRef(new Set());
   const persist = async (key, value) => {
+    if (nubeActiva && !leidasDeLaNube.current.has(key)) {
+      console.warn(`No se guarda "${key}": todavía no se ha leído de la nube.`);
+      showToast("Todavía no se terminan de cargar los datos; no se guardó", "error");
+      return;
+    }
     try {
       await almacen.set(key, JSON.stringify(value));
     } catch (e) {
