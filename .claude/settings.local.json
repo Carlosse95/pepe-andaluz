@@ -438,7 +438,25 @@
       "Bash(/usr/bin/grep -n \"Guardar cambios\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"El orden en que están guardados\" -A 12 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"af-btn-danger\" src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"^.af-btn-danger\" -A 2 src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"^.af-btn-danger\" -A 2 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"cigarro\\\\|Cigarro\\\\|CIGARRO\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Minimizado por omisión\\\\|Vista: Ajustes\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"af-campana\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^.af-avisos-panel\\\\|^.af-modal-overlay {\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"^.af-topbar {\" -A 2 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"backdrop-filter\" src/AzafranApp.jsx)",
+      "WebFetch(domain:www.eleken.co)",
+      "Bash(/usr/bin/grep -n \"porDia\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"GASTO_CIGARROS_DIARIO\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"CATEGORIAS_GASTO = \\\\|const \\\\[nuevoGasto\" -A 4 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const agregarGasto\" -A 22 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"setNuevoGasto\\({ fecha: todayISO\\(\\)\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const NumberField\" -A 14 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"function NumberField\" -A 20 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const guardarGastoNuevo\" -A 12 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"Quitar todos\\\\|Buscar y filtrar\\\\|gastosFiltrados.length\\\\|Por facturar\" src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n 'filtroAmbito, setFiltroAmbito\\\\] = useState' src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"const cuantosFiltros\" -A 10 src/AzafranApp.jsx)"
     ]
   }
 }

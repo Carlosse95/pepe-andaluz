@@ -2869,6 +2869,18 @@ const esPedidoDeIA = (pedido) => (pedido?.notas || "").includes("tomado por IA")
 // pudiera capturar contradictorio: categoría familiar con ámbito del negocio).
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Otros"];
 
+// En el súper casi siempre se compra despensa del negocio. Se propone sola la
+// categoría para que capturar un gasto sea decir cuánto y en dónde, nada más;
+// si no acierta, se cambia en "Más detalles".
+const CATEGORIA_POR_TIENDA = {
+  chedraui: "Ingredientes", aki: "Ingredientes", costco: "Ingredientes",
+  soriana: "Ingredientes", "sam's": "Ingredientes", sams: "Ingredientes",
+  walmart: "Ingredientes", mercado: "Ingredientes",
+  pemex: "Transporte", gasolinera: "Transporte", oxxo: "Otros",
+};
+const categoriaDeTienda = (tienda) =>
+  CATEGORIA_POR_TIENDA[(tienda || "").trim().toLowerCase()] || null;
+
 // El gasto familiar no es del negocio. Mezclados, la despensa y la escuela se
 // restan de las ventas y el negocio aparece en números rojos aunque vaya bien.
 // Cada gasto dice de dónde sale, y las cuentas del negocio solo miran los
@@ -3058,6 +3070,7 @@ const sonElMismoNombre = (a, b) => {
 // día por día, para no llenar la lista de renglones de $270.
 const GASTO_CIGARROS_DIARIO = 270;
 const ETIQUETA_CIGARROS = "Cigarros del mes";
+const ID_FIJO_CIGARROS = "fijo_cigarros";
 
 // Margen al que conviene apuntar en comida preparada: el costo de los
 // ingredientes no debería pasar del ~40% de lo que se cobra. Sirve para
@@ -3169,6 +3182,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [subiendoTicket, setSubiendoTicket] = useState(false);
   const [tiendaOtra, setTiendaOtra] = useState(false);
   const [abrirGasto, setAbrirGasto] = useState(false);
+  const [verDetallesGasto, setVerDetallesGasto] = useState(false);
   const [abrirFijos, setAbrirFijos] = useState(false);
   const [abrirFiltros, setAbrirFiltros] = useState(false);
   const [datosParaCopiar, setDatosParaCopiar] = useState(null);
@@ -3371,8 +3385,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
   // Cuántos filtros están puestos, para el número del botón.
+  // La bolsa (negocio / familiar) no cuenta como filtro: es la vista normal y
+  // se cambia con sus pestañas. Contarla dejaba el aviso de "1 filtro puesto"
+  // encendido siempre, con su chip y su "Quitar todos", sin que nadie hubiera
+  // filtrado nada.
   const cuantosFiltros =
-    (filtroAmbito !== "todos" ? 1 : 0) +
     (filtroCategoria !== "todos" ? 1 : 0) +
     (filtroTienda !== "todas" ? 1 : 0) +
     (mesGasto !== "todos" && !hayRango ? 1 : 0) +
@@ -3498,40 +3515,36 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     return parejas.slice(0, 12);
   })();
 
-  // Los cigarros son gasto de todos los días. Para no capturar $270 diarios a
-  // mano, se registra solo una vez al mes, con lo que suman los días de ese mes.
-  // Se lleva apunte de los meses ya generados: si alguien borra el renglón a
-  // propósito, no se vuelve a crear solo.
+  // Los cigarros eran una regla escondida en el código: $270 al día que se
+  // apuntaban solos cada mes y no salían por ningún lado, así que no había
+  // forma de verlos ni de corregirlos. Se pasan a ser un gasto fijo más, con
+  // su monto por día a la vista y editable como cualquier otro.
   useEffect(() => {
-    if (!esAdmin) return;
-    const hoy = new Date();
-    const anioHoy = hoy.getFullYear();
-    const mesHoy = hoy.getMonth();
-    // Se empezó a contar en julio de 2026; los meses de antes no se tocan.
-    if (anioHoy < 2026 || (anioHoy === 2026 && mesHoy < 6)) return;
-
-    const claveMes = `${anioHoy}-${String(mesHoy + 1).padStart(2, "0")}`;
-    const yaGenerados = config?.cigarrosGenerados || [];
-    if (yaGenerados.includes(claveMes)) return;
-    if (gastos.some((g) => g.esCigarros && (g.fecha || "").startsWith(claveMes))) return;
-    // Misma protección que los gastos fijos: mientras la nube confirma, este
-    // apunte en memoria evita que se registre dos veces.
-    if (yaGeneradosEnEstaSesion.current.has(`cigarros|${claveMes}`)) return;
-    yaGeneradosEnEstaSesion.current.add(`cigarros|${claveMes}`);
-
-    const diasDelMes = new Date(anioHoy, mesHoy + 1, 0).getDate();
-    const nuevo = {
-      id: uid(),
-      fecha: `${claveMes}-01`,
-      categoria: "Familiar/Personal",
-      descripcion: ETIQUETA_CIGARROS,
-      monto: GASTO_CIGARROS_DIARIO * diasDelMes,
-      esCigarros: true,
-    };
-    onGuardarGastos([nuevo, ...gastos]);
-    onGuardarConfig({ ...config, cigarrosGenerados: [...yaGenerados, claveMes] });
+    if (!esAdmin || !config) return;
+    const fijos = config.gastosFijos || [];
+    if (config.cigarrosMigrados || fijos.some((f) => f.id === ID_FIJO_CIGARROS)) return;
+    // Los meses que la regla vieja ya registró se dan por hechos, para que la
+    // ficha nueva no los vuelva a apuntar y salgan dobles.
+    const yaHechos = (config.cigarrosGenerados || []).map((m) => `${ID_FIJO_CIGARROS}|${m}`);
+    onGuardarConfig({
+      ...config,
+      cigarrosMigrados: true,
+      gastosFijos: [
+        ...fijos,
+        {
+          id: ID_FIJO_CIGARROS,
+          descripcion: ETIQUETA_CIGARROS,
+          categoria: "Familiar/Personal",
+          ambito: "familia",
+          porDia: GASTO_CIGARROS_DIARIO,
+          monto: 0,
+          dia: 1,
+        },
+      ],
+      fijosGenerados: [...(config.fijosGenerados || []), ...yaHechos],
+    });
     // eslint-disable-next-line
-  }, [esAdmin, config?.cigarrosGenerados]);
+  }, [esAdmin, config?.cigarrosMigrados]);
 
   // Gastos que caen todos los meses por el mismo monto (renta, sueldos...).
   // Se marcan una vez al capturarlos y de ahí en adelante se registran solos,
@@ -3557,6 +3570,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
     porCrear.forEach((f) => yaGeneradosEnEstaSesion.current.add(`${f.id}|${claveMes}`));
 
+    const diasDelMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
     const nuevos = porCrear.map((f) => ({
       id: uid(),
       fecha: `${claveMes}-${String(Math.min(f.dia || 1, 28)).padStart(2, "0")}`,
@@ -3565,7 +3579,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       // contra el negocio y las utilidades salían más bajas de lo real.
       ambito: f.ambito || "negocio",
       descripcion: f.descripcion,
-      monto: f.monto,
+      // Hay gastos que se piensan por día (los cigarros son $270 diarios) pero
+      // se apuntan una vez al mes. Se guarda el diario y aquí se multiplica por
+      // los días que trae el mes, que no son los mismos en febrero que en mayo.
+      monto: f.porDia > 0 ? f.porDia * diasDelMes : f.monto,
       esFijo: true,
     }));
     onGuardarGastos([...nuevos, ...gastos]);
@@ -3578,7 +3595,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const guardarFijo = () => {
     const monto = parseFloat(draftFijo.monto) || 0;
-    if (!draftFijo.descripcion.trim() || monto <= 0) return;
+    const porDia = parseFloat(draftFijo.porDia) || 0;
+    if (!draftFijo.descripcion.trim() || (monto <= 0 && porDia <= 0)) return;
     const fijos = config?.gastosFijos || [];
     const dia = Math.min(Math.max(Number(draftFijo.dia) || 1, 1), 28);
 
@@ -3589,7 +3607,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         ...config,
         gastosFijos: fijos.map((f) =>
           f.id === draftFijo.id
-            ? { ...f, descripcion: draftFijo.descripcion.trim(), categoria: draftFijo.categoria, ambito: draftFijo.ambito || "negocio", monto, dia }
+            ? {
+                ...f,
+                descripcion: draftFijo.descripcion.trim(),
+                categoria: draftFijo.categoria,
+                ambito: draftFijo.ambito || "negocio",
+                porDia: draftFijo.porDia > 0 ? parseFloat(draftFijo.porDia) : 0,
+                monto,
+                dia,
+              }
             : f
         ),
       });
@@ -3599,6 +3625,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         descripcion: draftFijo.descripcion.trim(),
         categoria: draftFijo.categoria,
         ambito: draftFijo.ambito || "negocio",
+        porDia: draftFijo.porDia > 0 ? parseFloat(draftFijo.porDia) : 0,
         monto,
         dia,
       };
@@ -3611,12 +3638,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     onGuardarConfig({ ...config, gastosFijos: (config?.gastosFijos || []).filter((f) => f.id !== fijoId) });
 
   const gastosFijos = config?.gastosFijos || [];
-  const totalFijosAlMes = gastosFijos.reduce((a, f) => a + (parseFloat(f.monto) || 0), 0);
+  const diasDeEsteMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const montoAlMes = (f) => (f.porDia > 0 ? f.porDia * diasDeEsteMes : parseFloat(f.monto) || 0);
+  const totalFijosAlMes = gastosFijos.reduce((a, f) => a + montoAlMes(f), 0);
   // Separados por bolsa, que es la pregunta que de verdad se hace al revisarlos:
   // cuánto se va cada mes en el negocio y cuánto en la casa.
   const fijosPorAmbito = AMBITOS.map((a) => {
     const lista = gastosFijos.filter((f) => ambitoDe(f) === a.id);
-    return { ...a, lista, total: lista.reduce((t, f) => t + (parseFloat(f.monto) || 0), 0) };
+    return { ...a, lista, total: lista.reduce((t, f) => t + montoAlMes(f), 0) };
   });
 
   // Nombres que ya se han usado, para ofrecerlos al escribir y que no acaben
@@ -4748,13 +4777,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     <div key={f.id} className="af-fijos-row">
                       <div className="af-fijos-txt">
                         <div className="af-fijos-nombre">{f.descripcion}</div>
-                        <div className="af-fijos-sub">{f.categoria} · cada día {f.dia}</div>
+                        <div className="af-fijos-sub">
+                          {f.porDia > 0
+                            ? `${money(f.porDia)} al día · ${diasDeEsteMes} días este mes`
+                            : `${f.categoria} · cada día ${f.dia}`}
+                        </div>
                       </div>
-                      <span className="af-fijos-monto">{money(f.monto)}</span>
+                      <span className="af-fijos-monto">{money(montoAlMes(f))}</span>
                       <button
                         className="af-icon-btn"
                         title="Cambiar"
-                        onClick={() => setDraftFijo({ ...f, ambito: ambitoDe(f), monto: String(f.monto) })}
+                        onClick={() => setDraftFijo({ ...f, ambito: ambitoDe(f), porDia: f.porDia || 0, monto: f.monto ? String(f.monto) : "" })}
                       >
                         <Pencil size={16} />
                       </button>
@@ -4809,15 +4842,51 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+              {/* Hay gastos que se piensan al día aunque se apunten una vez al
+                  mes, como los cigarros. Se captura el diario y la app hace la
+                  cuenta según los días que traiga cada mes. */}
               <div className="af-field">
-                <label>Cuánto es</label>
-                <NumberField
-                  value={draftFijo.monto}
-                  min={0}
-                  className="af-input"
-                  onChange={(v) => setDraftFijo({ ...draftFijo, monto: v })}
-                />
+                <label>¿Cómo lo tienes contado?</label>
+                <div className="af-ambito-switch">
+                  <button
+                    className={"af-ambito-btn" + (!(draftFijo.porDia > 0) ? " active" : "")}
+                    onClick={() => setDraftFijo({ ...draftFijo, porDia: 0 })}
+                  >
+                    Al mes
+                  </button>
+                  <button
+                    className={"af-ambito-btn" + (draftFijo.porDia > 0 ? " active" : "")}
+                    onClick={() => setDraftFijo({ ...draftFijo, porDia: draftFijo.porDia || draftFijo.monto || 1, monto: "" })}
+                  >
+                    Por día
+                  </button>
+                </div>
               </div>
+              {draftFijo.porDia > 0 ? (
+                <div className="af-field">
+                  <label>Cuánto al día</label>
+                  <NumberField
+                    value={draftFijo.porDia}
+                    min={0}
+                    className="af-input"
+                    onChange={(v) => setDraftFijo({ ...draftFijo, porDia: v })}
+                  />
+                  <div className="af-hint mt-1">
+                    Este mes serían <strong>{money((parseFloat(draftFijo.porDia) || 0) * diasDeEsteMes)}</strong>{" "}
+                    ({diasDeEsteMes} días).
+                  </div>
+                </div>
+              ) : (
+                <div className="af-field">
+                  <label>Cuánto es</label>
+                  <NumberField
+                    value={draftFijo.monto}
+                    min={0}
+                    className="af-input"
+                    onChange={(v) => setDraftFijo({ ...draftFijo, monto: v })}
+                  />
+                </div>
+              )}
               <div className="af-field">
                 <label>Qué día del mes se paga</label>
                 <NumberField
@@ -4829,7 +4898,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 />
                 <div className="af-hint mt-1">Del 1 al 28, para que caiga en todos los meses.</div>
               </div>
-              <button className="af-btn-primary w-full" onClick={guardarFijo} disabled={!draftFijo.descripcion.trim() || !draftFijo.monto}>
+              <button
+                className="af-btn-primary w-full"
+                onClick={guardarFijo}
+                disabled={!draftFijo.descripcion.trim() || (!draftFijo.monto && !draftFijo.porDia)}
+              >
                 {draftFijo.id ? "Guardar cambios" : "Agregar gasto fijo"}
               </button>
               <button className="af-btn-ghost w-full mt-2" onClick={() => setDraftFijo(null)}>Cancelar</button>
@@ -4837,7 +4910,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           ) : (
             <button
               className="af-btn-secondary w-full"
-              onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", monto: "", dia: 1 })}
+              onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", porDia: 0, monto: "", dia: 1 })}
             >
               <Plus size={16} className="inline mr-1" /> Agregar gasto fijo
             </button>
@@ -4866,26 +4939,62 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {abrirGasto && (
         <div className="af-card p-4 mb-5">
-          {/* Lo primero es de qué bolsa sale: es lo que decide si este gasto
-              cuenta contra el negocio o contra la casa. */}
+          {/* Capturar un gasto es contestar tres cosas: cuánto, dónde y el
+              ticket. Lo demás tiene una respuesta buena por omisión (hoy, del
+              negocio, la categoría de esa tienda) y vive en "Más detalles".
+              Antes eran siete campos para apuntar una compra de $200. */}
           <div className="af-field">
-            <label>¿De dónde sale?</label>
-            <div className="af-ambito-switch">
-              {AMBITOS.map((a) => (
-                <button
-                  key={a.id}
-                  className={"af-ambito-btn" + ((nuevoGasto.ambito || "negocio") === a.id ? " active" : "")}
-                  onClick={() => setNuevoGasto({ ...nuevoGasto, ambito: a.id })}
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
+            <label>¿Cuánto fue?</label>
+            <NumberField
+              value={nuevoGasto.monto}
+              min={0}
+              className="af-input af-monto-grande"
+              onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })}
+            />
           </div>
-          {/* La foto va arriba, siempre visible y sin depender de qué tienda
-              se eligió. Antes solo aparecía después de elegir una tienda que
-              factura, y Pepe no la encontraba: el paso natural es llegar con
-              el ticket en la mano y retratarlo antes de teclear nada. */}
+
+          <div className="af-field">
+            <label>¿En qué tienda?</label>
+            {/* Lista en vez de campo libre: se elige de las que ya se han
+                usado, así el nombre sale idéntico siempre y no acaba escrito
+                de tres formas. Solo se escribe cuando es una tienda nueva. */}
+            {tiendaOtra ? (
+              <div className="flex gap-2">
+                <input
+                  className="af-input flex-1"
+                  autoFocus
+                  placeholder="Nombre de la tienda"
+                  value={nuevoGasto.tienda || ""}
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value })}
+                />
+                <button
+                  className="af-btn-ghost"
+                  onClick={() => { setTiendaOtra(false); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }}
+                >
+                  Ver lista
+                </button>
+              </div>
+            ) : (
+              <select
+                className="af-input"
+                value={nuevoGasto.tienda || ""}
+                onChange={(e) => {
+                  if (e.target.value === "__otra__") { setTiendaOtra(true); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }
+                  else {
+                    // Al elegir la tienda se propone la categoría, para no
+                    // tener que abrir "Más detalles" en el caso de siempre.
+                    const tienda = e.target.value;
+                    const sugerida = categoriaDeTienda(tienda);
+                    setNuevoGasto({ ...nuevoGasto, tienda, categoria: sugerida || nuevoGasto.categoria });
+                  }
+                }}
+              >
+                <option value="">Sin tienda</option>
+                {tiendasParaElegir.map((t) => <option key={t} value={t}>{t}</option>)}
+                <option value="__otra__">Otra tienda…</option>
+              </select>
+            )}
+          </div>
           <div className="af-field af-ticket-campo">
             <label>Foto del ticket</label>
             {nuevoGasto.ticket ? (
@@ -4927,45 +5036,38 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </p>
           </div>
 
+
+          {/* Un solo botón esconde todo lo que casi nunca se cambia. */}
+          <button className="af-mas-detalles" onClick={() => setVerDetallesGasto((v) => !v)}>
+            {verDetallesGasto ? "Ocultar detalles" : "Más detalles"}
+            <span className="af-mas-detalles-nota">
+              {verDetallesGasto ? "" : `${fmtDateHuman(nuevoGasto.fecha)} · ${nuevoGasto.categoria} · ${(nuevoGasto.ambito || "negocio") === "familia" ? "familiar" : "del negocio"}`}
+            </span>
+          </button>
+
+          {verDetallesGasto && (
+            <div className="af-detalles-gasto">
+          <div className="af-field">
+            <label>¿De dónde sale?</label>
+            <div className="af-ambito-switch">
+              {AMBITOS.map((a) => (
+                <button
+                  key={a.id}
+                  className={"af-ambito-btn" + ((nuevoGasto.ambito || "negocio") === a.id ? " active" : "")}
+                  onClick={() => setNuevoGasto({ ...nuevoGasto, ambito: a.id })}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* La foto va arriba, siempre visible y sin depender de qué tienda
+              se eligió. Antes solo aparecía después de elegir una tienda que
+              factura, y Pepe no la encontraba: el paso natural es llegar con
+              el ticket en la mano y retratarlo antes de teclear nada. */}
           <div className="af-field">
             <label>Fecha</label>
             <input type="date" className="af-input" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
-          </div>
-          <div className="af-field">
-            <label>¿En qué tienda?</label>
-            {/* Lista en vez de campo libre: se elige de las que ya se han
-                usado, así el nombre sale idéntico siempre y no acaba escrito
-                de tres formas. Solo se escribe cuando es una tienda nueva. */}
-            {tiendaOtra ? (
-              <div className="flex gap-2">
-                <input
-                  className="af-input flex-1"
-                  autoFocus
-                  placeholder="Nombre de la tienda"
-                  value={nuevoGasto.tienda || ""}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value })}
-                />
-                <button
-                  className="af-btn-ghost"
-                  onClick={() => { setTiendaOtra(false); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }}
-                >
-                  Ver lista
-                </button>
-              </div>
-            ) : (
-              <select
-                className="af-input"
-                value={nuevoGasto.tienda || ""}
-                onChange={(e) => {
-                  if (e.target.value === "__otra__") { setTiendaOtra(true); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }
-                  else setNuevoGasto({ ...nuevoGasto, tienda: e.target.value });
-                }}
-              >
-                <option value="">Sin tienda</option>
-                {tiendasParaElegir.map((t) => <option key={t} value={t}>{t}</option>)}
-                <option value="__otra__">Otra tienda…</option>
-              </select>
-            )}
           </div>
           <div className="af-field">
             <label>Categoría</label>
@@ -4995,10 +5097,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               }}
             />
           </div>
-          <div className="af-field">
-            <label>Monto</label>
-            <NumberField value={nuevoGasto.monto} min={0} className="af-input" onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })} />
-          </div>
+            </div>
+          )}
 
           <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
         </div>
@@ -5006,7 +5106,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {/* Lo que falta facturar. Va antes de la lista de gastos porque es
             trabajo pendiente con fecha límite, no historia. */}
-        {porFacturar.length > 0 && (
+        {esAdmin && porFacturar.length > 0 && (
           <>
             <div className="af-section-title">
               Por facturar <span className="af-pill-total">{money(totalPorFacturar)}</span>
@@ -5070,6 +5170,21 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {/* Un solo botón para todo. Antes había una barra de buscar aparte del
             filtro, y no quedaba claro qué hacía cada cosa: ahora la búsqueda
             por texto es un filtro más, dentro del mismo panel. */}
+        {/* Qué bolsa se está viendo: unas pestañas de siempre, no un filtro que
+            hay que descubrir. Es la pregunta que más se hace y la respuesta
+            está a un toque. */}
+        <div className="af-ambito-switch mb-3">
+          {[...AMBITOS, { id: "todos", label: "Todo" }].map((a) => (
+            <button
+              key={a.id}
+              className={"af-ambito-btn" + (filtroAmbito === a.id ? " active" : "")}
+              onClick={() => setFiltroAmbito(a.id)}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+
         <div className="af-barra-filtros mb-3">
           <button
             className={"af-btn-accion af-btn-filtrar" + (cuantosFiltros > 0 ? " con-filtros" : "")}
@@ -5090,11 +5205,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             {buscaGasto.trim() && (
               <button className="af-chip-filtro" onClick={() => setBuscaGasto("")}>
                 “{buscaGasto.trim()}” <X size={12} />
-              </button>
-            )}
-            {filtroAmbito !== "todos" && (
-              <button className="af-chip-filtro" onClick={() => setFiltroAmbito("todos")}>
-                {filtroAmbito === "negocio" ? "Del negocio" : "De la casa"} <X size={12} />
               </button>
             )}
             {filtroTienda !== "todas" && (
@@ -5253,14 +5363,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <button className="af-btn-chip" onClick={() => unificarNombres(grupo)}>Juntar</button>
               </div>
             ))}
-          </div>
-        )}
-
-        {hayFiltro && (
-          <div className="af-hint mb-3">
-            {gastosFiltrados.length === 0
-              ? "No hay gastos que coincidan."
-              : `${gastosFiltrados.length} ${gastosFiltrados.length === 1 ? "gasto" : "gastos"} · ${money(totalFiltrado)}`}
           </div>
         )}
 
@@ -7901,6 +8003,22 @@ export default function App() {
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
   const [cobroModal, setCobroModal] = useState(null); // { pedido, faltante } o null
   const [verAvisos, setVerAvisos] = useState(false);
+  // Cerrar los avisos al tocar fuera. No se puede con la capa invisible de
+  // siempre: el topbar lleva desenfoque y eso encierra a los position:fixed
+  // dentro de la barra, así que la capa solo tapaba la barra y tocar el resto
+  // de la pantalla no cerraba nada.
+  const campanaRef = useRef(null);
+  useEffect(() => {
+    if (!verAvisos) return;
+    const fuera = (e) => { if (!campanaRef.current?.contains(e.target)) setVerAvisos(false); };
+    const conEsc = (e) => { if (e.key === "Escape") setVerAvisos(false); };
+    document.addEventListener("pointerdown", fuera);
+    document.addEventListener("keydown", conEsc);
+    return () => {
+      document.removeEventListener("pointerdown", fuera);
+      document.removeEventListener("keydown", conEsc);
+    };
+  }, [verAvisos]);
   const [subiendoRecibo, setSubiendoRecibo] = useState(false);
 
   // Sesión (solo aplica en modo nube; en modo local no hay login).
@@ -8993,7 +9111,7 @@ export default function App() {
           {/* Lo que hay que comprar: antes vivía al fondo de Hoy, donde solo
               estorbaba. Aquí avisa con el punto rojo y solo se abre si
               interesa, como en cualquier app. */}
-          <div className="af-campana">
+          <div className="af-campana" ref={campanaRef}>
             <button
               className="af-icon-btn"
               title="Avisos"
@@ -9004,8 +9122,6 @@ export default function App() {
             </button>
             {verAvisos && (
               <>
-                {/* Capa invisible para cerrar tocando fuera. */}
-                <div className="af-modal-overlay" style={{ background: "transparent" }} onClick={() => setVerAvisos(false)} />
                 <div className="af-avisos-panel">
                   <div className="af-avisos-titulo">Por comprar</div>
                   {porComprar.length === 0 ? (
@@ -9436,6 +9552,15 @@ const AZAFRAN_CSS = `
 }
 .af-menu-card { transition: box-shadow .15s ease, transform .12s ease; }
 .af-menu-card.levantada { transition: none; }
+/* El monto es lo primero y lo más grande: es el dato que siempre se sabe. */
+.af-monto-grande { font-size: 26px; font-weight: 700; padding: 14px; text-align: center; }
+.af-mas-detalles {
+  width: 100%; background: none; border: none; color: var(--brand, #3b5bdb);
+  font-weight: 700; font-size: 13.5px; padding: 12px 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.af-mas-detalles-nota { font-weight: 400; font-size: 12px; color: var(--ink-soft); }
+.af-detalles-gasto { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 4px; }
 .af-menu-grupo { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-top: 6px; }
 .af-fijos-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 4px 0 2px; }
 .af-fijos-resumen { display: flex; gap: 10px; flex-wrap: wrap; }
