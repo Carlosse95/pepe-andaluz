@@ -456,7 +456,13 @@
       "Bash(/usr/bin/grep -n \"const guardarGastoNuevo\" -A 12 src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n \"Quitar todos\\\\|Buscar y filtrar\\\\|gastosFiltrados.length\\\\|Por facturar\" src/AzafranApp.jsx)",
       "Bash(/usr/bin/grep -n 'filtroAmbito, setFiltroAmbito\\\\] = useState' src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -n \"const cuantosFiltros\" -A 10 src/AzafranApp.jsx)"
+      "Bash(/usr/bin/grep -n \"const cuantosFiltros\" -A 10 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"leerTicket\" src/nube.js)",
+      "Bash(/usr/bin/grep -c \"leyendoTicket\" src/AzafranApp.jsx)",
+      "Bash(curl -s -o /dev/null -w \"sin sesion: %{http_code}\\\\n\" -X POST -H \"content-type: application/json\" -d '{\"ruta\":\"x.jpg\"}' https://sykfhnznbneuipibatmx.supabase.co/functions/v1/leer-ticket)",
+      "Bash(curl -s -w ' [%{http_code}]\\\\n' -X POST -H 'content-type: application/json' -d '{\"ruta\":\"x.jpg\"}' https://sykfhnznbneuipibatmx.supabase.co/functions/v1/leer-ticket)",
+      "Bash(curl -s -w ' [%{http_code}]\\\\n' https://sykfhnznbneuipibatmx.supabase.co/functions/v1/leer-ticket)",
+      "Bash(time curl -s -w '\\\\n[%{http_code}]\\\\n' -X POST -H 'content-type: application/json' -d '{\"ruta\":\"2026-08-08/baf495bb-28ee-4587-ab94-3c5c8defa10d.jpg\"}' https://sykfhnznbneuipibatmx.supabase.co/functions/v1/leer-ticket)"
     ]
   }
 }

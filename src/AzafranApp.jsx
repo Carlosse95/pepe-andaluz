@@ -16,7 +16,7 @@ import {
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
-  subirTicket, verTicket, borrarTicket, subirRecibo,
+  subirTicket, verTicket, borrarTicket, leerTicket, subirRecibo,
 } from "./nube.js";
 
 /* ---------------------------------------------------------------------- */
@@ -3180,6 +3180,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const yaGeneradosEnEstaSesion = useRef(new Set());
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [subiendoTicket, setSubiendoTicket] = useState(false);
+  const [leyendoTicket, setLeyendoTicket] = useState(false);
   const [tiendaOtra, setTiendaOtra] = useState(false);
   const [abrirGasto, setAbrirGasto] = useState(false);
   const [verDetallesGasto, setVerDetallesGasto] = useState(false);
@@ -5006,33 +5007,67 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
             ) : (
               <label className="af-btn-secondary w-full" style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
-                {subiendoTicket ? "Subiendo…" : <><Camera size={15} className="inline mr-1" /> Tomar o elegir foto</>}
+                {subiendoTicket
+                  ? "Subiendo…"
+                  : leyendoTicket
+                    ? "Leyendo el ticket…"
+                    : <><Camera size={15} className="inline mr-1" /> Tomar o elegir foto</>}
                 <input
                   type="file"
                   accept="image/*"
                   capture="environment"
                   style={{ display: "none" }}
-                  disabled={subiendoTicket}
+                  disabled={subiendoTicket || leyendoTicket}
                   onChange={async (e) => {
                     const archivo = e.target.files && e.target.files[0];
                     e.target.value = "";
                     if (!archivo) return;
                     setSubiendoTicket(true);
+                    let ruta = null;
                     try {
-                      const ruta = await subirTicket(archivo);
+                      ruta = await subirTicket(archivo);
                       setNuevoGasto((prev) => ({ ...prev, ticket: ruta }));
                     } catch (err) {
                       showToast("No se pudo guardar la foto: " + (err.message || ""), "error");
                     }
                     setSubiendoTicket(false);
+                    if (!ruta) return;
+
+                    // Con la foto guardada se lee sola y se llenan los campos.
+                    // Quedan escritos pero editables: la app propone, Pepe
+                    // confirma. Si la lectura falla, el gasto se captura a mano
+                    // como siempre — la foto ya está a salvo.
+                    setLeyendoTicket(true);
+                    try {
+                      const leido = await leerTicket(ruta);
+                      if (leido) {
+                        setNuevoGasto((prev) => ({
+                          ...prev,
+                          tienda: leido.tienda || prev.tienda,
+                          fecha: leido.fecha || prev.fecha,
+                          monto: leido.total > 0 ? leido.total : prev.monto,
+                          categoria: categoriaDeTienda(leido.tienda) || prev.categoria,
+                        }));
+                        const partes = [
+                          leido.tienda,
+                          leido.total > 0 ? money(leido.total) : null,
+                        ].filter(Boolean);
+                        showToast(
+                          partes.length ? `Leí: ${partes.join(" · ")}. Revísalo.` : "No pude sacar los datos; captúralos a mano.",
+                          leido.confianza === "baja" ? "error" : "ok"
+                        );
+                      }
+                    } catch (err) {
+                      showToast(err.message || "No se pudo leer el ticket.", "error");
+                    }
+                    setLeyendoTicket(false);
                   }}
                 />
               </label>
             )}
             <p className="af-ink-soft text-xs mt-1">
-              {esTiendaFacturable(nuevoGasto.tienda)
-                ? "Con la foto guardada ya puedes facturar sin buscar el papel."
-                : "Opcional. Guárdala para no perder el ticket antes de facturarlo."}
+              Al subirla se lee sola y llena la tienda, la fecha y el monto. Revísalos
+              antes de guardar, y corrige lo que haga falta.
             </p>
           </div>
 

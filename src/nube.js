@@ -183,6 +183,21 @@ export const subirTicket = async (archivo) => {
   return ruta;
 };
 
+// Lee la foto del ticket y devuelve { tienda, fecha, total, confianza }.
+// La lectura corre en el servidor porque la llave que la hace posible no puede
+// estar en la app: cualquiera podría sacarla del navegador.
+export const leerTicket = async (ruta) => {
+  if (!nubeActiva || !ruta) return null;
+  const { data, error } = await supabase.functions.invoke("leer-ticket", { body: { ruta } });
+  if (error) {
+    // El cuerpo del error trae el motivo en español; el genérico no dice nada.
+    let motivo = "";
+    try { motivo = (await error.context?.json())?.error || ""; } catch { /* sin cuerpo */ }
+    throw new Error(motivo || "No se pudo leer el ticket.");
+  }
+  return data?.datos || null;
+};
+
 // El bucket es privado, así que para verla se pide una liga temporal.
 export const verTicket = async (ruta) => {
   if (!nubeActiva || !ruta) return null;
