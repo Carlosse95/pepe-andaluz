@@ -5851,8 +5851,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     setPorBorrar(null);
   };
 
-  // Acomodar arrastrando (dejar el dedo encima y mover). Las flechitas se
-  // quedan como respaldo: sirven en la laptop y cuando la lista es larga.
+  // Acomodar arrastrando: se deja el dedo encima de la tarjeta y se mueve.
   const acomodarPaellas = useAcomodarArrastrando(
     draft.paellas,
     MISMO_SIEMPRE,
@@ -6290,9 +6289,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
           <div className="af-section-title">Otros platillos</div>
           <div className="af-hint mb-2">
-            Deja el dedo encima de un platillo un momento y arrástralo a donde quieras
-            (también sirven las flechitas). El orden de aquí es el que verás al hacer un
-            pedido: pon primero lo que más se vende. Con <strong>¿En qué sección va?</strong>{" "}
+            Deja el dedo encima de un platillo un momento y arrástralo a donde quieras.
+            El orden de aquí es el que verás al hacer un pedido: pon primero lo que más
+            se vende. Con <strong>¿En qué sección va?</strong>{" "}
             lo cambias entre Platillos, Entradas y Postres.
           </div>
           <div className="af-menu-grid">
@@ -6359,8 +6358,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   />
                   <span className="af-price-suffix">$</span>
                 </div>
+                {/* Solo sirve para los que se venden en paquete. Se llamaba
+                    "piezas por orden" a secas y no se entendía: parecía que
+                    había que llenarlo siempre, y que de ahí salía el descuento
+                    de envases, que sale del Empaque de abajo. */}
+                <div className="af-mini-label mt-1">¿Una orden trae varias piezas?</div>
                 <div className="af-menu-card-row">
-                  <span className="af-price-suffix flex-1">Piezas por orden (para el cliente, opcional)</span>
                   <NumberField
                     value={ex.piezasPorUnidad || 0}
                     min={0}
@@ -6370,6 +6373,16 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       setDraft({ ...draft, extras });
                     }}
                   />
+                  <span className="af-price-suffix flex-1">
+                    {ex.piezasPorUnidad > 0 ? "piezas en cada orden" : "déjalo en 0 si se vende por pieza"}
+                  </span>
+                </div>
+                <div className="af-hint">
+                  {ex.piezasPorUnidad > 1
+                    ? `Al pedir 2 saldrán ${2 * ex.piezasPorUnidad} piezas en la producción del día y en el WhatsApp del cliente.`
+                    : ex.piezasPorUnidad === 1
+                      ? "Poner 1 es lo mismo que poner 0: déjalo en 0 y te evitas la duda."
+                      : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
                 </div>
                 <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
                 <select
