@@ -199,14 +199,22 @@ const money = (n) => moneyFmt.format(n || 0);
 
 const fmtKg = (kg) => (Number.isInteger(kg) ? kg : kg.toFixed(1)) + " kg";
 
-// Cuánto se vendió, dicho en la unidad de ese platillo. Es lo que se apunta
-// en la libreta: "18 kg de Mar y Tierra", "12 órdenes de croquetas".
+// Cuánto se vendió, dicho con la MISMA palabra que usa el menú: si ahí dice
+// "frasco", aquí dice frascos; si dice "pieza", piezas. Así lo que se lee en
+// el reporte es lo mismo que se dice al vender.
+const pluralSimple = (palabra, n) => {
+  const p = (palabra || "").trim();
+  if (!p || n === 1) return p;
+  if (/[aeiouáéíóú]$/i.test(p)) return p + "s";
+  if (/[zZ]$/.test(p)) return p.slice(0, -1) + "ces";
+  return p + "es";
+};
 const fmtCantidadVendida = (cuanto, unidad) => {
   const n = Number.isInteger(cuanto) ? cuanto : Math.round(cuanto * 10) / 10;
-  if (unidad === "kg") return `${n} kg`;
-  if (unidad === "l") return `${n} l`;
-  if (unidad === "ordenes") return `${n} ${n === 1 ? "orden" : "órdenes"}`;
-  return `${n} ${n === 1 ? "pieza" : "piezas"}`;
+  const u = (unidad || "").toLowerCase();
+  if (u === "kg") return `${n} kg`;
+  if (u === "l") return `${n} l`;
+  return `${n} ${pluralSimple(unidad || "pieza", n)}`;
 };
 
 // Para el cliente hablamos en personas, no en kilos: 1 kg = 2 personas.
@@ -3093,12 +3101,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // vende suelto por pieza.
   const unidadDelItem = (it) => {
     if (it.tipo === "paella") return { cuanto: it.kg || 0, unidad: "kg" };
-    if (it.unidad === "kg") return { cuanto: parseFloat(it.cantidad) || 0, unidad: "kg" };
-    if (it.unidad === "l") return { cuanto: parseFloat(it.cantidad) || 0, unidad: "l" };
+    const cuanto = parseFloat(it.cantidad) || 0;
+    const u = (it.unidad || "").trim().toLowerCase();
+    if (u === "kg" || u === "kilo" || u === "kilos") return { cuanto, unidad: "kg" };
+    if (u === "l" || u === "litro" || u === "litros") return { cuanto, unidad: "l" };
     // Si el platillo se vende por paquete (croquetas de 6), la cantidad ya
-    // está en órdenes: eso es lo que se quiere contar, no las piezas sueltas.
-    if (it.piezasPorUnidad > 0) return { cuanto: parseFloat(it.cantidad) || 0, unidad: "ordenes" };
-    return { cuanto: parseFloat(it.cantidad) || 0, unidad: "piezas" };
+    // está en órdenes: eso es lo que se cuenta, no las piezas sueltas.
+    if (it.piezasPorUnidad > 0) return { cuanto, unidad: it.unidad || "orden" };
+    // Y si no, la palabra del menú tal cual: pieza, frasco, hogaza…
+    return { cuanto, unidad: it.unidad || "pieza" };
   };
 
   const porProducto = {};
@@ -7762,10 +7773,21 @@ export default function App() {
         if (cancelado) return;
         if (rp.status === "fulfilled" && rp.value) aplicarClave("pedidos", rp.value.value);
         if (rc.status === "fulfilled" && rc.value) aplicarClave("clientes", rc.value.value);
-        if (rcfg.status === "fulfilled" && rcfg.value) {
-          aplicarClave("config-productos", rcfg.value.value);
+        // Los valores de fábrica SOLO se siembran cuando la consulta salió
+        // bien y de verdad no hay nada guardado (la primera vez que se usa la
+        // app). Si la consulta falló —un parpadeo de internet, la sesión, la
+        // base tardando— no se toca nada: antes se sembraban los valores de
+        // fábrica encima del menú real y se perdía todo por un error de red.
+        if (rcfg.status === "fulfilled") {
+          if (rcfg.value) {
+            aplicarClave("config-productos", rcfg.value.value);
+            configCargada.current = true;
+          } else {
+            almacen.set("config-productos", JSON.stringify(DEFAULT_CONFIG)).catch(() => {});
+            configCargada.current = true;
+          }
         } else {
-          almacen.set("config-productos", JSON.stringify(DEFAULT_CONFIG)).catch(() => {});
+          console.error("No se pudo leer la configuración; no se toca la que está guardada.", rcfg.reason);
         }
         if (rh.status === "fulfilled" && rh.value) aplicarClave("historico-mensual", rh.value.value);
         if (rpr.status === "fulfilled" && rpr.value) aplicarClave("presupuestos", rpr.value.value);
@@ -7907,7 +7929,20 @@ export default function App() {
 
   const guardarPedidos = (lista) => { setPedidos(lista); persist("pedidos", lista); };
   const guardarClientes = (lista) => { setClientes(lista); persist("clientes", lista); };
-  const guardarConfig = (nueva) => { setConfig(nueva); persist("config-productos", nueva); };
+  // Segundo candado: mientras no se haya leído la configuración de la nube,
+  // lo que hay en memoria son los valores de fábrica. Guardar en ese momento
+  // los escribiría encima del menú real. Guardar un pedido también guarda la
+  // configuración (para descontar del inventario), así que este caso sí se
+  // daba en la vida real.
+  const configCargada = useRef(!nubeActiva);
+  const guardarConfig = (nueva) => {
+    setConfig(nueva);
+    if (!configCargada.current) {
+      console.warn("No se guarda la configuración: todavía no se ha leído la de la nube.");
+      return;
+    }
+    persist("config-productos", nueva);
+  };
   const guardarHistorico = (nuevo) => { setHistorico(nuevo); persist("historico-mensual", nuevo); };
   const guardarPresupuestos = (lista) => { setPresupuestos(lista); persist("presupuestos", lista); };
   const guardarGastos = (lista) => { setGastos(lista); persist("gastos", lista); };

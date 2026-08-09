@@ -17,11 +17,19 @@ export const supabase = nubeActiva ? createClient(SUPABASE_URL, SUPABASE_ANON_KE
 // para que la app no tenga que distinguir entre local y nube.
 
 export const almacen = {
+  // Devuelve null cuando la clave NO EXISTE, y solo lanza error cuando algo
+  // salió mal de verdad (sin internet, sesión caída, la base no contesta).
+  //
+  // La diferencia es crítica: quien llama usa "no existe" para sembrar los
+  // valores de fábrica la primera vez. Antes las dos cosas llegaban como
+  // error, así que un parpadeo de internet se confundía con "no hay nada" y
+  // se sembraban los valores de fábrica ENCIMA del menú real. Así se perdió
+  // el menú de Pepe.
   async get(key) {
     if (!nubeActiva) return window.storage.get(key);
     const { data, error } = await supabase.from("almacen").select("valor").eq("clave", key).maybeSingle();
     if (error) throw error;
-    if (!data) throw new Error(`almacen: la clave "${key}" no existe`);
+    if (!data) return null;
     return { key, value: JSON.stringify(data.valor) };
   },
 
