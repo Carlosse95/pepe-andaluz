@@ -34,8 +34,11 @@ const LOGO_MASK_B64 = "iVBORw0KGgoAAAANSUhEUgAAA7EAAAHxCAYAAAC75DscAACT3ElEQVR42
 const MENSAJES_DEFAULT = {
   saludoPedido: "¡Hola {nombre}! Le compartimos el resumen de su pedido en Pepe Andaluz 🥘",
   cierrePedido: "¡Gracias por su preferencia!",
+  // Sin la dirección: ya se le mandó al cliente cuando apartó el pedido, y
+  // repetirla en cada aviso hace el mensaje largo para nada. Quien la quiera
+  // aquí puede volver a poner {dondeRecoger} desde Ajustes.
   avisadoRecoger:
-    "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘\n\n{dondeRecoger}",
+    "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘",
   avisadoDomicilio: "¡Hola {nombre}! Su pedido {folio} ya está listo y va en camino a su domicilio 🚚",
   entregado: "¡Hola {nombre}! Su pedido {folio} fue entregado. ¡Gracias por su preferencia, esperamos disfrute su comida! 🥘",
   pagoAbono:
@@ -70,12 +73,12 @@ const bloqueDondeRecoger = (local) => {
   return lineas.join("\n");
 };
 
-// Versiones anteriores del mensaje de "listo para recoger": la primera sin
-// dirección, y la segunda con la dirección escrita a mano dentro del texto.
+// Versiones anteriores del mensaje de "listo para recoger": las dos repetían
+// la dirección, que ahora se manda una sola vez, al crear el pedido.
 // Sirven para detectar configuraciones guardadas que todavía traen el texto
 // viejo y actualizarlas solas la primera vez que se cargan (ver aplicarClave).
 const MENSAJES_RECOGER_ANTERIORES = [
-  "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘",
+  "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘\n\n{dondeRecoger}",
   "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘\n\n" +
     "📍 Calle 8 número 341 x 17 y 19, Montebello\n" +
     "Ubicación: https://maps.google.com/?q=21.032793,-89.590668\n" +
@@ -609,6 +612,28 @@ const TERMINOS_DEFAULT =
   "Este presupuesto tiene vigencia de 30 días.\n" +
   "Forma de pago: 50% de anticipo, 50% al finalizar / entregar el pedido.\n" +
   "Precios sujetos a disponibilidad de producto e ingredientes el día del evento.";
+
+// Dónde queda lo que se está escribiendo, por si el aparato recarga la app.
+const BORRADOR = "pepe_andaluz_borrador";
+const olvidarBorrador = () => {
+  try { window.localStorage.removeItem(BORRADOR); } catch { /* da igual */ }
+};
+const leerBorrador = () => {
+  try {
+    const crudo = window.localStorage.getItem(BORRADOR);
+    if (!crudo) return null;
+    const b = JSON.parse(crudo);
+    // Un borrador de hace días ya no es de esta sesión de trabajo.
+    if (!b?.form || Date.now() - (b.guardadoEl || 0) > 24 * 60 * 60 * 1000) {
+      olvidarBorrador();
+      return null;
+    }
+    return b;
+  } catch {
+    olvidarBorrador();
+    return null;
+  }
+};
 
 const emptyForm = () => ({
   pedidoId: null,
@@ -8208,6 +8233,8 @@ export default function App() {
 
   const [view, setView] = useState("hoy");
   const [formOrigen, setFormOrigen] = useState("hoy");
+  // Lo que quedó a medias la última vez, si es que quedó algo.
+  const [borradorPendiente, setBorradorPendiente] = useState(() => leerBorrador());
   const [formModo, setFormModo] = useState("pedido");
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState("");
@@ -8981,7 +9008,30 @@ export default function App() {
     setView("nuevo");
   };
 
-  const cancelarForm = () => { setView(formOrigen); setError(""); };
+  const cancelarForm = () => { olvidarBorrador(); setView(formOrigen); setError(""); };
+
+  // Lo que se está escribiendo se guarda solo, en este mismo aparato.
+  //
+  // El iPad recarga la app cuando anda escaso de memoria — nadie lo pide y no
+  // avisa. A Pepe le pasó a media captura y perdió el pedido entero. No puedo
+  // evitar la recarga, pero sí que cueste trabajo: al volver, el borrador
+  // sigue ahí.
+  //
+  // Va en el aparato y no en la nube a propósito: es de quien lo está
+  // escribiendo, no del negocio, y no tiene por qué aparecerle a otro.
+  useEffect(() => {
+    if (view !== "nuevo") return;
+    // Un formulario recién abierto y vacío no vale la pena guardarlo: al
+    // volver preguntaría por un borrador que nunca existió.
+    const vacio = !form.clienteId && !(form.items || []).length && !(form.notas || "").trim();
+    if (vacio) return;
+    try {
+      window.localStorage.setItem(
+        BORRADOR,
+        JSON.stringify({ guardadoEl: Date.now(), modo: formModo, origen: formOrigen, form })
+      );
+    } catch { /* si el aparato no deja guardar, se sigue trabajando igual */ }
+  }, [form, view, formModo, formOrigen]);
 
   const guardarPedidoForm = () => {
     if (!form.clienteId) { setError("Selecciona o crea un cliente para continuar."); return; }
@@ -9038,6 +9088,7 @@ export default function App() {
     guardarConfig({ ...config, desechables, ingredientes });
 
     guardarPedidos(nuevaLista);
+    olvidarBorrador();
     setView(formOrigen);
     setError("");
 
@@ -9089,6 +9140,7 @@ export default function App() {
       guardarConfig({ ...config, desechables, ingredientes });
     }
     guardarPedidos(pedidos.filter((p) => p.id !== form.pedidoId));
+    olvidarBorrador();
     setView(formOrigen);
     showToast("Pedido eliminado");
   };
@@ -9139,6 +9191,7 @@ export default function App() {
 
   const eliminarPresupuesto = () => {
     guardarPresupuestos(presupuestos.filter((p) => p.id !== form.pedidoId));
+    olvidarBorrador();
     setView(formOrigen);
     showToast("Presupuesto eliminado");
   };
@@ -9497,7 +9550,46 @@ export default function App() {
           onElegir={cerrarCobroEntrega}
           onCerrar={() => cerrarCobroEntrega("nada")}
         />
-        <AvisoPendienteModal
+        {/* Si el aparato recargó la app a media captura, aquí está lo que se
+          estaba escribiendo. Se pregunta en vez de reaparecer solo: puede que
+          lo hubiera abandonado a propósito. */}
+      {borradorPendiente && view !== "nuevo" && (
+        <div className="af-modal-overlay af-modal-overlay-center">
+          <div className="af-alerta-modal">
+            <div className="af-alerta-icon"><StickyNote size={26} /></div>
+            <div className="af-alerta-titulo">Se quedó algo a medias</div>
+            <p className="af-alerta-texto">
+              {borradorPendiente.modo === "presupuesto" ? "Un presupuesto" : "Un pedido"}
+              {borradorPendiente.form?.clienteNombre ? ` de ${borradorPendiente.form.clienteNombre}` : ""}
+              {(borradorPendiente.form?.items || []).length
+                ? ` con ${borradorPendiente.form.items.length} ${borradorPendiente.form.items.length === 1 ? "ítem" : "ítems"}`
+                : ""}
+              , sin guardar.
+            </p>
+            <button
+              className="af-btn-primary w-full"
+              onClick={() => {
+                setForm(borradorPendiente.form);
+                setFormModo(borradorPendiente.modo || "pedido");
+                setFormOrigen(borradorPendiente.origen || "hoy");
+                setBorradorPendiente(null);
+                setError("");
+                setView("nuevo");
+              }}
+            >
+              Seguir con él
+            </button>
+            <button
+              className="af-btn-secondary w-full mt-2"
+              onClick={() => { olvidarBorrador(); setBorradorPendiente(null); }}
+            >
+              Descartarlo
+            </button>
+          </div>
+        </div>
+      )}
+
+      <AvisoPendienteModal
           aviso={avisoModal}
           onEnviar={() => { enviarAvisoWhatsApp(avisoModal.pedido, avisoModal.tipo, { abono: avisoModal.abono }); setAvisoModal(null); }}
           onEnviarConRecibo={() => enviarReciboWhatsApp(avisoModal.pedido, avisoModal.abono)}
