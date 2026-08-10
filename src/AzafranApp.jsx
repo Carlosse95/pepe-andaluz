@@ -62,6 +62,32 @@ const LOCAL_DEFAULT = {
   foto: "https://carlosse95.github.io/pepe-andaluz/casa-recoleccion.webp",
 };
 
+// Convierte en un enlace que sí abre lo que sea que hayan pegado en
+// "ubicación". Llega de todo, porque se copia de WhatsApp tal cual:
+//
+//   - Un link limpio                → se usa igual.
+//   - Texto con un link adentro     → se saca el link ("Salón El Parke https://…").
+//   - Un link sin https://          → se le pone.
+//   - Solo un nombre de lugar       → se busca en el mapa ("Ceiba", "Telchac").
+//
+// Sin esto, un texto que no es link se usaba tal cual en el enlace, el
+// navegador lo tomaba como una dirección DENTRO de la app, y al tocarlo salía
+// la página de error en vez del mapa.
+const enlaceDeUbicacion = (texto) => {
+  const limpio = (texto || "").trim();
+  if (!limpio) return null;
+
+  const conEsquema = limpio.match(/https?:\/\/[^\s]+/i);
+  if (conEsquema) return conEsquema[0];
+
+  // Un link pegado sin el https:// delante (maps.google.com/..., goo.gl/...).
+  const sinEsquema = limpio.match(/(?:^|\s)((?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s]*)/i);
+  if (sinEsquema) return "https://" + sinEsquema[1];
+
+  // No hay link: es el nombre de un lugar o una referencia. Se busca.
+  return `https://maps.google.com/?q=${encodeURIComponent(limpio)}`;
+};
+
 // Arma el bloque de "dónde recoger" saltándose lo que esté vacío, para que no
 // queden renglones sueltos si el negocio no tiene foto o mapa.
 const bloqueDondeRecoger = (local) => {
@@ -1241,7 +1267,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
         {pedido.entrega ? (
           (() => {
             const destino = pedido.ubicacion
-              ? pedido.ubicacion
+              ? enlaceDeUbicacion(pedido.ubicacion)
               : (pedido.direccion || "").trim()
                 ? `https://maps.google.com/?q=${encodeURIComponent(pedido.direccion.trim())}`
                 : null;
@@ -2694,7 +2720,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
           <label>Ubicación</label>
           <UbicacionField value={form.ubicacion} onChange={(v) => setForm({ ...form, ubicacion: v })} />
           {form.ubicacion && (
-            <a href={form.ubicacion} target="_blank" rel="noopener noreferrer" className="af-btn-ghost mt-1 inline-flex items-center gap-1">
+            <a href={enlaceDeUbicacion(form.ubicacion)} target="_blank" rel="noopener noreferrer" className="af-btn-ghost mt-1 inline-flex items-center gap-1">
               <MapPin size={13} /> Abrir en el mapa
             </a>
           )}
