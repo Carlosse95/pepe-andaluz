@@ -838,6 +838,23 @@ const normalizarIngrediente = (ing) => {
   };
 };
 
+// Todo lo que se vende, en una sola lista, para poder ligarle ingredientes.
+// Cada uno dice en qué se mide: las paellas por kilo, los platillos por orden
+// o por pieza según se vendan.
+const productosDeReceta = (config) => [
+  ...(config?.paellas || [])
+    .filter((p) => (p.nombre || "").trim())
+    .map((p) => ({ id: p.id, nombre: p.nombre, grupo: "Paellas", porQue: "kilo" })),
+  ...(config?.extras || [])
+    .filter((e) => (e.nombre || "").trim())
+    .map((e) => ({
+      id: e.id,
+      nombre: e.nombre,
+      grupo: "Otros platillos",
+      porQue: e.piezasPorUnidad > 0 ? e.unidad || "orden" : e.unidad || "pieza",
+    })),
+];
+
 // Consumo de ingredientes EN PRESENTACIONES (bolsas/cajas) según la receta:
 // (uso por kg × kilos del pedido, convertido a la unidad base) ÷ contenido de la presentación.
 const calcularConsumoIngredientes = (items, ingredientes) => {
@@ -5856,6 +5873,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
   const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("menu");
   const [draft, setDraft] = useState(config);
+  // Qué ingrediente tiene abierto el selector de productos, y los que se
+  // acaban de agregar (o de dejar en cero) para que no desaparezcan de la
+  // pantalla mientras se están capturando.
+  const [eligiendoPara, setEligiendoPara] = useState(null);
+  const [recienAgregados, setRecienAgregados] = useState({});
   const [guardado, setGuardado] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
   const [importError, setImportError] = useState("");
@@ -6589,9 +6611,20 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           </div>
           <div className="af-menu-grid mb-5">
             {(draft.ingredientes || []).map(normalizarIngrediente).map((ing, i) => {
+              // `cambios` puede ser un objeto o una función que recibe el
+              // ingrediente COMO ESTÁ AHORA. Lo segundo importa cuando se toca
+              // la receta: escribir una cantidad y quitar otro renglón enseguida
+              // hacía que el número recién escrito se perdiera, porque el
+              // segundo cambio partía de una copia vieja.
               const setIng = (cambios) => {
-                const ingredientes = draft.ingredientes.map((x, xi) => (xi === i ? { ...normalizarIngrediente(x), ...cambios } : x));
-                setDraft({ ...draft, ingredientes });
+                setDraft((prev) => ({
+                  ...prev,
+                  ingredientes: (prev.ingredientes || []).map((x, xi) => {
+                    if (xi !== i) return x;
+                    const actual = normalizarIngrediente(x);
+                    return { ...actual, ...(typeof cambios === "function" ? cambios(actual) : cambios) };
+                  }),
+                }));
               };
               const familiasOk =
                 (UNIDAD_INFO[ing.usoUnidad] || {}).familia === (UNIDAD_INFO[ing.presentacionUnidad] || {}).familia;
@@ -6682,44 +6715,68 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       Ej.: si usas piezas, pon la {ing.presentacionNombre} también en piezas.
                     </div>
                   )}
-                  {/* Cuánto se usa de esto en cada producto. En las paellas va
-                      por kilo y en los platillos por orden o por pieza, que es
-                      como se venden. Antes solo se podían ligar paellas, y por
-                      eso la utilidad de todo lo demás salía a mano. */}
-                  <div className="af-mini-label mt-2">
-                    ¿Cuánto se usa de esto en cada cosa? (deja en 0 lo que no lo lleve)
-                  </div>
-                  {draft.paellas.filter((p) => p.nombre.trim()).length > 0 && (
-                    <div className="af-receta-grupo">Paellas · por kilo</div>
-                  )}
-                  {draft.paellas.filter((p) => p.nombre.trim()).map((p) => (
-                    <div key={p.id} className="af-receta-row">
-                      <span>{p.nombre}</span>
-                      <NumberField
-                        value={(ing.porKg || {})[p.id] || 0}
-                        min={0}
-                        className="af-input af-menu-kgrange"
-                        onChange={(v) => setIng({ porKg: { ...(ing.porKg || {}), [p.id]: v } })}
-                      />
-                    </div>
-                  ))}
-                  {(draft.extras || []).filter((e) => (e.nombre || "").trim()).length > 0 && (
-                    <div className="af-receta-grupo">Otros platillos · por orden o pieza</div>
-                  )}
-                  {(draft.extras || []).filter((e) => (e.nombre || "").trim()).map((e) => (
-                    <div key={e.id} className="af-receta-row">
-                      <span>
-                        {e.nombre}
-                        <span className="af-ink-soft"> · por {e.piezasPorUnidad > 0 ? (e.unidad || "orden") : (e.unidad || "pieza")}</span>
-                      </span>
-                      <NumberField
-                        value={(ing.porKg || {})[e.id] || 0}
-                        min={0}
-                        className="af-input af-menu-kgrange"
-                        onChange={(v) => setIng({ porKg: { ...(ing.porKg || {}), [e.id]: v } })}
-                      />
-                    </div>
-                  ))}
+                  {/* Solo los productos que este ingrediente lleva, no todo el
+                      menú. Con 22 ingredientes y 19 productos eran 418
+                      renglones para capturar seis números; la tarjeta se volvía
+                      un muro que había que atravesar cada vez. */}
+                  <div className="af-mini-label mt-2">¿En qué se usa y cuánto?</div>
+                  {(() => {
+                    const usados = productosDeReceta(draft);
+                    const puestos = usados.filter(
+                      (pr) => ((ing.porKg || {})[pr.id] || 0) > 0 || (recienAgregados[ing.id] || []).includes(pr.id)
+                    );
+                    if (!puestos.length) {
+                      return (
+                        <p className="af-ink-soft text-xs">
+                          Todavía no está ligado a nada. Agrégalo a las paellas o platillos que lo lleven.
+                        </p>
+                      );
+                    }
+                    return puestos.map((pr) => (
+                      <div key={pr.id} className="af-receta-row">
+                        <span className="flex-1">
+                          {pr.nombre}
+                          <span className="af-ink-soft"> · por {pr.porQue}</span>
+                        </span>
+                        <NumberField
+                          value={(ing.porKg || {})[pr.id] || 0}
+                          min={0}
+                          className="af-input af-menu-kgrange"
+                          onChange={(v) => {
+                            // Si lo deja en cero se queda a la vista mientras
+                            // captura; si no, el renglón se le desaparecería
+                            // bajo el dedo a media corrección.
+                            if (!v) {
+                              setRecienAgregados((prev) => ({
+                                ...prev,
+                                [ing.id]: [...new Set([...(prev[ing.id] || []), pr.id])],
+                              }));
+                            }
+                            setIng((actual) => ({ porKg: { ...(actual.porKg || {}), [pr.id]: v } }));
+                          }}
+                        />
+                        <button
+                          className="af-icon-btn"
+                          title="Quitar de aquí"
+                          onClick={() => {
+                            setIng((actual) => {
+                              const { [pr.id]: _fuera, ...resto } = actual.porKg || {};
+                              return { porKg: resto };
+                            });
+                            setRecienAgregados((prev) => ({
+                              ...prev,
+                              [ing.id]: (prev[ing.id] || []).filter((x) => x !== pr.id),
+                            }));
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ));
+                  })()}
+                  <button className="af-btn-ghost w-full mt-1" onClick={() => setEligiendoPara(ing.id)}>
+                    <Plus size={14} className="inline mr-1" /> Agregar paella o platillo
+                  </button>
                   <label className="af-check-row af-check-row-small mt-2">
                     <input type="checkbox" checked={!!ing.avisarProduccion} onChange={(e) => setIng({ avisarProduccion: e.target.checked })} />
                     <span>Avisar el total en Agenda → Producción del día (ej. camarón que se pela con anticipación)</span>
@@ -6964,6 +7021,65 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
         </button>
       )}
+
+      {/* Selector de productos para un ingrediente. Con casillas porque lo
+          normal es que la misma cosa vaya en varios platillos: el arroz está
+          en las seis paellas. Ir uno por uno sería seis vueltas. */}
+      {eligiendoPara && (() => {
+        const ing = (draft.ingredientes || []).find((x) => x.id === eligiendoPara);
+        if (!ing) return null;
+        const usados = productosDeReceta(draft);
+        const yaEsta = (id) =>
+          ((ing.porKg || {})[id] || 0) > 0 || (recienAgregados[ing.id] || []).includes(id);
+        const alternar = (id) => {
+          if (yaEsta(id)) {
+            setDraft((prev) => ({
+              ...prev,
+              ingredientes: (prev.ingredientes || []).map((x) => {
+                if (x.id !== ing.id) return x;
+                const { [id]: _fuera, ...resto } = x.porKg || {};
+                return { ...x, porKg: resto };
+              }),
+            }));
+            setRecienAgregados((prev) => ({ ...prev, [ing.id]: (prev[ing.id] || []).filter((x) => x !== id) }));
+          } else {
+            setRecienAgregados((prev) => ({
+              ...prev,
+              [ing.id]: [...new Set([...(prev[ing.id] || []), id])],
+            }));
+          }
+        };
+        let grupoAnterior = null;
+        return (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setEligiendoPara(null)}>
+            <div className="af-alerta-modal af-modal-lista" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-titulo">¿En qué se usa {ing.nombre || "este ingrediente"}?</div>
+              <p className="af-ink-soft text-sm mb-2">Marca todo lo que lo lleve.</p>
+              <div className="af-lista-scroll">
+                {usados.map((pr) => {
+                  const abreGrupo = pr.grupo !== grupoAnterior;
+                  grupoAnterior = pr.grupo;
+                  return (
+                    <React.Fragment key={pr.id}>
+                      {abreGrupo && <div className="af-receta-grupo">{pr.grupo}</div>}
+                      <label className="af-check-row">
+                        <input type="checkbox" checked={yaEsta(pr.id)} onChange={() => alternar(pr.id)} />
+                        <span>
+                          {pr.nombre}
+                          <span className="af-ink-soft"> · por {pr.porQue}</span>
+                        </span>
+                      </label>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              <button className="af-btn-primary w-full mt-2" onClick={() => setEligiendoPara(null)}>
+                Listo
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {porBorrar && (
         <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setPorBorrar(null)}>
@@ -10343,6 +10459,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-mini-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin-bottom: 3px; }
 .af-input-warn { border-color: var(--wine); color: var(--wine); font-weight: 700; }
 .af-stock-alert { font-size: 12px; font-weight: 700; color: var(--wine); background: var(--wine-soft); border-radius: 8px; padding: 5px 9px; text-align: center; }
+.af-modal-lista { text-align: left; max-width: 460px; }
+.af-lista-scroll { max-height: 52vh; overflow-y: auto; margin: 4px 0; }
 .af-receta-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 8px 0 2px; }
 .af-receta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
 
