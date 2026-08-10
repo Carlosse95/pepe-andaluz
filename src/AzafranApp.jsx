@@ -111,7 +111,10 @@ const DEFAULT_CONFIG = {
   // una persona y este repositorio es público, así que no pueden vivir en el
   // código. Se capturan una vez en Ajustes y se guardan en la base privada.
   fiscal: { rfc: "", razonSocial: "", codigoPostal: "", regimen: "626", usoCFDI: "G01", correo: "" },
-  // Ingredientes con stock y consumo por kilo de cada paella (porKg[paellaId] = cantidad).
+  // Ingredientes con stock y cuánto se usa de cada uno por producto:
+  // porKg[productoId] = cantidad. En las paellas es por kilo y en los platillos
+  // por orden o pieza. El nombre del campo se quedó de cuando solo había
+  // paellas; cambiarlo obligaría a migrar lo que ya está guardado.
   ingredientes: [],
   extrasPaella: [
     { id: "extra_langosta", nombre: "Langosta", precio: 250 },
@@ -840,32 +843,38 @@ const normalizarIngrediente = (ing) => {
 const calcularConsumoIngredientes = (items, ingredientes) => {
   const consumo = {};
   items.forEach((it) => {
-    if (it.tipo !== "paella") return;
+    // Una paella se mide en kilos y un platillo en órdenes o piezas, pero la
+    // cuenta es la misma: cuánto se usa por unidad × cuántas unidades salieron.
+    const producto = it.tipo === "paella" ? it.paellaId : it.extraId;
+    const cuantas = it.tipo === "paella" ? it.kg : it.cantidad;
+    if (!producto || !(cuantas > 0)) return;
     (ingredientes || []).forEach((raw) => {
       const ing = normalizarIngrediente(raw);
-      const porKg = (ing.porKg || {})[it.paellaId] || 0;
-      if (porKg <= 0) return;
+      const porUnidad = (ing.porKg || {})[producto] || 0;
+      if (porUnidad <= 0) return;
       const fUso = (UNIDAD_INFO[ing.usoUnidad] || { factor: 1 }).factor;
       const fPres = (UNIDAD_INFO[ing.presentacionUnidad] || { factor: 1 }).factor;
       const contenido = (ing.presentacionCantidad || 1) * fPres;
       if (contenido <= 0) return;
-      consumo[ing.id] = (consumo[ing.id] || 0) + (porKg * it.kg * fUso) / contenido;
+      consumo[ing.id] = (consumo[ing.id] || 0) + (porUnidad * cuantas * fUso) / contenido;
     });
   });
   return consumo;
 };
 
-// Costo de los ingredientes del INVENTARIO que ya están ligados a una paella.
+// Costo de los ingredientes del INVENTARIO ligados a un producto — una paella
+// o un platillo.
 //
-// El inventario ya sabe cuánto se usa de cada cosa por kilo (el `porKg` que se
-// captura en Ajustes). Si además se anota lo que costó la bolsa o la caja, el
-// costo por kilo sale solo y no hay que volver a capturar la receta aquí.
-const costoDesdeInventario = (paellaId, ingredientes) => {
+// El inventario ya sabe cuánto se usa de cada cosa por unidad (el `porKg` que
+// se captura en Ajustes: por kilo en las paellas, por orden o pieza en los
+// platillos). Si además se anota lo que costó la bolsa o la caja, el costo
+// sale solo y no hay que volver a capturar la receta aquí.
+const costoDesdeInventario = (productoId, ingredientes) => {
   const detalle = [];
   let total = 0;
   (ingredientes || []).forEach((raw) => {
     const ing = normalizarIngrediente(raw);
-    const porKg = (ing.porKg || {})[paellaId] || 0;
+    const porKg = (ing.porKg || {})[productoId] || 0;
     const costoPres = parseFloat(ing.costoPresentacion) || 0;
     if (porKg <= 0 || costoPres <= 0) return;
 
@@ -888,12 +897,12 @@ const costoDesdeInventario = (paellaId, ingredientes) => {
   return { total, detalle };
 };
 
-// Ingredientes del inventario ligados a una paella pero sin precio de compra:
+// Ingredientes del inventario ligados a un producto pero sin precio de compra:
 // no se pueden costear todavía, así que se avisa para que se capture.
-const ingredientesSinPrecio = (paellaId, ingredientes) =>
+const ingredientesSinPrecio = (productoId, ingredientes) =>
   (ingredientes || [])
     .map(normalizarIngrediente)
-    .filter((ing) => ((ing.porKg || {})[paellaId] || 0) > 0 && !(parseFloat(ing.costoPresentacion) || 0));
+    .filter((ing) => ((ing.porKg || {})[productoId] || 0) > 0 && !(parseFloat(ing.costoPresentacion) || 0));
 
 // Resumen de producción de un conjunto de pedidos (normalmente los de un
 // mismo día): cuántos kilos de cada paella, cuántas piezas de cada platillo
@@ -3992,6 +4001,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       precio: e.precio || 0,
       costoManual: e.costo || 0,
       receta: recetaDeProducto(e, config),
+      auto: costoDesdeInventario(e.id, config?.ingredientes),
+      sinPrecio: ingredientesSinPrecio(e.id, config?.ingredientes),
     })),
   ].map((f) => {
     const v = ventasPorProducto[f.clave] || { volumen: 0, ingreso: 0 };
@@ -6671,6 +6682,16 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       Ej.: si usas piezas, pon la {ing.presentacionNombre} también en piezas.
                     </div>
                   )}
+                  {/* Cuánto se usa de esto en cada producto. En las paellas va
+                      por kilo y en los platillos por orden o por pieza, que es
+                      como se venden. Antes solo se podían ligar paellas, y por
+                      eso la utilidad de todo lo demás salía a mano. */}
+                  <div className="af-mini-label mt-2">
+                    ¿Cuánto se usa de esto en cada cosa? (deja en 0 lo que no lo lleve)
+                  </div>
+                  {draft.paellas.filter((p) => p.nombre.trim()).length > 0 && (
+                    <div className="af-receta-grupo">Paellas · por kilo</div>
+                  )}
                   {draft.paellas.filter((p) => p.nombre.trim()).map((p) => (
                     <div key={p.id} className="af-receta-row">
                       <span>{p.nombre}</span>
@@ -6679,6 +6700,23 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                         min={0}
                         className="af-input af-menu-kgrange"
                         onChange={(v) => setIng({ porKg: { ...(ing.porKg || {}), [p.id]: v } })}
+                      />
+                    </div>
+                  ))}
+                  {(draft.extras || []).filter((e) => (e.nombre || "").trim()).length > 0 && (
+                    <div className="af-receta-grupo">Otros platillos · por orden o pieza</div>
+                  )}
+                  {(draft.extras || []).filter((e) => (e.nombre || "").trim()).map((e) => (
+                    <div key={e.id} className="af-receta-row">
+                      <span>
+                        {e.nombre}
+                        <span className="af-ink-soft"> · por {e.piezasPorUnidad > 0 ? (e.unidad || "orden") : (e.unidad || "pieza")}</span>
+                      </span>
+                      <NumberField
+                        value={(ing.porKg || {})[e.id] || 0}
+                        min={0}
+                        className="af-input af-menu-kgrange"
+                        onChange={(v) => setIng({ porKg: { ...(ing.porKg || {}), [e.id]: v } })}
                       />
                     </div>
                   ))}
@@ -10305,6 +10343,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-mini-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin-bottom: 3px; }
 .af-input-warn { border-color: var(--wine); color: var(--wine); font-weight: 700; }
 .af-stock-alert { font-size: 12px; font-weight: 700; color: var(--wine); background: var(--wine-soft); border-radius: 8px; padding: 5px 9px; text-align: center; }
+.af-receta-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 8px 0 2px; }
 .af-receta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
 
 .af-add-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 96px; border: 2px dashed var(--line); border-radius: 14px; background: none; color: var(--ink-soft); font-weight: 600; font-size: 13px; cursor: pointer; }
