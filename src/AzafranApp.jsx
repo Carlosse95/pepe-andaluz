@@ -6239,7 +6239,42 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </button>
           </div>
 
-          <div className="af-section-title">Respaldo de información</div>
+  
+        {/* En su propio apartado y siempre visible, aunque no haya pasado nada:
+            si solo apareciera después de un tropiezo, nadie sabría que existe
+            justo cuando hace falta. Carlos fue a buscarlo y no lo encontró. */}
+        <div className="af-section-title">Si la app se atora</div>
+        <div className="af-card p-4 mb-4">
+              {(() => {
+                let ultimo = null;
+                try { ultimo = JSON.parse(window.localStorage.getItem("pepe_andaluz_ultimo_error") || "null"); } catch { /* nada */ }
+                if (!ultimo) {
+                  return (
+                    <p className="af-ink-soft text-sm">
+                      En este aparato no se ha atorado ninguna vez. Si algún día pasa, aquí va a
+                      aparecer qué fue, con un botón para copiarlo y mandárselo a Carlos.
+                    </p>
+                  );
+                }
+                return (
+                  <>
+                    <div className="text-sm">La última vez: {fmtDateHuman((ultimo.cuando || "").slice(0, 10))}</div>
+                    <code className="text-xs" style={{ wordBreak: "break-word" }}>{ultimo.mensaje}</code>
+                    <button
+                      className="af-btn-secondary w-full mt-2"
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(ultimo, null, 1));
+                        showToast("Copiado. Pásaselo a Carlos.", "ok");
+                      }}
+                    >
+                      <Copy size={14} className="inline mr-1" /> Copiar para mandarlo
+                    </button>
+                  </>
+                );
+              })()}
+        </div>
+
+        <div className="af-section-title">Respaldo de información</div>
           <div className="af-card p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Toda la información vive en este dispositivo. Descarga un respaldo cada cierto tiempo
@@ -6255,30 +6290,6 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               Restaurar un respaldo <strong>reemplaza</strong> todos los datos actuales
               (pedidos, clientes, menú, presupuestos y reportes).
             </p>
-            {/* Si la app se atoró alguna vez, aquí queda el rastro. Sirve para
-                poder decir qué pasó en vez de "se me salió". */}
-            {(() => {
-              let ultimo = null;
-              try { ultimo = JSON.parse(window.localStorage.getItem("pepe_andaluz_ultimo_error") || "null"); } catch { /* nada */ }
-              if (!ultimo) return null;
-              return (
-                <div className="af-parecidos mb-3">
-                  <div className="af-mini-label">La última vez que se atoró la pantalla</div>
-                  <div className="text-sm">{fmtDateHuman((ultimo.cuando || "").slice(0, 10))}</div>
-                  <code className="text-xs" style={{ wordBreak: "break-word" }}>{ultimo.mensaje}</code>
-                  <button
-                    className="af-btn-ghost w-full mt-2"
-                    onClick={() => {
-                      navigator.clipboard.writeText(JSON.stringify(ultimo, null, 1));
-                      showToast("Copiado. Pásaselo a Carlos.", "ok");
-                    }}
-                  >
-                    <Copy size={14} className="inline mr-1" /> Copiar para mandarlo
-                  </button>
-                </div>
-              );
-            })()}
-
             <label className="af-btn-secondary w-full block text-center cursor-pointer">
               <Upload size={15} className="inline mr-1" /> Elegir archivo de respaldo
               <input type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(e) => { leerArchivo(e.target.files[0]); e.target.value = ""; }} />
