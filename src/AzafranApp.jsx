@@ -8900,6 +8900,10 @@ export default function App() {
 
   const irAVista = (v) => {
     setError("");
+    // Salir del formulario por la barra de arriba también cuenta como dejarlo:
+    // si no, el borrador sobrevive y la próxima vez que abra la app le pregunta
+    // por un pedido que solo estaba mirando.
+    if (view === "nuevo" && v !== "nuevo") olvidarBorrador();
     // Tocar la pestaña en la que ya estás sube hasta arriba, como en cualquier
     // otra app: se usa mucho para volver al inicio de una lista larga.
     if (v === view) {
