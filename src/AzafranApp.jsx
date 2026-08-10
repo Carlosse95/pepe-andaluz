@@ -719,6 +719,34 @@ const envaseParaMedida = (envases, unidad, valor) =>
   envases.find((d) => d.unidad === unidad && d.exacto && d.rangoMin === valor) ||
   envases.find((d) => d.unidad === unidad && !d.exacto && enRango(valor, d.rangoMin, d.rangoMax));
 
+// Cuántos envases de cada tipo hacen falta para una cantidad. Se llena con el
+// más chico donde quepa todo; si no cabe en ninguno, se van llenando envases
+// grandes y lo que sobra va en el más chico que lo aguante — que es lo que uno
+// hace con la mano.
+//
+// Antes se buscaba UN envase cuyo rango incluyera el total, y si el pedido
+// pasaba del más grande no se descontaba nada: 5 órdenes de croquetas salían
+// del inventario sin restar un solo envase.
+const repartirEnEnvases = (envases, unidad, total) => {
+  const cuenta = {};
+  const dela = envases
+    .filter((d) => d.unidad === unidad && d.rangoMax > 0)
+    .sort((a, b) => a.rangoMax - b.rangoMax);
+  if (!dela.length || total <= 0) return cuenta;
+
+  const mayor = dela[dela.length - 1];
+  let falta = total;
+  // Tope de seguridad: un pedido disparatado no debe colgar la app.
+  for (let vuelta = 0; falta > 0 && vuelta < 200; vuelta++) {
+    const cabe = dela.find((d) => falta <= d.rangoMax);
+    const elegido = cabe || mayor;
+    cuenta[elegido.id] = (cuenta[elegido.id] || 0) + 1;
+    if (cabe) break;
+    falta -= mayor.rangoMax;
+  }
+  return cuenta;
+};
+
 const calcularConsumo = (items, desechables, extrasCatalogo) => {
   const consumo = {};
   const envases = (desechables || []).map(normalizarDesechable);
@@ -736,8 +764,9 @@ const calcularConsumo = (items, desechables, extrasCatalogo) => {
         consumo[cat.empaqueEnvaseId] = (consumo[cat.empaqueEnvaseId] || 0) + Math.ceil(it.cantidad);
       } else if (cat.empaqueTipo === "rango") {
         const totalPiezas = it.piezasPorUnidad > 0 ? it.cantidad * it.piezasPorUnidad : it.cantidad;
-        const tier = envaseParaMedida(envases, "piezas", totalPiezas);
-        if (tier) consumo[tier.id] = (consumo[tier.id] || 0) + 1;
+        Object.entries(repartirEnEnvases(envases, "piezas", totalPiezas)).forEach(([id, n]) => {
+          consumo[id] = (consumo[id] || 0) + n;
+        });
       }
     }
   });
@@ -6201,6 +6230,30 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               Restaurar un respaldo <strong>reemplaza</strong> todos los datos actuales
               (pedidos, clientes, menú, presupuestos y reportes).
             </p>
+            {/* Si la app se atoró alguna vez, aquí queda el rastro. Sirve para
+                poder decir qué pasó en vez de "se me salió". */}
+            {(() => {
+              let ultimo = null;
+              try { ultimo = JSON.parse(window.localStorage.getItem("pepe_andaluz_ultimo_error") || "null"); } catch { /* nada */ }
+              if (!ultimo) return null;
+              return (
+                <div className="af-parecidos mb-3">
+                  <div className="af-mini-label">La última vez que se atoró la pantalla</div>
+                  <div className="text-sm">{fmtDateHuman((ultimo.cuando || "").slice(0, 10))}</div>
+                  <code className="text-xs" style={{ wordBreak: "break-word" }}>{ultimo.mensaje}</code>
+                  <button
+                    className="af-btn-ghost w-full mt-2"
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(ultimo, null, 1));
+                      showToast("Copiado. Pásaselo a Carlos.", "ok");
+                    }}
+                  >
+                    <Copy size={14} className="inline mr-1" /> Copiar para mandarlo
+                  </button>
+                </div>
+              );
+            })()}
+
             <label className="af-btn-secondary w-full block text-center cursor-pointer">
               <Upload size={15} className="inline mr-1" /> Elegir archivo de respaldo
               <input type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(e) => { leerArchivo(e.target.files[0]); e.target.value = ""; }} />
