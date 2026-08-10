@@ -8313,7 +8313,18 @@ export default function App() {
       if (cancelado) return;
       setSesion(s);
       if (s) {
-        try { setPerfil(await obtenerMiPerfil(s.user.id)); } catch { setPerfil(null); }
+        // Supabase renueva el permiso de entrada cada tanto, y cada renovación
+        // pasa por aquí. Si en ese momento falla la lectura del perfil —un
+        // parpadeo de red— NO se borra el que ya se tenía: borrarlo hacía que
+        // la app se creyera sin sesión, tirara todo y volviera a cargar desde
+        // cero, con su pantalla de "Cargando pedidos" y su saludo, a media
+        // captura y sin que nadie hubiera tocado nada.
+        try {
+          const p = await obtenerMiPerfil(s.user.id);
+          if (!cancelado && p) setPerfil(p);
+        } catch (e) {
+          console.warn("No se pudo releer el perfil; se conserva el anterior.", e);
+        }
       } else {
         setPerfil(null);
       }
@@ -8439,7 +8450,11 @@ export default function App() {
     // pedidos..."); en las siguientes llamadas (al volver a la app) se
     // actualiza en silencio para no interrumpir lo que se esté viendo.
     const cargarTodo = async (mostrarPantalla) => {
-      if (mostrarPantalla) setCargando(true);
+      // Solo se tapa la pantalla cuando todavía no hay nada que enseñar. Si ya
+      // hay pedidos en pantalla, recargar en silencio: taparlos a media
+      // captura es justo lo que se sentía como "se salió sola".
+      const taparPantalla = mostrarPantalla && !hayDatosEnPantalla.current;
+      if (taparPantalla) setCargando(true);
       try {
         const [rp, rc, rcfg, rh, rpr, rav, rg] = await Promise.allSettled([
           almacen.get("pedidos"),
@@ -8483,10 +8498,13 @@ export default function App() {
         if (rpr.status === "fulfilled" && rpr.value) aplicarClave("presupuestos", rpr.value.value);
         if (rav.status === "fulfilled" && rav.value) aplicarClave("avatares", rav.value.value);
         if (rg.status === "fulfilled" && rg.value) aplicarClave("gastos", rg.value.value);
+        // A partir de aquí ya hay algo en pantalla: las siguientes lecturas
+        // se hacen en silencio.
+        hayDatosEnPantalla.current = true;
       } catch (e) {
         console.error("Error cargando datos", e);
       } finally {
-        if (!cancelado && mostrarPantalla) setCargando(false);
+        if (!cancelado && taparPantalla) setCargando(false);
       }
     };
 
@@ -8636,6 +8654,9 @@ export default function App() {
   // configuración (para descontar del inventario), así que este caso sí se
   // daba en la vida real.
   const configCargada = useRef(!nubeActiva);
+  // Si ya se enseñaron datos alguna vez en esta sesión. Sirve para no volver a
+  // tapar la pantalla con "Cargando pedidos" en las recargas siguientes.
+  const hayDatosEnPantalla = useRef(false);
   const guardarConfig = (nueva) => {
     setConfig(nueva);
     if (!configCargada.current) {
