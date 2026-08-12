@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
@@ -3314,6 +3314,47 @@ const COLOR_INK_SOFT = "#64758F";
 const chartTooltipStyle = { borderRadius: 10, border: `1px solid ${COLOR_LINE_CHART}`, fontSize: 12, boxShadow: "0 4px 14px rgba(43,32,21,0.12)" };
 const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 
+// Una rebanada por platillo, con colores que se distinguen entre sí. Vive
+// fuera del componente a propósito: dentro se creaba de nuevo en cada dibujado
+// y, al ser una propiedad "distinta" cada vez, echaba a perder el React.memo
+// de la dona.
+const COLORES_PASTEL = ["#2F5FE0", "#E0524A", "#F2A03D", "#31A66B", "#8B5CF6", "#0EA5E9", "#EC4899", "#84CC16"];
+
+// La dona, separada a propósito.
+//
+// Recharts vuelve a correr su animación cada vez que se le redibuja, y señalar
+// una rebanada con el dedo redibujaba TODA la pantalla: por eso la animación
+// se veía como un temblor. Aislada aquí y con React.memo, solo se redibuja
+// cuando cambian de verdad los datos —al cambiar de vista o de año— y ahí sí
+// entra animando, que es como se ve bien.
+//
+// Lo de resaltar la rebanada señalada se hace con CSS (ver .af-dona-grafica),
+// no con estado de React, justo para no redibujarla.
+const DonaProductos = React.memo(function DonaProductos({ datos, colores, alSeñalar, alSoltar, alto = 230, dentro = 62, fuera = 96 }) {
+  return (
+    <ResponsiveContainer width="100%" height={alto}>
+      <PieChart>
+        <Pie
+          animationDuration={550}
+          data={datos}
+          dataKey="valor"
+          nameKey="nombre"
+          innerRadius={dentro}
+          outerRadius={fuera}
+          paddingAngle={2}
+          stroke="none"
+          onMouseEnter={(_, i) => alSeñalar(i)}
+          onMouseLeave={alSoltar}
+        >
+          {datos.map((d, i) => (
+            <Cell key={d.nombre} fill={d.color || colores[i % colores.length]} />
+          ))}
+        </Pie>
+      </PieChart>
+    </ResponsiveContainer>
+  );
+});
+
 function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig, showToast }) {
   const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("ventas");
@@ -3332,7 +3373,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [sectorDona, setSectorDona] = useState(null);
   const [sectorPlatillo, setSectorPlatillo] = useState(null);
   const [vistaVentas, setVistaVentas] = useState("paellas");
-  const [mesesPlegados, setMesesPlegados] = useState({});
+  // Vacío = todos cerrados. Al entrar a un reporte se viene a ver un total,
+  // no a leer gasto por gasto de los ocho meses: quien quiera el detalle de un
+  // mes lo abre.
+  const [mesesAbiertos, setMesesAbiertos] = useState({});
+  // Estables entre dibujados, si no React.memo no sirve de nada: una función
+  // nueva cada vez cuenta como propiedad cambiada y vuelve a animar.
+  const señalarPlatillo = React.useCallback((i) => setSectorPlatillo(i), []);
+  const soltarPlatillo = React.useCallback(() => setSectorPlatillo(null), []);
+  const [verLibreta, setVerLibreta] = useState(false);
   const [posibleDuplicado, setPosibleDuplicado] = useState(null);
   // null = apartado cerrado; objeto = capturando o editando un gasto fijo.
   const [draftFijo, setDraftFijo] = useState(null);
@@ -3436,11 +3485,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // se ve una cosa a la vez, y de arranque las paellas, que es lo que importa.
   const soloPaellas = todosLosProductos.filter((d) => d.esPaella);
   const soloOtros = todosLosProductos.filter((d) => !d.esPaella);
-  const datosPaella =
-    vistaVentas === "paellas" ? soloPaellas : vistaVentas === "otros" ? soloOtros : todosLosProductos;
+  // Se recuerda el resultado en vez de recalcularlo en cada dibujado. Sin esto,
+  // pasar el dedo por la dona le entregaba a la gráfica una lista nueva cada
+  // vez —aunque tuviera lo mismo dentro— y volvía a animar sin parar: eso era
+  // el trabadero. Ahora la animación solo corre cuando de verdad cambia algo.
+  const datosPaella = useMemo(
+    () => (vistaVentas === "paellas" ? soloPaellas : vistaVentas === "otros" ? soloOtros : todosLosProductos),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vistaVentas, JSON.stringify(todosLosProductos)]
+  );
   const totalPorProducto = datosPaella.reduce((a, x) => a + x.valor, 0);
-  // Una rebanada por platillo, con colores que se distinguen entre sí.
-  const COLORES_PASTEL = ["#2F5FE0", "#E0524A", "#F2A03D", "#31A66B", "#8B5CF6", "#0EA5E9", "#EC4899", "#84CC16"];
 
   // --- Finanzas: gastos, utilidad y crecimiento de clientes ---
   const gastosAnioTodos = gastos.filter((g) => Number(g.fecha.split("-")[0]) === anio);
@@ -3469,12 +3523,33 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     gasto: gastoPorMes[i],
   }));
 
-  const clientesConFecha = (clientes || []).filter((c) => c.createdAt);
-  const clientesNuevosAnio = clientesConFecha.filter((c) => new Date(c.createdAt).getFullYear() === anio).length;
-  const nuevosPorMes = Array(12).fill(0);
-  clientesConFecha.forEach((c) => {
+  // Un cliente es nuevo en el mes de su PRIMER pedido, no el día que alguien lo
+  // dio de alta en la app. Están capturando pedidos viejos de enero y todos
+  // esos clientes caían en agosto, que es cuando se teclearon: la gráfica
+  // contaba el trabajo de captura, no cuándo llegó la gente.
+  const primerPedidoDe = {};
+  (pedidos || []).forEach((p) => {
+    if (!p.clienteId || !p.fecha) return;
+    if (!primerPedidoDe[p.clienteId] || p.fecha < primerPedidoDe[p.clienteId]) {
+      primerPedidoDe[p.clienteId] = p.fecha;
+    }
+  });
+  // Se lee del texto "AAAA-MM-DD" en vez de con Date: interpretarlo como fecha
+  // lo corre un día hacia atrás por la diferencia de horario, y un pedido del
+  // día 1 se contaría en el mes anterior.
+  const altaDeCliente = (c) => {
+    const delPedido = primerPedidoDe[c.id];
+    if (delPedido) return { anio: +delPedido.slice(0, 4), mes: +delPedido.slice(5, 7) - 1 };
+    if (!c.createdAt) return null;
     const d = new Date(c.createdAt);
-    if (d.getFullYear() === anio) nuevosPorMes[d.getMonth()] += 1;
+    return { anio: d.getFullYear(), mes: d.getMonth() };
+  };
+
+  const clientesConFecha = (clientes || []).map(altaDeCliente).filter(Boolean);
+  const clientesNuevosAnio = clientesConFecha.filter((a) => a.anio === anio).length;
+  const nuevosPorMes = Array(12).fill(0);
+  clientesConFecha.forEach((a) => {
+    if (a.anio === anio) nuevosPorMes[a.mes] += 1;
   });
   const datosClientesMensual = MESES.map((nombre, i) => ({ mes: nombre.slice(0, 3), nuevos: nuevosPorMes[i] }));
 
@@ -3594,17 +3669,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   });
 
   const alternarMes = (mesIdx) =>
-    setMesesPlegados((prev) => ({ ...prev, [mesIdx]: !prev[mesIdx] }));
+    setMesesAbiertos((prev) => ({ ...prev, [mesIdx]: !prev[mesIdx] }));
 
-  // Reparto del año para la dona: de lo que entró, cuánto se fue en gastos y
-  // cuánto sobró. Si se gastó de más, la dona muestra solo el gasto y el
-  // centro avisa que faltó.
-  const repartoAnual = utilidadAnio >= 0
-    ? [
-        { nombre: "Se fue en gastos", valor: totalGastosAnio, color: COLOR_GASTO },
-        { nombre: "Quedó", valor: utilidadAnio, color: COLOR_WINE },
-      ].filter((r) => r.valor > 0)
-    : [{ nombre: "Se fue en gastos", valor: totalGastosAnio, color: COLOR_GASTO }];
+  // En qué se fue el gasto del año, por categoría.
+  //
+  // Antes esta dona partía el año en "gastos" y "lo que quedó", que es
+  // exactamente lo que ya dicen las tres tarjetas de arriba y la gráfica de
+  // barras: tres formas de enseñar el mismo número. Lo que no se veía en
+  // ningún lado es en QUÉ se va el dinero, que es lo que se puede mover.
+  const repartoAnual = useMemo(() => {
+    const porCategoria = {};
+    gastosAnio.forEach((g) => {
+      const cat = g.categoria || "Otros";
+      porCategoria[cat] = (porCategoria[cat] || 0) + (parseFloat(g.monto) || 0);
+    });
+    return Object.entries(porCategoria)
+      .map(([nombre, valor], i) => ({ nombre, valor, color: COLORES_PASTEL[i % COLORES_PASTEL.length] }))
+      .filter((r) => r.valor > 0)
+      .sort((a, b) => b.valor - a.valor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(gastosAnio.map((g) => [g.categoria, g.monto]))]);
 
   const mesesConMovimiento = datosFinanzasMensual.filter(
     (d) => (d.ingreso || 0) > 0 || (d.gasto || 0) > 0
@@ -4501,6 +4585,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </div>
       </div>
 
+      {/* Doce casillas para capturar la libreta vieja, que se usan una vez y
+          después estorban todo el año. Se abren cuando hacen falta. */}
+      <div className="af-encabezado-accion">
+        <div className="af-section-title" style={{ margin: 0 }}>Registro de libreta</div>
+        <button className="af-btn-accion" onClick={() => setVerLibreta((v) => !v)}>
+          {verLibreta ? <><X size={15} /> Cerrar</> : <><Pencil size={15} /> Capturar meses viejos</>}
+        </button>
+      </div>
+
+      {verLibreta && (
       <div className="af-menu-grid mb-5">
         {MESES.map((nombre, i) => {
           const auto = autoPorMes[i];
@@ -4529,6 +4623,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           );
         })}
       </div>
+      )}
 
       {datosPorAnio.length > 1 && (
         <div className="af-card p-4 mb-5 af-chart-card">
@@ -4609,35 +4704,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           ) : (
           <>
           <div className="af-dona-grafica">
-            <ResponsiveContainer width="100%" height={230}>
-              <PieChart>
-                <Pie
-                  // Al cambiar entre Paellas y Otros, recharts intentaba
-                  // "transformar" las rebanadas viejas en las nuevas y se
-                  // trababa, porque no son los mismos platillos. Con una
-                  // llave distinta por vista, dibuja de nuevo y entra limpio.
-                  key={vistaVentas}
-                  isAnimationActive={false}
-                  data={datosPaella}
-                  dataKey="valor"
-                  nameKey="nombre"
-                  innerRadius={62}
-                  outerRadius={96}
-                  paddingAngle={2}
-                  stroke="none"
-                  onMouseEnter={(_, i) => setSectorPlatillo(i)}
-                  onMouseLeave={() => setSectorPlatillo(null)}
-                >
-                  {datosPaella.map((d, i) => (
-                    <Cell
-                      key={d.nombre}
-                      fill={COLORES_PASTEL[i % COLORES_PASTEL.length]}
-                      opacity={sectorPlatillo === null || sectorPlatillo === i ? 1 : 0.35}
-                    />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
+            <DonaProductos
+              // La llave por vista fuerza un dibujado nuevo al cambiar entre
+              // Paellas y Otros: sin ella recharts intenta "transformar" unas
+              // rebanadas en otras que no son las mismas, y se traba.
+              key={vistaVentas}
+              datos={datosPaella}
+              colores={COLORES_PASTEL}
+              alSeñalar={señalarPlatillo}
+              alSoltar={soltarPlatillo}
+            />
             {/* El detalle va en el centro, quieto: una ventanita flotante se
                 encimaba con lo que ya decía ahí. */}
             <div className="af-dona-centro">
@@ -4795,7 +4871,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             porque de un vistazo se ve la proporción, que es lo que importa;
             al lado, el mes a mes en fichas para no hacer una lista larga. */}
         <div className="af-card p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">A dónde se fue el dinero — {anio}</div>
+          <div className="af-chart-title">En qué se fue el gasto — {anio}</div>
           <div className="af-dona-wrap">
             <div className="af-dona-grafica">
               <ResponsiveContainer width="100%" height={190}>
@@ -4830,20 +4906,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     <div className="af-dona-centro-monto" style={{ color: repartoAnual[sectorDona].color }}>
                       {money(repartoAnual[sectorDona].valor)}
                     </div>
-                    {totalAnio > 0 && (
+                    {totalGastosAnio > 0 && (
                       <div className="af-dona-centro-pct">
-                        {Math.round((repartoAnual[sectorDona].valor / totalAnio) * 100)}% de lo que entró
+                        {Math.round((repartoAnual[sectorDona].valor / totalGastosAnio) * 100)}% del gasto
                       </div>
                     )}
                   </>
                 ) : (
                   <>
-                    <div className="af-dona-centro-label">{utilidadAnio >= 0 ? "Quedó" : "Faltó"}</div>
-                    <div className={"af-dona-centro-monto" + (utilidadAnio >= 0 ? " positivo" : " negativo")}>
-                      {money(Math.abs(utilidadAnio))}
-                    </div>
-                    {totalAnio > 0 && utilidadAnio >= 0 && (
-                      <div className="af-dona-centro-pct">{Math.round((utilidadAnio / totalAnio) * 100)}% de lo que entró</div>
+                    <div className="af-dona-centro-label">Gasto del negocio</div>
+                    <div className="af-dona-centro-monto negativo">{money(totalGastosAnio)}</div>
+                    {totalAnio > 0 && (
+                      <div className="af-dona-centro-pct">{Math.round((totalGastosAnio / totalAnio) * 100)}% de lo que entró</div>
                     )}
                   </>
                 )}
@@ -4851,12 +4925,19 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </div>
 
             {/* Qué es cada color, ya que el detalle sale en el centro. */}
+            {/* Con el monto al lado: así se lee de corrido sin tener que ir
+                tocando rebanada por rebanada para saber cuánto es cada una. */}
             <div className="af-dona-leyenda">
-              {repartoAnual.map((r) => (
-                <span key={r.nombre}>
-                  <span className="af-legend-dot" style={{ background: r.color }} /> {r.nombre}
-                </span>
-              ))}
+              {repartoAnual.length === 0 ? (
+                <span className="af-ink-soft">Todavía no hay gastos del negocio este año.</span>
+              ) : (
+                repartoAnual.map((r) => (
+                  <span key={r.nombre}>
+                    <span className="af-legend-dot" style={{ background: r.color }} /> {r.nombre}
+                    <strong className="af-leyenda-monto">{money(r.valor)}</strong>
+                  </span>
+                ))
+              )}
             </div>
 
             <div className="af-dona-meses">
@@ -5627,17 +5708,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         ) : (
           <div className="mb-4">
             {gastosPorMes.map((grupo) => {
-              const plegado = mesesPlegados[grupo.mesIdx];
+              const abierto = mesesAbiertos[grupo.mesIdx];
               return (
                 <div key={grupo.mesIdx} className="af-mes-grupo">
                   <button className="af-mes-cabecera" onClick={() => alternarMes(grupo.mesIdx)}>
-                    <ChevronRight size={16} className={"af-mes-flecha" + (plegado ? "" : " abierta")} />
+                    <ChevronRight size={16} className={"af-mes-flecha" + (abierto ? " abierta" : "")} />
                     <span className="af-mes-nombre">{grupo.nombre}</span>
                     <span className="af-mes-cuenta">{grupo.lista.length}</span>
                     <span className="af-mes-total">{money(grupo.total)}</span>
                   </button>
 
-                  {!plegado && grupo.lista.map((g) => (
+                  {abierto && grupo.lista.map((g) => (
                     <div key={g.id} className="af-card p-3 mb-2 af-gasto-row">
                       <div className="flex-1 min-w-0">
                         {/* Arriba lo que identifica el gasto de un vistazo: la
@@ -10487,6 +10568,13 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-stock-alert { font-size: 12px; font-weight: 700; color: var(--wine); background: var(--wine-soft); border-radius: 8px; padding: 5px 9px; text-align: center; }
 .af-modal-lista { text-align: left; max-width: 460px; }
 .af-lista-scroll { max-height: 52vh; overflow-y: auto; margin: 4px 0; }
+.af-leyenda-monto { margin-left: 6px; }
+/* Resaltar la rebanada señalada sin pasar por React: si esto se hiciera con
+   estado, la dona se redibujaría y reiniciaría su animación en cada movimiento
+   del dedo. */
+.af-dona-grafica .recharts-pie-sector path { transition: opacity .15s ease; }
+.af-dona-grafica:hover .recharts-pie-sector path { opacity: .35; }
+.af-dona-grafica .recharts-pie-sector:hover path { opacity: 1; }
 .af-receta-grupo { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin: 8px 0 2px; }
 .af-receta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
 
