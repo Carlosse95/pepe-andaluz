@@ -235,11 +235,17 @@ const fmtKg = (kg) => (Number.isInteger(kg) ? kg : kg.toFixed(1)) + " kg";
 // "frasco", aquí dice frascos; si dice "pieza", piezas. Así lo que se lee en
 // el reporte es lo mismo que se dice al vender.
 const pluralSimple = (palabra, n) => {
-  const p = (palabra || "").trim();
-  if (!p || n === 1) return p;
-  if (/[aeiouáéíóú]$/i.test(p)) return p + "s";
-  if (/[zZ]$/.test(p)) return p.slice(0, -1) + "ces";
-  return p + "es";
+  const texto = (palabra || "").trim();
+  if (!texto || n === 1) return texto;
+  // En el menú la unidad a veces es una frase entera ("Ración de 6"). Solo
+  // crece la primera palabra: "207 Raciones de 6", no "207 Ración de 6es".
+  const [p, ...resto] = texto.split(/\s+/);
+  const cola = resto.length ? " " + resto.join(" ") : "";
+  // Y la tilde se cae al alargarse: ración → raciones, nunca "racións".
+  if (/ón$/i.test(p)) return p.slice(0, -2) + "ones" + cola;
+  if (/[aeiouáéíóú]$/i.test(p)) return p + "s" + cola;
+  if (/[zZ]$/.test(p)) return p.slice(0, -1) + "ces" + cola;
+  return p + "es" + cola;
 };
 const fmtCantidadVendida = (cuanto, unidad) => {
   const n = Number.isInteger(cuanto) ? cuanto : Math.round(cuanto * 10) / 10;
@@ -3347,7 +3353,7 @@ const DonaProductos = React.memo(function DonaProductos({ datos, colores, alSeñ
           onMouseLeave={alSoltar}
         >
           {datos.map((d, i) => (
-            <Cell key={d.nombre} fill={d.color || colores[i % colores.length]} />
+            <Cell key={d.clave || d.nombre} fill={d.color || colores[i % colores.length]} />
           ))}
         </Pie>
       </PieChart>
@@ -3463,19 +3469,33 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     return { cuanto, unidad: it.unidad || "pieza" };
   };
 
+  // Cada pedido guarda el nombre del platillo tal como estaba el día que se
+  // capturó. Es a propósito: un ticket viejo debe seguir diciendo lo que se
+  // vendió. Pero para CONTAR no sirve: al cambiarle el nombre a un platillo, el
+  // mismo producto salía dos veces en la gráfica ("Paella Mar y Tierra" y "Mar
+  // y Tierra"), partiendo sus ventas en dos rebanadas.
+  //
+  // Por eso se junta por producto —que no cambia— y se rotula con el nombre que
+  // tiene HOY el menú. El nombre guardado solo se usa cuando el platillo ya no
+  // existe, para no perder esa venta.
+  const nombreDeHoy = {};
+  (config?.paellas || []).forEach((p) => { nombreDeHoy["paella:" + p.id] = p.nombre; });
+  (config?.extras || []).forEach((e) => { nombreDeHoy["extra:" + e.id] = e.nombre; });
+
   const porProducto = {};
   pedidos.forEach((p) => {
     const [y] = p.fecha.split("-").map(Number);
     if (y !== anio) return;
     p.items.forEach((it) => {
-      const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
+      const clave = it.tipo === "paella" ? "paella:" + it.paellaId : "extra:" + it.extraId;
+      const nombre = nombreDeHoy[clave] || (it.tipo === "paella" ? it.paellaNombre : it.nombre);
       if (!nombre) return;
       const u = unidadDelItem(it);
-      if (!porProducto[nombre]) {
-        porProducto[nombre] = { nombre, valor: 0, cuanto: 0, unidad: u.unidad, esPaella: it.tipo === "paella" };
+      if (!porProducto[clave]) {
+        porProducto[clave] = { clave, nombre, valor: 0, cuanto: 0, unidad: u.unidad, esPaella: it.tipo === "paella" };
       }
-      porProducto[nombre].valor += it.subtotal || 0;
-      porProducto[nombre].cuanto += u.cuanto;
+      porProducto[clave].valor += it.subtotal || 0;
+      porProducto[clave].cuanto += u.cuanto;
     });
   });
   const todosLosProductos = Object.values(porProducto).sort((a, b) => b.valor - a.valor);
@@ -4301,7 +4321,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       <div className="af-rent-nombre">{f.nombre}</div>
                       <div className="af-rent-sub">
                         {f.volumen > 0
-                          ? `${f.tipo === "paella" ? fmtKg(f.volumen) : Math.round(f.volumen * 10) / 10 + " " + f.unidad} vendido${f.tipo === "paella" ? "s" : ""} en ${anio}`
+                          ? `Vendido en ${anio}: ${fmtCantidadVendida(f.volumen, f.unidad)}`
                           : `Sin ventas en ${anio}`}
                       </div>
                     </div>
@@ -4743,7 +4763,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               const pct = totalPorProducto > 0 ? Math.round((d.valor / totalPorProducto) * 100) : 0;
               const color = COLORES_PASTEL[i % COLORES_PASTEL.length];
               return (
-                <div key={d.nombre} className="af-platillo">
+                <div key={d.clave} className="af-platillo">
                   <div className="af-platillo-arriba">
                     <span className="af-punto-color" style={{ background: color }} />
                     <span className="af-platillo-nombre">{d.nombre}</span>
