@@ -11378,7 +11378,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 @media (max-width: 700px) {
   .af-barra-gastos { align-items: stretch; }
   .af-filtros-fila { width: 100%; }
-  .af-filtros-fila .af-input { flex: 1 1 130px; min-width: 0; }
+  /* El reparto va en el ENVOLTORIO del filtro, no en la lista de adentro.
+     El envoltorio apila el título sobre el control, o sea que crece hacia
+     abajo: puesto ahí, ese "130px" no era el ancho sino el ALTO, y en el
+     iPhone las listas salían como globos de 200px de altura. */
+  .af-filtro { flex: 1 1 130px; min-width: 0; }
+  .af-filtros-fila .af-input { width: 100%; height: var(--alto-campo); flex: none; }
   .af-filtro-busca { flex: 1 1 100%; min-width: 0; }
   .af-aviso-facturar { order: 3; width: 100%; justify-content: center; margin: 4px 0 0; }
   .af-encabezado-accion { flex-wrap: wrap; }
