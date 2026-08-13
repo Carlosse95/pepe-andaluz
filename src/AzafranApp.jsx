@@ -3175,14 +3175,13 @@ const NAV_ESCONDIBLES = [
   { key: "reportes", label: "Reportes" },
 ];
 
+// De qué bolsa sale el gasto. Se dicen SIEMPRE igual —Negocio y Casa— en el
+// filtro, en la tabla y en el formulario: antes el filtro decía "Del negocio"
+// y la tabla "Negocio", y parecían dos cosas distintas.
 const AMBITOS = [
-  { id: "negocio", label: "Del negocio" },
-  { id: "familia", label: "Familiar" },
+  { id: "negocio", label: "Negocio" },
+  { id: "familia", label: "Casa" },
 ];
-// En el renglón de la tabla no cabe "Del negocio" y salía cortado ("Del
-// negocic"). Ahí va la versión corta; en el formulario, donde sí hay lugar,
-// se sigue leyendo completo.
-const AMBITOS_CORTO = { negocio: "Negocio", familia: "Casa" };
 const CATEGORIAS_FAMILIARES = ["Familiar/Personal"];
 // Los gastos capturados antes de que existiera esta separación no traen
 // ámbito: se deduce de su categoría, que es como se venía distinguiendo.
@@ -5700,7 +5699,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       disabled={!esAdmin}
                       onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}
                     >
-                      {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{AMBITOS_CORTO[a.id] || a.label}</option>))}
+                      {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
                     </select>
                   </span>
 
@@ -10920,7 +10919,10 @@ textarea.af-input { height: auto; min-height: var(--alto-campo); padding: 12px 1
    Quitándoles la apariencia nativa ya se comportan como cualquier campo. */
 .af-input[type="date"], .af-input[type="time"], .af-input[type="datetime-local"] {
   -webkit-appearance: none; appearance: none;
-  display: block; width: 100%;
+  /* En flex, y no en bloque: Safari de iPhone y iPad pega la fecha al borde
+     de arriba del recuadro en vez de centrarla, y al lado de un campo normal
+     se nota que la letra va más alta. Así queda a la misma altura que todo. */
+  display: flex; align-items: center; width: 100%;
 }
 /* El iconito del calendario/reloj se queda a la derecha sin empujar el texto. */
 .af-input[type="date"]::-webkit-date-and-time-value,
