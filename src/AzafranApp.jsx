@@ -753,6 +753,21 @@ const normalizarDesechable = (d) => ({
   rangoMax: d.rangoMax != null ? d.rangoMax : d.kgMax != null ? d.kgMax : 999,
 });
 
+// Lo que cuesta UN envase. Se captura el paquete completo —que es como se
+// compra— y la app saca la pieza, igual que con los ingredientes.
+const costoPorEnvase = (d) => {
+  const costo = parseFloat(d?.costoPaquete) || 0;
+  const traen = parseFloat(d?.piezasPaquete) || 0;
+  return costo > 0 && traen > 0 ? costo / traen : 0;
+};
+
+// Lo que se lleva de envase un platillo, si tiene uno ligado en el menú.
+const costoEnvaseDeProducto = (prod, config) => {
+  if (!prod?.empaqueEnvaseId) return 0;
+  const envase = (config?.desechables || []).find((d) => d.id === prod.empaqueEnvaseId);
+  return envase ? costoPorEnvase(envase) : 0;
+};
+
 // Nombre para identificar una paellera: el que le puso el usuario, o si no
 // tiene, su rango de kilos como respaldo.
 const nombrePaellera = (t) => (t.nombre && t.nombre.trim() ? t.nombre.trim() : `Paellera ${t.rangoMin}-${t.rangoMax}kg`);
@@ -3488,7 +3503,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [leyendoTicket, setLeyendoTicket] = useState(false);
   const [tiendaOtra, setTiendaOtra] = useState(false);
   const [abrirGasto, setAbrirGasto] = useState(false);
-  const [verDetallesGasto, setVerDetallesGasto] = useState(false);
   const [abrirFijos, setAbrirFijos] = useState(false);
   const [abrirFiltros, setAbrirFiltros] = useState(false);
   const [datosParaCopiar, setDatosParaCopiar] = useState(null);
@@ -4113,6 +4127,48 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const cambiarCategoriaGasto = (id, categoria) =>
     onGuardarGastos(gastos.map((g) => (g.id === id ? { ...g, categoria } : g)));
 
+  // De qué bolsa salió el gasto: del negocio o de la casa.
+  const cambiarAmbitoGasto = (id, ambito) =>
+    onGuardarGastos(gastos.map((g) => (g.id === id ? { ...g, ambito } : g)));
+
+  // "Cada mes" desde el renglón: en vez de ir a capturar la regla a otra
+  // sección, se marca aquí el gasto que ya se apuntó y la app crea la regla
+  // con sus mismos datos. Desmarcarlo la quita.
+  const cambiarFijo = (gasto, quiereFijo) => {
+    if (!onGuardarConfig || !config) return;
+    const fijos = config.gastosFijos || [];
+    if (quiereFijo) {
+      const nuevo = {
+        id: uid(),
+        descripcion: gasto.descripcion || gasto.tienda || gasto.categoria,
+        categoria: gasto.categoria,
+        ambito: ambitoDe(gasto),
+        monto: parseFloat(gasto.monto) || 0,
+        porDia: 0,
+        dia: Number(gasto.fecha.split("-")[2]) || 1,
+      };
+      onGuardarConfig({
+        ...config,
+        gastosFijos: [...fijos, nuevo],
+        // Este mes ya está apuntado —es justo el gasto que se está marcando—,
+        // así que se da por generado para que no salga otra vez duplicado.
+        fijosGenerados: [...(config.fijosGenerados || []), `${nuevo.id}|${gasto.fecha.slice(0, 7)}`],
+      });
+      onGuardarGastos(gastos.map((g) => (g.id === gasto.id ? { ...g, esFijo: true, fijoId: nuevo.id } : g)));
+      showToast("Se va a apuntar solo cada mes");
+    } else {
+      // Solo se quita la regla que nació de este gasto; los gastos ya
+      // registrados se quedan, que son historia de lo que sí se pagó.
+      const fuera = gasto.fijoId;
+      onGuardarConfig({
+        ...config,
+        gastosFijos: fuera ? fijos.filter((f) => f.id !== fuera) : fijos,
+      });
+      onGuardarGastos(gastos.map((g) => (g.id === gasto.id ? { ...g, esFijo: false, fijoId: null } : g)));
+      showToast("Ya no se apunta solo");
+    }
+  };
+
   // Los tres estados de la factura. Marcar "Facturada" pregunta antes, porque
   // saca la compra de pendientes y es fácil darle sin querer en una lista.
   const cambiarEstadoFactura = (gasto, estado) => {
@@ -4222,6 +4278,31 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     });
   });
 
+  // Los tipos de gasto: los de fábrica, los que se hayan inventado (guardados
+  // con el menú) y los que ya estén escritos en algún gasto viejo. Sin esto
+  // último, un tipo hecho a mano desaparecía del selector y el gasto se veía
+  // como "Otros" sin que nadie lo hubiera cambiado.
+  const categoriasEnUso = useMemo(() => {
+    const propias = (config?.categoriasGasto || []).filter(Boolean);
+    const usadas = gastos.map((g) => g.categoria).filter(Boolean);
+    return [...new Set([...CATEGORIAS_GASTO, ...propias, ...usadas])];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(config?.categoriasGasto || []), JSON.stringify(gastos.map((g) => g.categoria))]);
+
+  // Un tipo nuevo, para lo que no cabe en ninguno de los de siempre.
+  const agregarCategoria = () => {
+    const nombre = (window.prompt("¿Cómo se llama el tipo de gasto?") || "").trim();
+    if (!nombre) return;
+    if (categoriasEnUso.some((c) => normalizarNombreGasto(c) === normalizarNombreGasto(nombre))) {
+      showToast("Ese tipo ya existe", "aviso");
+      return;
+    }
+    if (onGuardarConfig && config) {
+      onGuardarConfig({ ...config, categoriasGasto: [...(config.categoriasGasto || []), nombre] });
+    }
+    setNuevoGasto((prev) => ({ ...prev, categoria: nombre }));
+  };
+
   // Cuánto colchón se le pone al costo. Se guarda con el menú, para que sea
   // el mismo en todos los dispositivos.
   const colchonCostos = Number.isFinite(parseFloat(config?.colchonCostos))
@@ -4254,6 +4335,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       precio: e.precio || 0,
       costoManual: e.costo || 0,
       otros: e.otros || {},
+      envaseAuto: costoEnvaseDeProducto(e, config),
       piezasPorUnidad: e.piezasPorUnidad || 0,
       receta: recetaDeProducto(e, config),
       auto: costoDesdeInventario(e.id, config?.ingredientes),
@@ -4291,7 +4373,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     // Lo que no es ingrediente pero igual se paga por cada plato que sale:
     // el envase, el gas y la mano de obra. Sin esto el costo sale corto y el
     // margen se ve más sano de lo que es.
-    const otros = (parseFloat(f.otros?.empaque) || 0) + (parseFloat(f.otros?.gas) || 0) + (parseFloat(f.otros?.manoObra) || 0);
+    // El envase sale solo si el platillo tiene uno ligado en el menú y ese
+    // envase dice lo que costó el paquete; si no, se escribe a mano.
+    const envase = f.envaseAuto > 0 ? f.envaseAuto : parseFloat(f.otros?.empaque) || 0;
+    const otros = envase + (parseFloat(f.otros?.gas) || 0) + (parseFloat(f.otros?.manoObra) || 0);
     const costo = costoIngredientes > 0 || otros > 0 ? costoIngredientes + otros : 0;
     // Costo estándar: el real más un colchón por si los precios se mueven.
     // Los precios de venta se ponen con este, no con el de hoy, para que una
@@ -4304,6 +4389,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       ...f,
       costo,
       costoIngredientes,
+      costoEnvase: envase,
       otrosCostos: otros,
       costoEstandar,
       costoAuto,
@@ -4424,7 +4510,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <div className="af-rent-resumen mb-4">
             <div className="af-rent-resumen-head">
               <div>
-                <div className="af-rent-resumen-label">Utilidad bruta {anio}</div>
+                <div className="af-rent-resumen-label">Le dejaron los platillos en {anio}</div>
                 <div className="af-rent-resumen-valor">{money(utilidadRent)}</div>
               </div>
               <div className={"af-rent-margen-badge " + (margenRent >= 0.5 ? "bien" : margenRent >= 0.35 ? "ajustado" : "malo")}>
@@ -4436,7 +4522,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </div>
             <div className="af-rent-resumen-pies">
               <span>Vendido <strong>{money(ingresoRent)}</strong></span>
-              <span>Costo aprox. <strong>{money(costoRent)}</strong></span>
+              <span>Costó hacerlos <strong>{money(costoRent)}</strong></span>
+            </div>
+            {/* La duda de siempre: este número no es lo que quedó al final del
+                año. Es solo lo que deja la comida, antes de la renta, los
+                sueldos y el transporte — eso sale en Finanzas. */}
+            <div className="af-rent-resumen-nota">
+              Es lo que deja la comida: lo vendido menos lo que costó hacerla. Todavía no le
+              quitamos renta, sueldos ni transporte; eso sale en Finanzas.
             </div>
           </div>
 
@@ -4537,8 +4630,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </div>
                     <div className="af-rent-cifra">
                       <span className="af-rent-cifra-label">Tu costo</span>
-                      {f.usaTanda ? (
-                        <span className="af-rent-cifra-valor af-rent-costo-calc" title="Sale de la tanda de ingredientes">
+                      {f.costo > 0 && (f.usaTanda || f.costoAuto > 0 || f.otrosCostos > 0) ? (
+                        <span className="af-rent-cifra-valor af-rent-costo-calc" title="Sale solo de tus ingredientes y del envase, el gas y la mano de obra">
                           {money(f.costo)}
                         </span>
                       ) : (
@@ -5092,12 +5185,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 {money(utilidadAnio)}
               </span>
             </div>
-            <div className="af-resumen-cifra">
-              <span className="af-resumen-label">Le queda de cada $100</span>
-              <span className="af-resumen-valor">
-                {totalAnio > 0 ? `$${Math.round((utilidadAnio / totalAnio) * 100)}` : "—"}
-              </span>
-            </div>
           </div>
 
           {totalAnio > 0 && (
@@ -5169,7 +5256,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </div>
 
         {abrirGasto && (
-        <div className="af-card p-4 mb-5">
+        <div className="af-card p-4 mb-5 af-form-gasto">
           {/* Capturar un gasto es contestar tres cosas: cuánto, dónde y el
               ticket. Lo demás tiene una respuesta buena por omisión (hoy, del
               negocio, la categoría de esa tienda) y vive en "Más detalles".
@@ -5304,16 +5391,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
 
 
-          {/* Un solo botón esconde todo lo que casi nunca se cambia. */}
-          <button className="af-mas-detalles" onClick={() => setVerDetallesGasto((v) => !v)}>
-            {verDetallesGasto ? "Ocultar detalles" : "Más detalles"}
-            <span className="af-mas-detalles-nota">
-              {verDetallesGasto ? "" : `${fmtDateHuman(nuevoGasto.fecha)} · ${nuevoGasto.categoria} · ${(nuevoGasto.ambito || "negocio") === "familia" ? "familiar" : "del negocio"}`}
-            </span>
-          </button>
-
-          {verDetallesGasto && (
-            <div className="af-detalles-gasto">
+          {/* Todo se ve desde el principio. Antes la mitad vivía detrás de
+              "Más detalles" y había que descubrirla; en una pantalla ancha
+              caben los seis campos sin que estorben. */}
           <div className="af-field">
             <label>¿De dónde sale?</label>
             <div className="af-ambito-switch">
@@ -5338,8 +5418,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
           <div className="af-field">
             <label>Categoría</label>
-            <select className="af-input" value={nuevoGasto.categoria} onChange={(e) => setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })}>
-              {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
+            <select
+              className="af-input"
+              value={nuevoGasto.categoria}
+              onChange={(e) => {
+                if (e.target.value === "__nueva__") agregarCategoria();
+                else setNuevoGasto({ ...nuevoGasto, categoria: e.target.value });
+              }}
+            >
+              {categoriasEnUso.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="__nueva__">Otro tipo…</option>
             </select>
           </div>
           <div className="af-field">
@@ -5364,8 +5452,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               }}
             />
           </div>
-            </div>
-          )}
 
           <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
         </div>
@@ -5397,20 +5483,31 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               tipo: se elige de una lista. Antes vivían escondidos detrás de un
               botón y había que descubrirlos. */}
           <div className="af-filtros-fila">
-          <select className="af-input" value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
-            <option value="todos">Negocio y casa</option>
-            {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
-          </select>
+          {/* Cada filtro dice de qué es: sin el título, tres listas seguidas
+              obligan a abrirlas para saber qué filtran. */}
+          <label className="af-filtro">
+            <span className="af-mini-label">Bolsa</span>
+            <select className="af-input" value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
+              <option value="todos">Todo</option>
+              {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
+            </select>
+          </label>
 
-          <select className="af-input" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
-            <option value="todos">Todos los tipos</option>
-            {CATEGORIAS_GASTO.map((c) => (<option key={c} value={c}>{c}</option>))}
-          </select>
+          <label className="af-filtro">
+            <span className="af-mini-label">Tipo</span>
+            <select className="af-input" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+              <option value="todos">Todos</option>
+              {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
+            </select>
+          </label>
 
-          <select className="af-input" value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
-            <option value="todos">Facturadas y no</option>
-            {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
-          </select>
+          <label className="af-filtro">
+            <span className="af-mini-label">Factura</span>
+            <select className="af-input" value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
+              <option value="todos">Todas</option>
+              {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
+            </select>
+          </label>
 
           <div className="af-buscador-gastos af-filtro-busca">
             <Search size={16} />
@@ -5486,75 +5583,105 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               : "Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."}
           />
         ) : (
-          <div className="mb-4">
-                    <div className="af-tabla-gastos">
-                      {/* Los títulos de las columnas, para no adivinar qué es
-                          cada cosa. Solo donde hay ancho: en el celular los
-                          renglones se apilan y los títulos estorbarían. */}
-                      <div className="af-gasto-encabezado">
-                        <span>Fecha</span>
-                        <span>En qué</span>
-                        <span>Tipo</span>
-                        <span className="af-col-monto">Monto</span>
-                        <span>Factura</span>
-                        <span />
-                      </div>
+          <div className="af-tabla-gastos mb-4">
+            {/* Los títulos de las columnas, para no adivinar qué es cada cosa.
+                Solo donde hay ancho: en el celular los renglones se apilan y
+                los títulos estorbarían. */}
+            <div className="af-gasto-encabezado">
+              <span>Fecha</span>
+              <span>En qué</span>
+              <span className="af-col-control">Tipo</span>
+              <span className="af-col-control">Bolsa</span>
+              <span className="af-col-control">Cada mes</span>
+              <span className="af-col-monto">Monto</span>
+              <span className="af-col-control">Factura</span>
+              <span />
+            </div>
 
-                      {gastosFiltrados.map((g) => (
-                        <div key={g.id} className="af-gasto-fila">
-                          <span className="af-gasto-fecha">{fmtDiaCorto(g.fecha)}</span>
+            {/* La lista se desplaza dentro de su propio marco: con cien gastos
+                la página se hacía interminable y el resto de Finanzas quedaba
+                a un scroll de distancia. */}
+            <div className="af-tabla-gastos-cuerpo">
+              {gastosFiltrados.map((g) => (
+                <div key={g.id} className="af-gasto-fila">
+                  <span className="af-gasto-fecha">{fmtDiaCorto(g.fecha)}</span>
 
-                          <span className="af-gasto-que">
-                            <span className="af-gasto-titulo">{g.tienda || g.descripcion || g.categoria}</span>
-                            {g.tienda && g.descripcion && <span className="af-gasto-sub">{g.descripcion}</span>}
-                            {filtroAmbito === "todos" && !esDelNegocio(g) && (
-                              <span className="af-chip af-chip-familia">Casa</span>
-                            )}
-                          </span>
+                  <span className="af-gasto-que">
+                    <span className="af-gasto-titulo">{g.tienda || g.descripcion || g.categoria}</span>
+                    {g.tienda && g.descripcion && <span className="af-gasto-sub">{g.descripcion}</span>}
+                  </span>
 
-                          {/* La categoría se cambia aquí mismo, sin abrir a
-                              editar: casi siempre es lo único que se corrige. */}
-                          <span className="af-gasto-celda">
-                            <select
-                              className="af-select-color"
-                              style={{ "--color-cat": colorCategoria(g.categoria) }}
-                              value={CATEGORIAS_GASTO.includes(g.categoria) ? g.categoria : "Otros"}
-                              disabled={!esAdmin}
-                              onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}
-                            >
-                              {CATEGORIAS_GASTO.map((c) => (<option key={c} value={c}>{c}</option>))}
-                            </select>
-                          </span>
+                  {/* La categoría se cambia aquí mismo, sin abrir a editar:
+                      casi siempre es lo único que se corrige. */}
+                  <span className="af-gasto-celda">
+                    <select
+                      className="af-select-color"
+                      style={{ "--color-cat": colorCategoria(g.categoria) }}
+                      value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"}
+                      disabled={!esAdmin}
+                      onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}
+                    >
+                      {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
+                    </select>
+                  </span>
 
-                          <span className="af-gasto-monto af-col-monto">{money(g.monto)}</span>
+                  {/* De qué bolsa salió. Antes solo se marcaba la de casa, así
+                      que al ver las dos juntas no quedaba claro si lo que no
+                      decía nada era del negocio o era un olvido. */}
+                  <span className="af-gasto-celda">
+                    <select
+                      className={"af-select-bolsa " + (esDelNegocio(g) ? "negocio" : "casa")}
+                      value={esDelNegocio(g) ? "negocio" : "familia"}
+                      disabled={!esAdmin}
+                      onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}
+                    >
+                      {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
+                    </select>
+                  </span>
 
-                          <span className="af-gasto-celda">
-                            <select
-                              className={"af-select-estado " + estadoFacturaDe(g)}
-                              value={estadoFacturaDe(g)}
-                              disabled={!esAdmin}
-                              onChange={(e) => cambiarEstadoFactura(g, e.target.value)}
-                            >
-                              {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
-                            </select>
-                          </span>
+                  {/* Si se repite solo cada mes. Marcarlo aquí crea la regla,
+                      que es lo que antes había que capturar en otra sección. */}
+                  <span className="af-gasto-celda">
+                    <select
+                      className={"af-select-fijo " + (g.esFijo ? "si" : "no")}
+                      value={g.esFijo ? "si" : "no"}
+                      disabled={!esAdmin}
+                      onChange={(e) => cambiarFijo(g, e.target.value === "si")}
+                    >
+                      <option value="no">Suelto</option>
+                      <option value="si">Cada mes</option>
+                    </select>
+                  </span>
 
-                          <span className="af-gasto-acciones">
-                            {g.ticket && (
-                              <button className="af-icon-btn" title="Ver el ticket" onClick={() => abrirTicket(g)}>
-                                <Receipt size={16} />
-                              </button>
-                            )}
-                            {esAdmin && (
-                              <>
-                                <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
-                                <button className="af-icon-btn" title="Borrar" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
-                              </>
-                            )}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                  <span className="af-gasto-monto af-col-monto">{money(g.monto)}</span>
+
+                  <span className="af-gasto-celda">
+                    <select
+                      className={"af-select-estado " + estadoFacturaDe(g)}
+                      value={estadoFacturaDe(g)}
+                      disabled={!esAdmin}
+                      onChange={(e) => cambiarEstadoFactura(g, e.target.value)}
+                    >
+                      {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
+                    </select>
+                  </span>
+
+                  <span className="af-gasto-acciones">
+                    {g.ticket && (
+                      <button className="af-icon-btn" title="Ver el ticket" onClick={() => abrirTicket(g)}>
+                        <Receipt size={16} />
+                      </button>
+                    )}
+                    {esAdmin && (
+                      <>
+                        <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
+                        <button className="af-icon-btn" title="Borrar" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+                      </>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -7174,6 +7301,34 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       <Trash2 size={15} />
                     </button>
                   </div>
+                  {/* Lo que cuesta el envase se captura como se compra —el
+                      paquete entero— y la app saca la pieza. Con eso, el
+                      platillo que lo lleve ya cuenta su envase en el costo sin
+                      volver a escribirlo. */}
+                  <div className="af-mini-label">¿Cuánto cuesta el paquete y cuántos trae?</div>
+                  <div className="af-menu-card-row mb-2">
+                    <NumberField
+                      value={d.costoPaquete || 0}
+                      min={0}
+                      className="af-input flex-1"
+                      onChange={(v) => setD({ costoPaquete: v })}
+                    />
+                    <span className="af-price-suffix">por</span>
+                    <NumberField
+                      value={d.piezasPaquete || 0}
+                      min={0}
+                      className="af-input flex-1"
+                      onChange={(v) => setD({ piezasPaquete: v })}
+                    />
+                    <span className="af-price-suffix">piezas</span>
+                  </div>
+                  {costoPorEnvase(d) > 0 && (
+                    <p className="af-ink-soft text-xs mb-2">
+                      Cada uno te sale en <strong>{money(costoPorEnvase(d))}</strong>, y ya se le suma
+                      al costo del platillo que lo lleve.
+                    </p>
+                  )}
+
                   <div className="af-mini-label">Se usa para</div>
                   <select className="af-input mb-2" value={d.unidad} onChange={(e) => setD({ unidad: e.target.value })}>
                     {UNIDADES_ENVASE.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
@@ -10827,7 +10982,17 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* min-width:0 es lo que permite que la tarjeta se encoja hasta el ancho de su
    columna; sin esto crece hasta el mínimo de su contenido y se desborda. */
 .af-menu-card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 13px; box-shadow: 0 1px 2px rgba(36,27,20,0.04); display: flex; flex-direction: column; gap: 8px; }
+/* Todos los recuadros de una ficha, del mismo alto y con la misma esquina.
+   Antes cada campo tenía el ancho que le tocaba y la ficha se veía como un
+   rompecabezas de cajas distintas. */
 .af-menu-card select, .af-menu-card input, .af-menu-card textarea { max-width: 100%; }
+.af-menu-card input.af-input, .af-menu-card select.af-input { height: 46px; border-radius: 12px; }
+.af-menu-card textarea.af-input { border-radius: 12px; }
+.af-menu-card .af-menu-card-row { gap: 10px; }
+/* Los campos cortos (una cantidad, un porcentaje) comparten medida entre sí
+   en vez de encogerse cada uno a lo que quepa. */
+.af-menu-card .af-menu-kgrange { width: 96px; flex: 0 0 96px; text-align: center; }
+.af-menu-card .af-receta-row .af-menu-kgrange { width: 88px; flex: 0 0 88px; }
 .af-menu-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .af-menu-name { flex: 1; font-weight: 600; }
 .af-menu-card-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
@@ -10870,7 +11035,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-kpi-value.af-kpi-down { color: #E0524A; }
 
 /* Rentabilidad por producto */
-.af-rent-resumen { background: linear-gradient(135deg, var(--chrome-deep) 0%, var(--chrome) 100%); color: white; border-radius: 18px; padding: 18px 20px; box-shadow: 0 10px 26px -14px rgba(22,35,63,0.55); }
+.af-rent-resumen { background: linear-gradient(135deg, var(--chrome-deep) 0%, var(--chrome) 100%); color: white; border-radius: 18px; padding: 22px 24px; box-shadow: 0 10px 26px -14px rgba(22,35,63,0.55); }
 .af-rent-resumen-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .af-rent-resumen-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
 .af-rent-resumen-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(22px, 6vw, 30px); margin-top: 2px; }
@@ -10883,7 +11048,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-resumen-pies { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; opacity: 0.9; }
 .af-rent-resumen-pies strong { font-family: 'Space Grotesk', sans-serif; }
 
-.af-rent-card { padding: 15px 16px; }
+.af-rent-card { padding: 20px 22px; }
 .af-rent-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .af-rent-nombre { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15.5px; }
 .af-rent-sub { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
@@ -10894,8 +11059,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-badge.malo { background: #FDE7E5; color: #C0362E; }
 .af-rent-badge.sin-dato { background: var(--neutral-soft); color: var(--ink-soft); }
 
-.af-rent-cifras { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end; }
-.af-rent-cifra { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.af-rent-cifras { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 26px; align-items: end; }
+.af-rent-cifra { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .af-rent-cifra-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); }
 .af-rent-cifra-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(13px, 3.4vw, 16px); }
 .af-rent-cifra-valor small { font-weight: 600; font-size: 11px; color: var(--ink-soft); }
@@ -10963,6 +11128,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-desglose-nota { font-size: 12px; line-height: 1.45; color: var(--ink-soft); margin-bottom: 10px; }
 .af-rent-merma { color: #b7791f; font-weight: 600; }
 .af-colchon { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.af-rent-resumen-nota { font-size: 12px; line-height: 1.5; opacity: 0.75; margin-top: 12px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,0.18); }
 
 /* Lo que no es ingrediente: envase, gas, mano de obra. */
 .af-rent-otros { margin: 12px 0; }
@@ -11042,8 +11208,20 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
        igual que se elige un mes en cualquier tablero de cuentas. ---- */
 .af-barra-gastos { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; }
 .af-barra-gastos .af-mes-pills { margin-bottom: 0; flex: 1 1 auto; }
-.af-filtros-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
-.af-filtros-fila .af-input { width: auto; min-width: 140px; font-size: 13px; padding: 8px 11px; }
+.af-filtros-fila { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+.af-filtro { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+/* Capturar un gasto, en dos columnas cuando hay ancho: una sola columna de
+   campos anchísimos se lee peor y hace la tarjeta larguísima. */
+@media (min-width: 900px) {
+  .af-form-gasto { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 22px; align-items: start; }
+  .af-form-gasto > .af-ticket-campo,
+  .af-form-gasto > .af-btn-primary { grid-column: 1 / -1; }
+  .af-form-gasto > .af-btn-primary { margin-top: 8px; }
+}
+.af-filtro .af-mini-label { margin-bottom: 0; padding-left: 4px; }
+.af-filtros-fila .af-input { width: auto; min-width: 145px; font-size: 13px; padding: 9px 14px; border-radius: 999px; }
+.af-filtros-fila .af-filtro-busca .af-input { border-radius: 999px; }
 .af-filtro-busca { min-width: 210px; }
 .af-filtro-busca .af-input { min-width: 0; }
 
@@ -11063,39 +11241,43 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    eran treinta cajas y no se podía comparar nada de un vistazo. Ahora es una
    sola tabla, con el tipo de gasto en color y el estado de la factura a la
    mano en cada renglón. */
-.af-tabla-gastos { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); margin-bottom: 12px; }
+.af-tabla-gastos { border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--surface); margin-bottom: 12px; }
+/* La lista se desplaza dentro de su marco: con muchos gastos la página se
+   hacía interminable y lo de abajo quedaba lejísimos. */
+.af-tabla-gastos-cuerpo { max-height: 460px; overflow-y: auto; }
 .af-gasto-encabezado,
 .af-gasto-fila {
   display: grid;
-  /* Las dos últimas columnas van con ancho fijo: dejándolas automáticas, el
-     encabezado —que no tiene botones— reparte el ancho distinto que los
-     renglones y los títulos quedan corridos respecto a su columna.
-     Los tipos y el estado crecen con la pantalla en vez de amontonarse
-     contra el borde derecho. */
-  grid-template-columns: 88px minmax(160px, 2fr) minmax(150px, 1fr) 130px minmax(150px, 1fr) 124px;
+  /* La última columna va con ancho fijo: dejándola automática, el encabezado
+     —que no tiene botones— reparte el ancho distinto que los renglones y los
+     títulos quedan corridos respecto a su columna. */
+  grid-template-columns: 74px minmax(150px, 1.7fr) minmax(118px, 1fr) minmax(104px, 0.8fr) minmax(104px, 0.8fr) 116px minmax(126px, 1fr) 118px;
   align-items: center;
-  gap: 16px;
-  padding: 11px 18px;
+  gap: 12px;
+  padding: 10px 16px;
 }
+/* Los títulos llevan la misma sangría que el control que tienen debajo; si no,
+   la palabra empieza donde el recuadro todavía no, y se ve corrida. */
+.af-col-control { padding-left: 11px; }
 .af-gasto-encabezado { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); background: color-mix(in srgb, var(--ink-soft) 7%, transparent); }
 .af-gasto-fila { border-top: 1px solid var(--line); }
 .af-gasto-fila:hover { background: color-mix(in srgb, var(--ink-soft) 4%, transparent); }
 .af-gasto-fecha { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
 .af-gasto-que { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.af-gasto-titulo { font-weight: 600; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-gasto-titulo { font-weight: 600; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-gasto-sub { font-size: 11.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-gasto-celda { min-width: 0; }
 .af-col-monto { text-align: right; }
 /* Botones grandes: se pican con el dedo en el iPad y con prisa. */
 .af-gasto-acciones { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
-.af-gasto-acciones .af-icon-btn { width: 34px; height: 34px; border-radius: 10px; }
+.af-gasto-acciones .af-icon-btn { width: 32px; height: 32px; border-radius: 10px; }
 .af-gasto-acciones .af-icon-btn:hover { background: color-mix(in srgb, var(--ink-soft) 12%, transparent); }
 
 /* El tipo de gasto, con su color. Es una lista desplegable de verdad: se
    corrige desde aquí sin abrir el gasto a editar. */
 .af-select-color {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
-  font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
   padding: 5px 24px 5px 10px; border-radius: 999px; outline: none;
   color: var(--color-cat); border: 1px solid color-mix(in srgb, var(--color-cat) 40%, transparent);
   background: color-mix(in srgb, var(--color-cat) 11%, transparent);
@@ -11109,7 +11291,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* El estado de la factura. Verde cuando ya se hizo, ámbar cuando falta. */
 .af-select-estado {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
-  font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
   padding: 6px 24px 6px 10px; border-radius: 9px; outline: none;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -11117,20 +11299,36 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   background-size: 4px 4px, 4px 4px;
   background-repeat: no-repeat;
 }
+.af-select-bolsa, .af-select-fijo {
+  width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 6px 22px 6px 10px; border-radius: 999px; outline: none;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 10px center, right 6px center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+.af-select-bolsa.negocio { color: #2f5fe0; border-color: color-mix(in srgb, #2f5fe0 35%, transparent); background-color: color-mix(in srgb, #2f5fe0 9%, transparent); }
+.af-select-bolsa.casa { color: #c2703d; border-color: color-mix(in srgb, #c2703d 38%, transparent); background-color: color-mix(in srgb, #c2703d 10%, transparent); }
+.af-select-fijo.si { color: #7b5cd6; border-color: color-mix(in srgb, #7b5cd6 38%, transparent); background-color: color-mix(in srgb, #7b5cd6 10%, transparent); }
+.af-select-bolsa:disabled, .af-select-fijo:disabled { cursor: default; opacity: 0.85; }
+
 .af-select-estado.pendiente { color: #b7791f; border-color: color-mix(in srgb, #b7791f 40%, transparent); background-color: color-mix(in srgb, #b7791f 10%, transparent); }
 .af-select-estado.facturado { color: #2f9e6d; border-color: color-mix(in srgb, #2f9e6d 40%, transparent); background-color: color-mix(in srgb, #2f9e6d 10%, transparent); }
 .af-select-estado:disabled { cursor: default; opacity: 0.85; }
 
 /* En el celular no caben seis columnas: cada gasto se apila y el encabezado
    sobra, porque cada dato ya se explica solo. */
-@media (max-width: 700px) {
+@media (max-width: 900px) {
   .af-gasto-encabezado { display: none; }
-  .af-gasto-fila { grid-template-columns: 1fr auto; gap: 6px 10px; padding: 11px 13px; }
+  .af-gasto-fila { grid-template-columns: 1fr 1fr; gap: 7px 10px; padding: 12px 14px; }
   .af-gasto-fecha { grid-column: 1; order: 1; }
   .af-gasto-monto { grid-column: 2; order: 2; text-align: right; }
   .af-gasto-que { grid-column: 1 / -1; order: 3; }
   .af-gasto-celda { grid-column: auto; order: 4; }
-  .af-gasto-acciones { grid-column: 2; order: 6; }
+  .af-gasto-acciones { grid-column: 1 / -1; order: 9; justify-content: flex-end; }
+  .af-tabla-gastos-cuerpo { max-height: none; }
 }
 
 /* La foto del ticket, dentro de la app. */
