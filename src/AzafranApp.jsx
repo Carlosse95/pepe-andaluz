@@ -3106,6 +3106,9 @@ const esPedidoDeIA = (pedido) => (pedido?.notas || "").includes("tomado por IA")
 // pudiera capturar contradictorio: categoría familiar con ámbito del negocio).
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Otros"];
 
+// Cuántos gastos se enseñan antes de pedir "ver más".
+const PASO_GASTOS = 25;
+
 // Un color por categoría. Con treinta renglones iguales hay que leer palabra
 // por palabra para ubicar los gastos de ingredientes; con color se ven de
 // lejos y se distingue de un vistazo en qué se está yendo el dinero.
@@ -3476,6 +3479,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Ver de golpe lo que falta facturar era una sección aparte; ahora es un
   // filtro más de la misma lista, que es donde uno ya está mirando.
   const [filtroFactura, setFiltroFactura] = useState("todos");
+  // Cuántos gastos se enseñan de golpe. El resto se pide con un botón, para
+  // que la página no se haga interminable con un año entero de compras.
+  const [cuantosGastos, setCuantosGastos] = useState(PASO_GASTOS);
   const [buscaGasto, setBuscaGasto] = useState("");
   const [mesGasto, setMesGasto] = useState("todos");
   // Rango de fechas en vez de un solo día: "lo de la semana pasada" no se
@@ -3756,6 +3762,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     if (!clave) return;
     totalPorTienda[clave] = (totalPorTienda[clave] || 0) + (parseFloat(g.monto) || 0);
   });
+
+  const gastosVisibles = gastosFiltrados.slice(0, cuantosGastos);
+
+  // Al cambiar de filtro se vuelve a empezar por arriba: si no, uno filtra
+  // "falta facturar" y sigue viendo el "ver más" de la búsqueda anterior.
+  useEffect(() => {
+    setCuantosGastos(PASO_GASTOS);
+  }, [filtroAmbito, filtroCategoria, filtroFactura, mesGasto, buscaGasto, desdeGasto, hastaGasto, anio]);
 
   const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
@@ -5598,11 +5612,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <span />
             </div>
 
-            {/* La lista se desplaza dentro de su propio marco: con cien gastos
-                la página se hacía interminable y el resto de Finanzas quedaba
-                a un scroll de distancia. */}
-            <div className="af-tabla-gastos-cuerpo">
-              {gastosFiltrados.map((g) => (
+            {/* La lista se corta y se alarga con un botón, NO con un marco que
+                se desplaza por dentro. En el iPad y en el celular, un marco
+                así se traga el dedo: uno intenta bajar por la página y la
+                página no se mueve, porque el dedo está sobre la lista. */}
+            {gastosVisibles.map((g) => (
                 <div key={g.id} className="af-gasto-fila">
                   <span className="af-gasto-fecha">{fmtDiaCorto(g.fecha)}</span>
 
@@ -5681,7 +5695,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   </span>
                 </div>
               ))}
-            </div>
+
+            {gastosFiltrados.length > gastosVisibles.length && (
+              <button className="af-ver-mas" onClick={() => setCuantosGastos((n) => n + PASO_GASTOS)}>
+                Ver {Math.min(PASO_GASTOS, gastosFiltrados.length - gastosVisibles.length)} más
+                <span className="af-ver-mas-nota">
+                  {gastosVisibles.length} de {gastosFiltrados.length}
+                </span>
+              </button>
+            )}
           </div>
         )}
 
@@ -10343,6 +10365,12 @@ const AZAFRAN_CSS = `
   /* Para barras fijas: casi opaco, para que nada se lea por detrás al deslizar. */
   --glass-solido: rgba(255,255,255,0.94);
 
+  /* La medida de TODO lo que se escribe o se elige. Un solo número aquí, y
+     campos, listas, fechas y botones quedan parejos en toda la app. 46px es
+     además el mínimo cómodo para picarle con el dedo en el iPad. */
+  --alto-campo: 46px;
+  --radio-campo: 12px;
+
   font-family: 'Inter', sans-serif;
   background: var(--bg);
   color: var(--ink);
@@ -10595,7 +10623,7 @@ const AZAFRAN_CSS = `
 .af-menu-card { transition: box-shadow .15s ease, transform .12s ease; }
 .af-menu-card.levantada { transition: none; }
 /* El monto es lo primero y lo más grande: es el dato que siempre se sabe. */
-.af-monto-grande { font-size: 26px; font-weight: 700; padding: 14px; text-align: center; }
+.af-monto-grande { font-size: 22px; font-weight: 700; text-align: center; }
 .af-mas-detalles {
   width: 100%; background: none; border: none; color: var(--brand, #3b5bdb);
   font-weight: 700; font-size: 13.5px; padding: 12px 0; cursor: pointer;
@@ -10767,14 +10795,27 @@ const AZAFRAN_CSS = `
 .af-field { margin-bottom: 16px; min-width: 0; }
 .af-field label { display: block; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin-bottom: 6px; }
 
-.af-input { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; font-size: 14.5px; font-family: 'Inter', sans-serif; color: var(--ink); outline: none; }
+/* UNA sola medida para todo lo que se escribe o se elige en la app.
+   Antes cada campo tenía la altura que le salía de su contenido —el monto
+   grande medía 60px, un select 44, una fecha 46— y una tarjeta con cinco
+   campos se veía como un rompecabezas de cajas distintas. Con la altura y la
+   esquina fijas aquí, todo queda parejo sin tener que acordarse en cada sitio. */
+.af-input {
+  width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
+  height: var(--alto-campo); border-radius: var(--radio-campo);
+  background: var(--surface); border: 1px solid var(--line);
+  padding: 0 14px; font-size: 14.5px; font-family: 'Inter', sans-serif;
+  color: var(--ink); outline: none;
+}
+/* Los de varias líneas son la excepción: crecen, pero empiezan igual de altos. */
+textarea.af-input { height: auto; min-height: var(--alto-campo); padding: 12px 14px; line-height: 1.5; }
 
 /* Safari de iOS le pone a los campos de fecha y hora un tamaño propio que no
    respeta el ancho de su columna: se salían de la tarjeta y se traslapaban.
    Quitándoles la apariencia nativa ya se comportan como cualquier campo. */
 .af-input[type="date"], .af-input[type="time"], .af-input[type="datetime-local"] {
   -webkit-appearance: none; appearance: none;
-  display: block; width: 100%; min-height: 44px;
+  display: block; width: 100%;
 }
 /* El iconito del calendario/reloj se queda a la derecha sin empujar el texto. */
 .af-input[type="date"]::-webkit-date-and-time-value,
@@ -10841,7 +10882,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 .af-error { background: var(--wine-soft); color: var(--wine); border-radius: 10px; padding: 10px 13px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 
-.af-btn-primary { background: var(--wine); color: white; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14.5px; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 3px 10px -3px rgba(193,90,52,0.4); cursor: pointer; transition: all 0.15s ease; }
+.af-btn-primary { background: var(--wine); color: white; font-weight: 700; border: none; border-radius: var(--radio-campo); min-height: var(--alto-campo); padding: 0 16px; font-size: 14.5px; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 3px 10px -3px rgba(193,90,52,0.4); cursor: pointer; transition: all 0.15s ease; }
 .af-btn-primary:active { transform: translateY(0); }
 .af-btn-secondary { background: var(--gold-soft); color: #7A5A1E; font-weight: 700; border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.15s ease; }
 .af-btn-ghost { background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13.5px; padding: 6px 0; cursor: pointer; transition: opacity 0.15s ease; }
@@ -10986,8 +11027,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    Antes cada campo tenía el ancho que le tocaba y la ficha se veía como un
    rompecabezas de cajas distintas. */
 .af-menu-card select, .af-menu-card input, .af-menu-card textarea { max-width: 100%; }
-.af-menu-card input.af-input, .af-menu-card select.af-input { height: 46px; border-radius: 12px; }
-.af-menu-card textarea.af-input { border-radius: 12px; }
 .af-menu-card .af-menu-card-row { gap: 10px; }
 /* Los campos cortos (una cantidad, un porcentaje) comparten medida entre sí
    en vez de encogerse cada uno a lo que quepa. */
@@ -11242,9 +11281,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    sola tabla, con el tipo de gasto en color y el estado de la factura a la
    mano en cada renglón. */
 .af-tabla-gastos { border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--surface); margin-bottom: 12px; }
-/* La lista se desplaza dentro de su marco: con muchos gastos la página se
-   hacía interminable y lo de abajo quedaba lejísimos. */
-.af-tabla-gastos-cuerpo { max-height: 460px; overflow-y: auto; }
+/* El botón para alargar la lista. Va dentro de la tabla, como un renglón más. */
+.af-ver-mas {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; height: var(--alto-campo); border: none; border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink-soft) 5%, transparent);
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700;
+  color: var(--wine); cursor: pointer;
+}
+.af-ver-mas:hover { background: color-mix(in srgb, var(--wine) 8%, transparent); }
+.af-ver-mas-nota { font-weight: 500; color: var(--ink-soft); }
 .af-gasto-encabezado,
 .af-gasto-fila {
   display: grid;
@@ -11278,7 +11324,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-select-color {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
   font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
-  padding: 5px 24px 5px 10px; border-radius: 999px; outline: none;
+  height: 30px; padding: 0 24px 0 11px; border-radius: 999px; outline: none;
   color: var(--color-cat); border: 1px solid color-mix(in srgb, var(--color-cat) 40%, transparent);
   background: color-mix(in srgb, var(--color-cat) 11%, transparent);
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -11292,7 +11338,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-select-estado {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
   font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
-  padding: 6px 24px 6px 10px; border-radius: 9px; outline: none;
+  height: 30px; padding: 0 24px 0 11px; border-radius: 999px; outline: none;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position: right 11px center, right 7px center;
@@ -11302,7 +11348,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-select-bolsa, .af-select-fijo {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
   font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
-  padding: 6px 22px 6px 10px; border-radius: 999px; outline: none;
+  height: 30px; padding: 0 24px 0 11px; border-radius: 999px; outline: none;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position: right 10px center, right 6px center;
@@ -11328,7 +11374,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-gasto-que { grid-column: 1 / -1; order: 3; }
   .af-gasto-celda { grid-column: auto; order: 4; }
   .af-gasto-acciones { grid-column: 1 / -1; order: 9; justify-content: flex-end; }
-  .af-tabla-gastos-cuerpo { max-height: none; }
 }
 
 /* La foto del ticket, dentro de la app. */
@@ -11347,7 +11392,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* De qué bolsa sale el gasto: negocio o casa. */
 .af-ambito-switch { display: flex; gap: 6px; flex-wrap: wrap; }
-.af-ambito-btn { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af-ambito-btn { flex: 1; min-width: 0; height: var(--alto-campo); padding: 0 12px; border-radius: var(--radio-campo); border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .af-ambito-btn.active { background: var(--wine); border-color: var(--wine); color: #fff; }
 .af-ambito-btn.active .af-pill-total { color: #fff; opacity: 0.9; }
 
