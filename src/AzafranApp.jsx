@@ -633,15 +633,19 @@ const CATEGORIA_LABEL = Object.fromEntries(CATEGORIAS_ITEM.map((c) => [c.id, c.l
 
 // Tipos de ingrediente, para poder encontrarlos. Con veintitantos en una sola
 // lista, dar con el vino o con el azafrán era recorrerla entera.
+// Cada tipo con su color: con siete grupos iguales hay que leer el título de
+// cada uno para ubicarse; con color se reconocen de lejos, igual que los
+// tipos de gasto.
 const FAMILIAS_ING = [
-  { id: "mariscos", label: "Mariscos y pescado" },
-  { id: "carnes", label: "Carnes" },
-  { id: "verduras", label: "Verduras y frutas" },
-  { id: "abarrotes", label: "Abarrotes y secos" },
-  { id: "especias", label: "Especias y sazonadores" },
-  { id: "alcohol", label: "Vinos y licores" },
-  { id: "otros", label: "Otros" },
+  { id: "mariscos", label: "Mariscos y pescado", color: "#2f7fd6" },
+  { id: "carnes", label: "Carnes", color: "#c0392b" },
+  { id: "verduras", label: "Verduras y frutas", color: "#2f9e6d" },
+  { id: "abarrotes", label: "Abarrotes y secos", color: "#c2703d" },
+  { id: "especias", label: "Especias y sazonadores", color: "#b7791f" },
+  { id: "alcohol", label: "Vinos y licores", color: "#7b5cd6" },
+  { id: "otros", label: "Otros", color: "#7a8699" },
 ];
+const colorFamilia = (id) => (FAMILIAS_ING.find((f) => f.id === id) || {}).color || "#7a8699";
 
 // Para no obligar a reclasificar a mano lo que ya está capturado, el tipo se
 // adivina del nombre mientras nadie lo elija. El orden importa: "Polvo de
@@ -889,6 +893,18 @@ const calcularConsumo = (items, desechables, extrasCatalogo) => {
 };
 
 // direccion: "consumir" descuenta del stock, "restaurar" lo regresa (nunca baja de 0)
+// Un pedido de un día que ya pasó NO toca el almacén.
+//
+// Al capturar los pedidos viejos de enero para tener el historial, la app los
+// trataba como pedidos nuevos y descontaba camarón, arroz y todo lo demás de
+// las existencias de HOY. Esa comida se compró y se cocinó hace meses; volver
+// a descontarla deja el almacén en números que no son.
+//
+// Se comparan textos "AAAA-MM-DD", no fechas: interpretadas como fecha se
+// corren un día por el horario de Mérida, y un pedido de hoy contaría como de
+// ayer justo a media tarde.
+const tocaElAlmacen = (fecha) => !fecha || fecha >= todayISO();
+
 const ajustarStock = (desechables, consumo, direccion) =>
   (desechables || []).map((d) => {
     const cantidad = consumo[d.id] || 0;
@@ -3163,6 +3179,10 @@ const AMBITOS = [
   { id: "negocio", label: "Del negocio" },
   { id: "familia", label: "Familiar" },
 ];
+// En el renglón de la tabla no cabe "Del negocio" y salía cortado ("Del
+// negocic"). Ahí va la versión corta; en el formulario, donde sí hay lugar,
+// se sigue leyendo completo.
+const AMBITOS_CORTO = { negocio: "Negocio", familia: "Casa" };
 const CATEGORIAS_FAMILIARES = ["Familiar/Personal"];
 // Los gastos capturados antes de que existiera esta separación no traen
 // ámbito: se deduce de su categoría, que es como se venía distinguiendo.
@@ -3515,6 +3535,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [confirmarFactura, setConfirmarFactura] = useState(null);
   // La foto del ticket que se está viendo, con los datos que se le leyeron.
   const [viendoTicket, setViendoTicket] = useState(null);
+  // El bote de basura está junto al lápiz y en el iPad se pica con el dedo:
+  // demasiado fácil borrar una compra sin querer y no enterarse.
+  const [confirmarBorrarGasto, setConfirmarBorrarGasto] = useState(null);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
   // Rentabilidad se ve por secciones del menú. Arranca con las paellas
@@ -4051,6 +4074,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Lo que se ofrece en la lista: primero lo que ya se ha usado (arriba lo más
   // frecuente) y después las tiendas que se facturan, aunque todavía no se
   // haya comprado ahí, para que estén desde el primer día.
+  // Las tiendas se guardan en MAYÚSCULAS. Escrito a mano, el mismo Chedraui
+  // acababa como "chedraui", "Chedraui" y "CHEDRAUI", y en los reportes
+  // contaban como tres tiendas distintas.
   const tiendasParaElegir = [
     ...tiendasUsadas,
     ...TIENDAS_FACTURABLES.filter(
@@ -4737,6 +4763,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                               y el margen se ve más sano de lo que es. */}
                           <div className="af-rent-otros">
                             <div className="af-rent-auto-titulo">Y además, por cada {f.unidad}</div>
+                            {/* Cómo sacar estos números sin volverse loco: no
+                                hay que ser exacto, hay que dejar de contarlos
+                                como cero, que es lo que de verdad desvía el
+                                costo. */}
+                            <p className="af-rent-desglose-nota">
+                              El <strong>envase</strong> sale solo si lo ligaste en Inventario.
+                              El <strong>gas</strong>: mira el recibo, quítale lo que gastarías sin cocinar
+                              y reparte lo demás entre los kilos que sacaste ese mes.
+                              La <strong>mano de obra</strong>: lo que se paga por el día entre los kilos
+                              que salen ese día. Aunque sea al tanteo — cero es el único número seguro
+                              que está mal.
+                            </p>
                             <div className="af-rent-otros-campos">
                               {[
                                 { id: "empaque", label: "Envase" },
@@ -5295,9 +5333,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <input
                   className="af-input flex-1"
                   autoFocus
-                  placeholder="Nombre de la tienda"
+                  placeholder="NOMBRE DE LA TIENDA"
                   value={nuevoGasto.tienda || ""}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value })}
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value.toUpperCase() })}
                 />
                 <button
                   className="af-btn-ghost"
@@ -5322,8 +5360,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 }}
               >
                 <option value="">Sin tienda</option>
-                {tiendasParaElegir.map((t) => <option key={t} value={t}>{t}</option>)}
-                <option value="__otra__">Otra tienda…</option>
+                {tiendasParaElegir.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                {/* Crear tiendas es solo del administrador: si cada quien puede
+                    escribir una nueva, la misma acaba con cuatro nombres y los
+                    reportes la cuentan cuatro veces. */}
+                {esAdmin && <option value="__otra__">Otra tienda…</option>}
               </select>
             )}
           </div>
@@ -5536,6 +5577,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             )}
           </div>
 
+          {cuantosFiltros > 0 && (
+            <button className="af-btn-quitar-filtros" onClick={limpiarFiltros} title="Quitar todos los filtros">
+              <X size={15} /> Quitar filtros
+            </button>
+          )}
           </div>
         </div>
 
@@ -5597,7 +5643,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               : "Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."}
           />
         ) : (
-          <div className="af-tabla-gastos mb-4">
+          <>
+          <div className="af-tabla-pista">
+            <ArrowRightCircle size={14} /> Desliza la tabla de lado para ver todo
+          </div>
+          <div className="af-tabla-scroll mb-4">
+          <div className="af-tabla-gastos">
             {/* Los títulos de las columnas, para no adivinar qué es cada cosa.
                 Solo donde hay ancho: en el celular los renglones se apilan y
                 los títulos estorbarían. */}
@@ -5649,7 +5700,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       disabled={!esAdmin}
                       onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}
                     >
-                      {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
+                      {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{AMBITOS_CORTO[a.id] || a.label}</option>))}
                     </select>
                   </span>
 
@@ -5689,7 +5740,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     {esAdmin && (
                       <>
                         <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
-                        <button className="af-icon-btn" title="Borrar" onClick={() => eliminarGasto(g.id)}><Trash2 size={16} /></button>
+                        <button className="af-icon-btn" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash2 size={16} /></button>
                       </>
                     )}
                   </span>
@@ -5705,6 +5756,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </button>
             )}
           </div>
+          </div>
+          </>
         )}
 
         {esAdmin && (
@@ -5947,6 +6000,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </ResponsiveContainer>
         </div>
 
+
+        {confirmarBorrarGasto && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmarBorrarGasto(null)}>
+            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-icon"><Trash2 size={26} /></div>
+              <div className="af-alerta-titulo">¿Borrar este gasto?</div>
+              <p className="af-alerta-texto">
+                <strong>{confirmarBorrarGasto.tienda || confirmarBorrarGasto.descripcion || confirmarBorrarGasto.categoria}</strong>
+                {" · "}{money(confirmarBorrarGasto.monto)} · {fmtDateHuman(confirmarBorrarGasto.fecha)}
+              </p>
+              <p className="af-ink-soft text-sm mb-3">Se quita de tus cuentas y no se puede deshacer.</p>
+              <button
+                className="af-btn-primary w-full"
+                onClick={() => { eliminarGasto(confirmarBorrarGasto.id); setConfirmarBorrarGasto(null); showToast("Gasto borrado"); }}
+              >
+                Sí, bórralo
+              </button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmarBorrarGasto(null)}>Mejor no</button>
+            </div>
+          </div>
+        )}
 
         {/* La foto del ticket, con lo que se le leyó al lado: así se compara
             el número contra el papel sin salir de la app. */}
@@ -7040,7 +7114,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 return (
                   <div key={g.id} className="af-grupo">
                     <button
-                      className="af-grupo-cabecera"
+                      className="af-grupo-cabecera af-grupo-color"
+                      style={{ "--color-fam": colorFamilia(g.id) }}
                       onClick={() => setFamiliasAbiertas((prev) => ({ ...prev, [g.id]: !prev[g.id] }))}
                     >
                       <ChevronRight size={16} className={"af-mes-flecha" + (grupoAbierto ? " abierta" : "")} />
@@ -7078,7 +7153,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               // picarle, que es cuando de verdad se necesita.
               if (ingAbierto !== ing.id) {
                 return (
-                  <button key={ing.id} className="af-ing-row" onClick={() => setIngAbierto(ing.id)}>
+                  <button
+                    key={ing.id}
+                    className="af-ing-row af-ing-color"
+                    style={{ "--color-fam": colorFamilia(g.id) }}
+                    onClick={() => setIngAbierto(ing.id)}
+                  >
                     <span className="af-ing-row-nombre">{ing.nombre || "Sin nombre"}</span>
                     {ing.stock <= ing.minimo && <AlertTriangle size={14} className="af-ing-row-alerta" />}
                     <span className="af-ing-row-meta">
@@ -9799,6 +9879,9 @@ export default function App() {
       notas: form.notas,
       terminos: form.terminos,
       createdAt: form.createdAt || Date.now(),
+      // Si este pedido movió el almacén. Los de días pasados no, porque esa
+      // comida ya se compró y se cocinó en su momento.
+      descontoAlmacen: tocaElAlmacen(form.fecha),
     };
 
     const nuevaLista = form.pedidoId
@@ -9809,12 +9892,17 @@ export default function App() {
     // "devuelve" lo que ese pedido consumía antes, luego se descuenta lo nuevo.
     let desechables = config.desechables || [];
     let ingredientes = config.ingredientes || [];
-    if (anteriorPedido) {
+    // Al editar se devuelve lo que ese pedido consumía antes — pero SOLO si de
+    // verdad consumió algo. Un pedido viejo no descontó nada, así que
+    // "devolverle" su material metería al almacén comida que nunca salió.
+    if (anteriorPedido && anteriorPedido.descontoAlmacen !== false && tocaElAlmacen(anteriorPedido.fecha)) {
       desechables = ajustarStock(desechables, calcularConsumo(anteriorPedido.items, desechables, config.extras), "restaurar");
       ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(anteriorPedido.items, ingredientes), "restaurar");
     }
-    desechables = ajustarStock(desechables, calcularConsumo(form.items, desechables, config.extras), "consumir");
-    ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(form.items, ingredientes), "consumir");
+    if (tocaElAlmacen(pedidoObj.fecha)) {
+      desechables = ajustarStock(desechables, calcularConsumo(form.items, desechables, config.extras), "consumir");
+      ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(form.items, ingredientes), "consumir");
+    }
     guardarConfig({ ...config, desechables, ingredientes });
 
     guardarPedidos(nuevaLista);
@@ -9864,7 +9952,9 @@ export default function App() {
 
   const eliminarPedido = () => {
     const pedido = pedidos.find((p) => p.id === form.pedidoId);
-    if (pedido) {
+    // Solo se le devuelve al almacén lo que ese pedido de verdad sacó. Uno de
+    // días pasados no sacó nada, así que borrarlo no debe regalar material.
+    if (pedido && pedido.descontoAlmacen !== false && tocaElAlmacen(pedido.fecha)) {
       const desechables = ajustarStock(config.desechables || [], calcularConsumo(pedido.items, config.desechables || [], config.extras), "restaurar");
       const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(pedido.items, config.ingredientes || []), "restaurar");
       guardarConfig({ ...config, desechables, ingredientes });
@@ -9900,6 +9990,9 @@ export default function App() {
       convertido: false,
       pedidoId: null,
       createdAt: form.createdAt || Date.now(),
+      // Si este pedido movió el almacén. Los de días pasados no, porque esa
+      // comida ya se compró y se cocinó en su momento.
+      descontoAlmacen: tocaElAlmacen(form.fecha),
     };
 
     const existente = presupuestos.find((p) => p.id === form.pedidoId);
@@ -9955,11 +10048,14 @@ export default function App() {
       notas: form.notas,
       terminos: form.terminos,
       createdAt: Date.now(),
+      descontoAlmacen: tocaElAlmacen(form.fecha),
     };
 
-    let desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
-    let ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
-    guardarConfig({ ...config, desechables, ingredientes });
+    if (tocaElAlmacen(nuevoPedido.fecha)) {
+      const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
+      const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
+      guardarConfig({ ...config, desechables, ingredientes });
+    }
     guardarPedidos([nuevoPedido, ...pedidos]);
 
     if (form.pedidoId) {
@@ -9996,10 +10092,13 @@ export default function App() {
       notas: pr.notas,
       terminos: pr.terminos,
       createdAt: Date.now(),
+      descontoAlmacen: tocaElAlmacen(pr.fecha),
     };
-    const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
-    const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
-    guardarConfig({ ...config, desechables, ingredientes });
+    if (tocaElAlmacen(nuevoPedido.fecha)) {
+      const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
+      const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
+      guardarConfig({ ...config, desechables, ingredientes });
+    }
     guardarPedidos([nuevoPedido, ...pedidos]);
     guardarPresupuestos(presupuestos.map((x) => (x.id === pr.id ? { ...x, convertido: true, pedidoId: nuevoPedido.id } : x)));
     showToast(`Aceptado: ya es el pedido ${fmtFolio(nuevoPedido.folio, "#")}`);
@@ -10592,6 +10691,12 @@ const AZAFRAN_CSS = `
 .af-ing-row-meta { font-size: 11.5px; color: var(--ink-soft); flex-shrink: 0; }
 .af-ing-row-alerta { flex-shrink: 0; color: var(--gasto, #c0392b); }
 .af-ing-abierto { margin-bottom: 8px; }
+/* El color del tipo: una franja a la izquierda del grupo y de cada renglón.
+   Se reconoce el grupo de un vistazo sin tener que leer su título. */
+.af-grupo-color { border-left: 4px solid var(--color-fam); background: color-mix(in srgb, var(--color-fam) 7%, var(--surface)); }
+.af-grupo-color .af-mes-nombre { color: var(--color-fam); }
+.af-grupo-color .af-mes-flecha { color: var(--color-fam); }
+.af-ing-color { border-left: 4px solid color-mix(in srgb, var(--color-fam) 55%, transparent); }
 
 /* ---- Aviso de nombres de gasto escritos de varias formas ---- */
 .af-parecidos { background: color-mix(in srgb, var(--wine) 7%, transparent); border: 1px solid color-mix(in srgb, var(--wine) 25%, transparent); border-radius: 12px; padding: 11px 13px; }
@@ -11259,6 +11364,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-form-gasto > .af-btn-primary { margin-top: 8px; }
 }
 .af-filtro .af-mini-label { margin-bottom: 0; padding-left: 4px; }
+.af-btn-quitar-filtros { display: inline-flex; align-items: center; gap: 6px; height: var(--alto-campo); padding: 0 14px; border-radius: 999px; border: 1px solid color-mix(in srgb, #c0392b 35%, transparent); background: color-mix(in srgb, #c0392b 8%, transparent); color: #c0392b; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.af-btn-quitar-filtros:hover { background: color-mix(in srgb, #c0392b 14%, transparent); }
 .af-filtros-fila .af-input { width: auto; min-width: 145px; font-size: 13px; padding: 9px 14px; border-radius: 999px; }
 .af-filtros-fila .af-filtro-busca .af-input { border-radius: 999px; }
 .af-filtro-busca { min-width: 210px; }
@@ -11313,7 +11420,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-gasto-titulo { font-weight: 600; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-gasto-sub { font-size: 11.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-gasto-celda { min-width: 0; }
-.af-col-monto { text-align: right; }
+.af-col-monto { text-align: right; padding-right: 14px; }
 /* Botones grandes: se pican con el dedo en el iPad y con prisa. */
 .af-gasto-acciones { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
 .af-gasto-acciones .af-icon-btn { width: 32px; height: 32px; border-radius: 10px; }
@@ -11364,16 +11471,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-select-estado.facturado { color: #2f9e6d; border-color: color-mix(in srgb, #2f9e6d 40%, transparent); background-color: color-mix(in srgb, #2f9e6d 10%, transparent); }
 .af-select-estado:disabled { cursor: default; opacity: 0.85; }
 
-/* En el celular no caben seis columnas: cada gasto se apila y el encabezado
-   sobra, porque cada dato ya se explica solo. */
-@media (max-width: 900px) {
-  .af-gasto-encabezado { display: none; }
-  .af-gasto-fila { grid-template-columns: 1fr 1fr; gap: 7px 10px; padding: 12px 14px; }
-  .af-gasto-fecha { grid-column: 1; order: 1; }
-  .af-gasto-monto { grid-column: 2; order: 2; text-align: right; }
-  .af-gasto-que { grid-column: 1 / -1; order: 3; }
-  .af-gasto-celda { grid-column: auto; order: 4; }
-  .af-gasto-acciones { grid-column: 1 / -1; order: 9; justify-content: flex-end; }
+/* En el iPad y en el celular las ocho columnas no caben. Antes se apilaban y
+   cada gasto se volvía un bloque alto y confuso; ahora la tabla se recorre de
+   lado, como una tabla de verdad. Lo de arriba y abajo lo sigue moviendo la
+   página, así que el dedo nunca se queda atrapado. */
+.af-tabla-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.af-tabla-scroll .af-tabla-gastos { min-width: 940px; margin-bottom: 0; }
+/* Un aviso discreto de que hay más a la derecha, solo donde no cabe todo. */
+.af-tabla-pista { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); margin: 0 0 8px 2px; }
+@media (max-width: 1000px) {
+  .af-tabla-pista { display: flex; }
 }
 
 /* La foto del ticket, dentro de la app. */
