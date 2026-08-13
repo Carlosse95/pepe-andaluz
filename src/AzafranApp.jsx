@@ -940,7 +940,10 @@ const calcularConsumoIngredientes = (items, ingredientes) => {
     if (!producto || !(cuantas > 0)) return;
     (ingredientes || []).forEach((raw) => {
       const ing = normalizarIngrediente(raw);
-      const porUnidad = (ing.porKg || {})[producto] || 0;
+      // Con merma: del almacén sale lo que se usa MÁS lo que se tira al
+      // limpiarlo. Si no, las existencias se descuentan de menos y el aviso de
+      // "hay que comprar" llega tarde.
+      const porUnidad = ((ing.porKg || {})[producto] || 0) * (1 + mermaDe(ing) / 100);
       if (porUnidad <= 0) return;
       const fUso = (UNIDAD_INFO[ing.usoUnidad] || { factor: 1 }).factor;
       const fPres = (UNIDAD_INFO[ing.presentacionUnidad] || { factor: 1 }).factor;
@@ -973,18 +976,31 @@ const costoDesdeInventario = (productoId, ingredientes) => {
     const contenido = (ing.presentacionCantidad || 1) * fPres;
     if (contenido <= 0) return;
 
+    // La merma: lo que se tira al limpiar. De un kilo de camarón con cabeza
+    // sale bastante menos de un kilo de camarón limpio, y esa parte también
+    // se pagó. Sin contarla el costo sale más barato de lo que de verdad es.
+    const merma = mermaDe(ing);
+    const usadoReal = porKg * (1 + merma / 100);
+
     // Qué parte de una bolsa/caja se va en un kilo de paella, por su costo.
-    const costoPorKg = ((porKg * fUso) / contenido) * costoPres;
+    const costoPorKg = ((usadoReal * fUso) / contenido) * costoPres;
     total += costoPorKg;
     detalle.push({
       id: ing.id,
       nombre: ing.nombre,
       usa: porKg,
       usoUnidad: ing.usoUnidad,
+      merma,
       costoPorKg,
     });
   });
   return { total, detalle };
+};
+
+// Porcentaje que se pierde al limpiar o preparar el ingrediente.
+const mermaDe = (ing) => {
+  const m = parseFloat(ing?.merma);
+  return Number.isFinite(m) && m > 0 ? Math.min(m, 90) : 0;
 };
 
 // Ingredientes del inventario ligados a un producto pero sin precio de compra:
@@ -3307,6 +3323,16 @@ const ID_FIJO_CIGARROS = "fijo_cigarros";
 // sugerir un precio cuando un platillo se está vendiendo muy barato.
 const MARGEN_OBJETIVO = 0.6;
 
+// La regla de la cocina: lo que cuesta hacer un plato debe quedar entre el 30%
+// y el 35% de lo que se cobra por él. Con el 35% se saca el precio mínimo
+// razonable; con el 30%, el precio cómodo.
+const COSTO_ALIMENTOS_OBJETIVO = 0.35;
+const COSTO_ALIMENTOS_HOLGADO = 0.30;
+
+// Colchón por si los precios de compra se mueven. El costo estándar es el
+// real más este porcentaje, y es sobre ese que conviene poner los precios.
+const COLCHON_POR_OMISION = 5;
+
 // Clasifica qué tan sano es el margen de un producto y qué hacer al respecto.
 const veredictoMargen = (fila) => {
   if (fila.sinCosto) {
@@ -4197,6 +4223,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     });
   });
 
+  // Cuánto colchón se le pone al costo. Se guarda con el menú, para que sea
+  // el mismo en todos los dispositivos.
+  const colchonCostos = Number.isFinite(parseFloat(config?.colchonCostos))
+    ? parseFloat(config.colchonCostos)
+    : COLCHON_POR_OMISION;
+
   const filasRentabilidad = [
     ...(config?.paellas || []).map((p) => ({
       clave: "paella:" + p.id,
@@ -4207,6 +4239,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       unidad: "kg",
       precio: p.precioKg || 0,
       costoManual: p.costoKg || 0,
+      otros: p.otros || {},
       receta: recetaDeProducto(p, config),
       // Lo que ya se puede costear solo desde el inventario.
       auto: costoDesdeInventario(p.id, config?.ingredientes),
@@ -4221,6 +4254,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       unidad: e.piezasPorUnidad > 0 ? e.unidad || "orden" : e.unidad || "pieza",
       precio: e.precio || 0,
       costoManual: e.costo || 0,
+      otros: e.otros || {},
+      piezasPorUnidad: e.piezasPorUnidad || 0,
       receta: recetaDeProducto(e, config),
       auto: costoDesdeInventario(e.id, config?.ingredientes),
       sinPrecio: ingredientesSinPrecio(e.id, config?.ingredientes),
@@ -4253,13 +4288,25 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     const costoAuto = f.auto?.total || 0;
     const usaTanda = costoPorTanda > 0;
     const costoRecetas = costoAuto + costoPorTanda;
-    const costo = costoRecetas > 0 ? costoRecetas : f.costoManual;
+    const costoIngredientes = costoRecetas > 0 ? costoRecetas : f.costoManual;
+    // Lo que no es ingrediente pero igual se paga por cada plato que sale:
+    // el envase, el gas y la mano de obra. Sin esto el costo sale corto y el
+    // margen se ve más sano de lo que es.
+    const otros = (parseFloat(f.otros?.empaque) || 0) + (parseFloat(f.otros?.gas) || 0) + (parseFloat(f.otros?.manoObra) || 0);
+    const costo = costoIngredientes > 0 || otros > 0 ? costoIngredientes + otros : 0;
+    // Costo estándar: el real más un colchón por si los precios se mueven.
+    // Los precios de venta se ponen con este, no con el de hoy, para que una
+    // subida del camarón no se coma el margen de golpe.
+    const costoEstandar = costo * (1 + colchonCostos / 100);
     const utilidadUnitaria = f.precio - costo;
     const margen = f.precio > 0 ? utilidadUnitaria / f.precio : 0;
     const costoTotal = v.volumen * costo;
     return {
       ...f,
       costo,
+      costoIngredientes,
+      otrosCostos: otros,
+      costoEstandar,
       costoAuto,
       gastoTanda,
       rendimiento,
@@ -4272,7 +4319,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       utilidadUnitaria,
       margen,
       sinCosto: !costo || costo <= 0,
-      precioSugerido: costo > 0 ? costo / (1 - MARGEN_OBJETIVO) : 0,
+      // A qué habría que venderlo para que el costo sea el % objetivo. Se
+      // calcula sobre el costo estándar, no el de hoy.
+      precioSugerido: costoEstandar > 0 ? costoEstandar / COSTO_ALIMENTOS_OBJETIVO : 0,
+      precioHolgado: costoEstandar > 0 ? costoEstandar / COSTO_ALIMENTOS_HOLGADO : 0,
     };
   });
 
@@ -4399,8 +4449,24 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
           <div className="af-section-title">Producto por producto</div>
           <div className="af-hint mb-3">
-            Escribe cuánto te cuesta aprox. producir cada uno (ingredientes, envase, gas). La app compara contra tu precio y te dice si conviene.
+            Cada producto saca su costo del inventario: lo que compras, cuánto usas y cuánto
+            se va en merma. Ábrelo para agregarle el envase, el gas y la mano de obra, y para
+            ver a cuánto conviene venderlo.
           </div>
+
+          {esAdmin && (
+            <div className="af-colchon mb-3">
+              <span className="af-mini-label" style={{ marginBottom: 0 }}>Colchón por si suben los precios</span>
+              <NumberField
+                value={colchonCostos}
+                min={0}
+                max={50}
+                className="af-input af-menu-kgrange"
+                onChange={(v) => onGuardarConfig && config && onGuardarConfig({ ...config, colchonCostos: v })}
+              />
+              <span className="af-price-suffix">% sobre el costo real</span>
+            </div>
+          )}
 
           {filasRentabilidad.length > 6 && (
             <div className="af-buscador-gastos mb-3">
@@ -4535,7 +4601,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                               {f.auto.detalle.map((d) => (
                                 <div key={d.id} className="af-rent-auto-row">
                                   <span className="af-rent-auto-nombre">{d.nombre}</span>
-                                  <span className="af-rent-auto-usa">{d.usa} {d.usoUnidad}/{f.unidad}</span>
+                                  <span className="af-rent-auto-usa">
+                                    {d.usa} {d.usoUnidad}/{f.unidad}
+                                    {d.merma > 0 && <span className="af-rent-merma"> +{d.merma}% merma</span>}
+                                  </span>
                                   <span className="af-rent-auto-costo">{money(d.costoPorKg)}</span>
                                 </div>
                               ))}
@@ -4554,6 +4623,72 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                                 Falta poner cuánto cuesta: <strong>{f.sinPrecio.map((i) => i.nombre).join(", ")}</strong>.
                                 Ponlo en Ajustes → Inventario y el costo se calcula solo.
                               </span>
+                            </div>
+                          )}
+
+                          {/* Lo que no es ingrediente pero se paga igual en
+                              cada plato que sale. Sin esto el costo sale corto
+                              y el margen se ve más sano de lo que es. */}
+                          <div className="af-rent-otros">
+                            <div className="af-rent-auto-titulo">Y además, por cada {f.unidad}</div>
+                            <div className="af-rent-otros-campos">
+                              {[
+                                { id: "empaque", label: "Envase" },
+                                { id: "gas", label: "Gas y aceite" },
+                                { id: "manoObra", label: "Mano de obra" },
+                              ].map((c) => (
+                                <div key={c.id} className="af-rent-otro">
+                                  <span className="af-mini-label">{c.label}</span>
+                                  <NumberField
+                                    value={(f.otros || {})[c.id] || 0}
+                                    min={0}
+                                    className="af-input"
+                                    onChange={(valor) => actualizarProducto(f, { otros: { ...(f.otros || {}), [c.id]: valor } })}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Lo que de verdad cuesta y a cuánto habría que
+                              venderlo. El precio se saca del costo estándar
+                              —el real más el colchón— para que una subida del
+                              camarón no se coma el margen de golpe. */}
+                          {f.costo > 0 && (
+                            <div className="af-rent-cuenta">
+                              <div className="af-rent-cuenta-fila">
+                                <span>Ingredientes por {f.unidad}</span>
+                                <strong>{money(f.costoIngredientes)}</strong>
+                              </div>
+                              {f.otrosCostos > 0 && (
+                                <div className="af-rent-cuenta-fila">
+                                  <span>Envase, gas y mano de obra</span>
+                                  <strong>{money(f.otrosCostos)}</strong>
+                                </div>
+                              )}
+                              <div className="af-rent-cuenta-fila total">
+                                <span>Te cuesta cada {f.unidad}</span>
+                                <strong>{money(f.costo)}</strong>
+                              </div>
+                              <div className="af-rent-cuenta-fila">
+                                <span>Con {colchonCostos}% de colchón</span>
+                                <strong>{money(f.costoEstandar)}</strong>
+                              </div>
+                              {f.piezasPorUnidad > 0 && (
+                                <div className="af-rent-cuenta-fila">
+                                  <span>Cada pieza ({f.piezasPorUnidad} por {f.unidad})</span>
+                                  <strong>{money(f.costo / f.piezasPorUnidad)}</strong>
+                                </div>
+                              )}
+                              <div className="af-rent-cuenta-nota">
+                                Para que te cueste el 35% de lo que cobras, véndelo a{" "}
+                                <strong>{money(f.precioSugerido)}</strong>; para el 30%,{" "}
+                                <strong>{money(f.precioHolgado)}</strong>.
+                                {f.precio > 0 && (
+                                  <> Hoy lo cobras a <strong>{money(f.precio)}</strong> y te cuesta el{" "}
+                                  <strong>{Math.round((f.costo / f.precio) * 100)}%</strong>.</>
+                                )}
+                              </div>
                             </div>
                           )}
 
@@ -6898,6 +7033,22 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     >
                       {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
                     </select>
+                  </div>
+
+                  {/* Lo que se tira al limpiarlo. De un kilo de camarón con
+                      cabeza no salen mil gramos de camarón limpio, y esa parte
+                      también se pagó: sin contarla, el platillo parece costar
+                      menos de lo que cuesta. Se deja en 0 si no aplica. */}
+                  <div className="af-menu-card-row">
+                    <span className="af-mini-label" style={{ marginBottom: 0 }}>Se me va en merma</span>
+                    <NumberField
+                      value={ing.merma || 0}
+                      min={0}
+                      max={90}
+                      className="af-input af-menu-kgrange"
+                      onChange={(v) => setIng({ merma: v })}
+                    />
+                    <span className="af-price-suffix">% al limpiarlo</span>
                   </div>
                   {!familiasOk && (
                     <div className="af-stock-alert">
@@ -10801,6 +10952,21 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-desglose-flecha { margin-left: auto; font-size: 10px; }
 .af-rent-desglose { margin-top: 8px; padding: 12px 14px; border-radius: 12px; background: var(--neutral-soft); }
 .af-rent-desglose-nota { font-size: 12px; line-height: 1.45; color: var(--ink-soft); margin-bottom: 10px; }
+.af-rent-merma { color: #b7791f; font-weight: 600; }
+.af-colchon { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+
+/* Lo que no es ingrediente: envase, gas, mano de obra. */
+.af-rent-otros { margin: 12px 0; }
+.af-rent-otros-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 6px; }
+.af-rent-otro { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+/* La cuenta final: de qué se compone el costo y a cuánto conviene venderlo. */
+.af-rent-cuenta { background: color-mix(in srgb, var(--ink-soft) 7%, transparent); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+.af-rent-cuenta-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--ink-soft); padding: 3px 0; }
+.af-rent-cuenta-fila strong { font-family: 'Space Grotesk', sans-serif; color: var(--ink); }
+.af-rent-cuenta-fila.total { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 8px; font-weight: 700; color: var(--ink); font-size: 13.5px; }
+.af-rent-cuenta-nota { font-size: 12px; line-height: 1.5; color: var(--ink-soft); margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
+.af-rent-cuenta-nota strong { color: var(--ink); }
 .af-rent-ing-bloque { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
 .af-rent-ing-row { display: flex; align-items: center; gap: 8px; }
 .af-rent-ing-nombre-input { flex: 1; min-width: 0; padding: 7px 10px !important; font-size: 13.5px !important; }
