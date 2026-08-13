@@ -83,7 +83,20 @@ Te llega la foto de un ticket de compra. Devuelves los datos con los que despué
 
 Un dato que no se distingue se devuelve como null. Prefiere null antes que adivinar: un número inventado se convierte en un gasto equivocado en las cuentas del negocio, o en una factura que el portal rechaza sin decir por qué, y nadie lo va a notar.`;
 
+// El navegador NO manda la petición de una: primero pregunta con un OPTIONS si
+// tiene permiso (porque van cabeceras de sesión y JSON). Si esa pregunta no se
+// contesta con permiso, la petición de verdad nunca sale, y desde la app se ve
+// como si la lectura no hubiera entendido nada — que es justo lo que pasaba.
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
+  "access-control-allow-methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: CORS });
+  }
   if (req.method !== "POST") {
     return json({ error: "Usa POST." }, 405);
   }
@@ -188,5 +201,5 @@ const base64 = (bytes: Uint8Array) => {
 const json = (cuerpo: unknown, status = 200) =>
   new Response(JSON.stringify(cuerpo), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { ...CORS, "content-type": "application/json" },
   });
