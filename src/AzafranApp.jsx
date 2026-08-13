@@ -3433,6 +3433,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [diaSel, setDiaSel] = useState(todayISO());
   const [filtroAmbito, setFiltroAmbito] = useState("negocio");
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
+  // Ver de golpe lo que falta facturar era una sección aparte; ahora es un
+  // filtro más de la misma lista, que es donde uno ya está mirando.
+  const [filtroFactura, setFiltroFactura] = useState("todos");
   const [buscaGasto, setBuscaGasto] = useState("");
   const [mesGasto, setMesGasto] = useState("todos");
   // Rango de fechas en vez de un solo día: "lo de la semana pasada" no se
@@ -3440,13 +3443,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [desdeGasto, setDesdeGasto] = useState("");
   const [hastaGasto, setHastaGasto] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("todas");
-  const [sectorDona, setSectorDona] = useState(null);
   const [sectorPlatillo, setSectorPlatillo] = useState(null);
   const [vistaVentas, setVistaVentas] = useState("paellas");
   // Vacío = todos cerrados. Al entrar a un reporte se viene a ver un total,
   // no a leer gasto por gasto de los ocho meses: quien quiera el detalle de un
   // mes lo abre.
-  const [mesesAbiertos, setMesesAbiertos] = useState({});
   // Estables entre dibujados, si no React.memo no sirve de nada: una función
   // nueva cada vez cuenta como propiedad cambiada y vuelve a animar.
   const señalarPlatillo = React.useCallback((i) => setSectorPlatillo(i), []);
@@ -3652,6 +3653,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const hayRango = Boolean(desdeGasto || hastaGasto);
   const gastosFiltrados = gastosDelAmbito
     .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
+    .filter((g) => filtroFactura === "todos" || estadoFacturaDe(g) === filtroFactura)
     .filter((g) => filtroTienda === "todas" || normalizarNombreGasto(g.tienda || "") === normalizarNombreGasto(filtroTienda))
     // Un rango de fechas manda sobre el mes: si se pidieron dias concretos,
     // eso es lo que se quiere ver. Buscar "lo de la semana pasada" con un solo
@@ -3697,7 +3699,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     .filter(faltaFacturar)
     .map((g) => ({ ...g, quedan: diasParaFacturar(g) }))
     .sort((a, b) => (a.quedan ?? 999) - (b.quedan ?? 999));
-  const totalPorFacturar = sumar(porFacturar);
+
+  // Lo que el aviso del encabezado cuenta tiene que ser EXACTAMENTE lo mismo
+  // que sale al picarle, o el número de arriba y la lista de abajo se
+  // contradicen. Por eso usa el mismo criterio que el filtro: compras del
+  // negocio, de este año, que nadie ha marcado ni como facturadas ni como
+  // "no se factura". El plazo que corre sale aparte, de las tiendas que sí
+  // tienen portal.
+  const pendientesFactura = gastosAnio.filter((g) => estadoFacturaDe(g) === "pendiente");
+  const totalPorFacturar = sumar(pendientesFactura);
 
   // Cuánto se lleva gastado en cada tienda, para verlo en el filtro sin
   // tener que elegirla primero.
@@ -3717,6 +3727,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // filtrado nada.
   const cuantosFiltros =
     (filtroCategoria !== "todos" ? 1 : 0) +
+    (filtroFactura !== "todos" ? 1 : 0) +
     (filtroTienda !== "todas" ? 1 : 0) +
     (mesGasto !== "todos" && !hayRango ? 1 : 0) +
     (hayRango ? 1 : 0) +
@@ -3726,6 +3737,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const hayFiltro = cuantosFiltros > 0;
   const limpiarFiltros = () => {
     setFiltroAmbito("todos");
+    setFiltroFactura("todos");
     setFiltroCategoria("todos");
     setFiltroTienda("todas");
     setMesGasto("todos");
@@ -3744,45 +3756,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     setHastaGasto(fmt(hoy));
   };
 
-  // La lista se parte por mes: de corrido se hace larguísima y no se encuentra
-  // nada. Cada mes se puede plegar, y arriba trae su total.
-  const gastosPorMes = [];
-  gastosFiltrados.forEach((g) => {
-    const mesIdx = Number(g.fecha.split("-")[1]) - 1;
-    let grupo = gastosPorMes.find((m) => m.mesIdx === mesIdx);
-    if (!grupo) {
-      grupo = { mesIdx, nombre: MESES[mesIdx] || "Sin fecha", lista: [], total: 0 };
-      gastosPorMes.push(grupo);
-    }
-    grupo.lista.push(g);
-    grupo.total += parseFloat(g.monto) || 0;
-  });
-
-  const alternarMes = (mesIdx) =>
-    setMesesAbiertos((prev) => ({ ...prev, [mesIdx]: !prev[mesIdx] }));
-
-  // En qué se fue el gasto del año, por categoría.
-  //
-  // Antes esta dona partía el año en "gastos" y "lo que quedó", que es
-  // exactamente lo que ya dicen las tres tarjetas de arriba y la gráfica de
-  // barras: tres formas de enseñar el mismo número. Lo que no se veía en
-  // ningún lado es en QUÉ se va el dinero, que es lo que se puede mover.
-  const repartoAnual = useMemo(() => {
-    const porCategoria = {};
-    gastosAnio.forEach((g) => {
-      const cat = g.categoria || "Otros";
-      porCategoria[cat] = (porCategoria[cat] || 0) + (parseFloat(g.monto) || 0);
-    });
-    return Object.entries(porCategoria)
-      .map(([nombre, valor], i) => ({ nombre, valor, color: COLORES_PASTEL[i % COLORES_PASTEL.length] }))
-      .filter((r) => r.valor > 0)
-      .sort((a, b) => b.valor - a.valor);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(gastosAnio.map((g) => [g.categoria, g.monto]))]);
-
-  const mesesConMovimiento = datosFinanzasMensual.filter(
-    (d) => (d.ingreso || 0) > 0 || (d.gasto || 0) > 0
-  );
+  // A dónde se fue cada peso que entró: al gasto del negocio, a la casa, y lo
+  // que sobró. Es una sola barra en vez de dos escaleras de renglones, que se
+  // leían como una libreta a mano y no dejaban ver la proporción.
+  const repartoPeso = [
+    { id: "negocio", label: "Gastos del negocio", valor: totalGastosAnio },
+    { id: "casa", label: "Gastos de la casa", valor: totalFamiliaAnio },
+    { id: "sobra", label: "Sobró", valor: Math.max(0, sobranteAnio) },
+  ].map((r) => ({ ...r, pct: totalAnio > 0 ? (r.valor / totalAnio) * 100 : 0 }));
 
   // Gastos que parecen capturados dos veces. Se miran los que caen cerca en
   // el tiempo y se parecen en monto y en nombre: así se pesca tanto el
@@ -4956,397 +4937,62 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
         </div>
 
-        {/* Cómo le fue al NEGOCIO: aquí no entra nada de la casa, para que la
-            utilidad diga de verdad si el negocio se sostiene solo. */}
-        <div className="af-cuenta-titulo">Cómo va el negocio</div>
-        <div className="af-cuenta">
-          <div className="af-cuenta-fila">
-            <span className="af-cuenta-concepto">Entró por ventas</span>
-            <span className="af-cuenta-monto positivo">{money(totalAnio)}</span>
-          </div>
-          <div className="af-cuenta-fila">
-            <span className="af-cuenta-concepto">Gastos del negocio</span>
-            <span className="af-cuenta-monto negativo">− {money(totalGastosAnio)}</span>
-          </div>
-          <div className="af-cuenta-fila af-cuenta-total">
-            <span className="af-cuenta-concepto">Le quedó al negocio</span>
-            <span className={"af-cuenta-monto " + (utilidadAnio >= 0 ? "positivo" : "negativo")}>
-              {money(utilidadAnio)}
-            </span>
-          </div>
-          {totalAnio > 0 && utilidadAnio >= 0 && (
-            <div className="af-cuenta-nota">
-              De cada $100 que entraron, le quedaron {Math.round((utilidadAnio / totalAnio) * 100)}.
+        {/* Cómo va el año, de un vistazo.
+            Antes eran dos escaleras de renglones —"Cómo va el negocio" y
+            "Y después de la casa"— que se leían como una libreta a mano y
+            repetían el mismo número tres veces. Ahora son cuatro cifras y una
+            sola barra que enseña a dónde se fue cada peso que entró. */}
+        <div className="af-resumen-anio mb-5">
+          <div className="af-resumen-cifras">
+            <div className="af-resumen-cifra">
+              <span className="af-resumen-label">Entró por ventas</span>
+              <span className="af-resumen-valor">{money(totalAnio)}</span>
             </div>
-          )}
-        </div>
-
-        {/* Y aparte, lo de la casa: se resta al final, no de las ventas. */}
-        <div className="af-cuenta-titulo">Y después de la casa</div>
-        <div className="af-cuenta">
-          <div className="af-cuenta-fila">
-            <span className="af-cuenta-concepto">Le quedó al negocio</span>
-            <span className={"af-cuenta-monto " + (utilidadAnio >= 0 ? "positivo" : "negativo")}>
-              {money(utilidadAnio)}
-            </span>
-          </div>
-          <div className="af-cuenta-fila">
-            <span className="af-cuenta-concepto">Gastos familiares</span>
-            <span className="af-cuenta-monto negativo">− {money(totalFamiliaAnio)}</span>
-          </div>
-          <div className="af-cuenta-fila af-cuenta-total">
-            <span className="af-cuenta-concepto">Sobró en la bolsa</span>
-            <span className={"af-cuenta-monto " + (sobranteAnio >= 0 ? "positivo" : "negativo")}>
-              {money(sobranteAnio)}
-            </span>
-          </div>
-          {totalFamiliaAnio === 0 && (
-            <div className="af-cuenta-nota">
-              Todavía no hay gastos marcados como familiares. Al capturar un gasto puedes
-              decir si es del negocio o de la casa.
+            <div className="af-resumen-cifra">
+              <span className="af-resumen-label">Gastos del negocio</span>
+              <span className="af-resumen-valor negativo">{money(totalGastosAnio)}</span>
             </div>
-          )}
-        </div>
-
-        <div className="af-kpi-grid mb-5">
-          <div className="af-kpi-card">
-            <div className="af-kpi-label">Clientes nuevos</div>
-            <div className="af-kpi-value">{clientesNuevosAnio}</div>
-          </div>
-        </div>
-
-        <div className="af-card p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">Ingresos vs. gastos por mes — {anio}</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
-              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
-              {/* Al tocar una barra se ve también lo que quedó ese mes, que es
-                  el dato que de verdad importa. */}
-              <Tooltip
-                contentStyle={chartTooltipStyle}
-                cursor={{ fill: "rgba(47,95,224,0.06)" }}
-                formatter={(v, nombre) => [money(v), nombre]}
-                labelFormatter={(mes) => {
-                  const d = datosFinanzasMensual.find((x) => x.mes === mes);
-                  if (!d) return mes;
-                  const queda = (d.ingreso || 0) - (d.gasto || 0);
-                  return `${mes} · quedan ${money(queda)}`;
-                }}
-              />
-              <Bar dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
-              <Bar dataKey="gasto" name="Gastos" fill={COLOR_GASTO} radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="af-chart-legend">
-            <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Ingresos</span>
-            <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos</span>
-          </div>
-
-        </div>
-
-        {/* De cada peso que entró, cuánto se fue y cuánto quedó. En dona
-            porque de un vistazo se ve la proporción, que es lo que importa;
-            al lado, el mes a mes en fichas para no hacer una lista larga. */}
-        <div className="af-card p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">En qué se fue el gasto — {anio}</div>
-          <div className="af-dona-wrap">
-            <div className="af-dona-grafica">
-              <ResponsiveContainer width="100%" height={190}>
-                <PieChart>
-                  <Pie
-                    data={repartoAnual}
-                    dataKey="valor"
-                    nameKey="nombre"
-                    innerRadius={60}
-                    outerRadius={82}
-                    paddingAngle={2}
-                    stroke="none"
-                    // El detalle se muestra en el centro de la dona, no en un
-                    // globo flotante: así no tapa el número de en medio.
-                    onMouseEnter={(_, i) => setSectorDona(i)}
-                    onMouseLeave={() => setSectorDona(null)}
-                  >
-                    {repartoAnual.map((r, i) => (
-                      <Cell
-                        key={r.nombre}
-                        fill={r.color}
-                        opacity={sectorDona === null || sectorDona === i ? 1 : 0.35}
-                      />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="af-dona-centro">
-                {sectorDona !== null && repartoAnual[sectorDona] ? (
-                  <>
-                    <div className="af-dona-centro-label">{repartoAnual[sectorDona].nombre}</div>
-                    <div className="af-dona-centro-monto" style={{ color: repartoAnual[sectorDona].color }}>
-                      {money(repartoAnual[sectorDona].valor)}
-                    </div>
-                    {totalGastosAnio > 0 && (
-                      <div className="af-dona-centro-pct">
-                        {Math.round((repartoAnual[sectorDona].valor / totalGastosAnio) * 100)}% del gasto
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="af-dona-centro-label">Gasto del negocio</div>
-                    <div className="af-dona-centro-monto negativo">{money(totalGastosAnio)}</div>
-                    {totalAnio > 0 && (
-                      <div className="af-dona-centro-pct">{Math.round((totalGastosAnio / totalAnio) * 100)}% de lo que entró</div>
-                    )}
-                  </>
-                )}
-              </div>
+            <div className="af-resumen-cifra">
+              <span className="af-resumen-label">Le quedó al negocio</span>
+              <span className={"af-resumen-valor " + (utilidadAnio >= 0 ? "positivo" : "negativo")}>
+                {money(utilidadAnio)}
+              </span>
             </div>
-
-            {/* Qué es cada color, ya que el detalle sale en el centro. */}
-            {/* Con el monto al lado: así se lee de corrido sin tener que ir
-                tocando rebanada por rebanada para saber cuánto es cada una. */}
-            <div className="af-dona-leyenda">
-              {repartoAnual.length === 0 ? (
-                <span className="af-ink-soft">Todavía no hay gastos del negocio este año.</span>
-              ) : (
-                repartoAnual.map((r) => (
-                  <span key={r.nombre}>
-                    <span className="af-legend-dot" style={{ background: r.color }} /> {r.nombre}
-                    <strong className="af-leyenda-monto">{money(r.valor)}</strong>
-                  </span>
-                ))
-              )}
-            </div>
-
-            <div className="af-dona-meses">
-              {mesesConMovimiento.length === 0 ? (
-                <div className="af-hint">Todavía no hay movimientos este año.</div>
-              ) : (
-                mesesConMovimiento.map((d) => {
-                  const queda = (d.ingreso || 0) - (d.gasto || 0);
-                  return (
-                    <div key={d.mes} className={"af-mes-ficha" + (queda >= 0 ? " positiva" : " negativa")}>
-                      <span className="af-mes-ficha-mes">{d.mes}</span>
-                      <span className="af-mes-ficha-monto">
-                        {queda >= 0 ? "+" : "−"}{money(Math.abs(queda))}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
+            <div className="af-resumen-cifra">
+              <span className="af-resumen-label">Le queda de cada $100</span>
+              <span className="af-resumen-valor">
+                {totalAnio > 0 ? `$${Math.round((utilidadAnio / totalAnio) * 100)}` : "—"}
+              </span>
             </div>
           </div>
-        </div>
 
-        <div className="af-card p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">Clientes nuevos por mes — {anio}</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={datosClientesMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
-              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-              <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(31,169,113,0.08)" }} />
-              <Bar dataKey="nuevos" name="Clientes nuevos" radius={[6, 6, 0, 0]} fill={COLOR_OLIVE} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {esAdmin && (
-        <>
-        {/* Gastos que caen igual todos los meses (renta, sueldos, servicios).
-            Se capturan una vez aquí y la app los registra sola cada mes, para
-            no teclearlos de nuevo ni que se olviden y descuadren los reportes. */}
-        {/* Minimizado por omisión: son una regla que ya funciona sola, se
-            entra a revisarlos de vez en cuando, no todos los días. */}
-        <div className="af-encabezado-accion">
-          <div className="af-section-title" style={{ margin: 0 }}>Gastos fijos del mes</div>
-          <button className="af-btn-accion" onClick={() => setAbrirFijos((v) => !v)}>
-            {abrirFijos ? <><X size={15} /> Cerrar</> : <><Pencil size={15} /> Revisar</>}
-          </button>
-        </div>
-
-        {!abrirFijos && (
-          <div className="af-card p-4 mb-5">
-            <div className="af-fijos-resumen">
-              {fijosPorAmbito.map((a) => (
-                <div key={a.id} className="af-fijos-resumen-item">
-                  <span className="af-fijos-resumen-label">{a.label}</span>
-                  <strong>{money(a.total)}</strong>
-                  <span className="af-fijos-sub">
-                    {a.lista.length} {pluralSimple("gasto", a.lista.length)} al mes
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {abrirFijos && (
-        <div className="af-card p-4 mb-5">
-          <div className="af-hint mb-3">
-            Se registran solos cada mes. Revisa que los montos estén al día: si sube la
-            renta o cambia un sueldo, corrígelo aquí.
-          </div>
-
-          {gastosFijos.length === 0 ? (
-            <div className="af-hint mb-3" style={{ textAlign: "center" }}>
-              Todavía no hay gastos fijos.
-            </div>
-          ) : (
+          {totalAnio > 0 && (
             <>
-              {/* Separados por bolsa: lo del negocio y lo de la casa no se
-                  mezclan, que es justo lo que se viene a comprobar aquí. */}
-              {fijosPorAmbito.filter((a) => a.lista.length > 0).map((a) => (
-                <div key={a.id} className="mb-3">
-                  <div className="af-fijos-grupo">{a.label}</div>
-                  {a.lista.map((f) => (
-                    <div key={f.id} className="af-fijos-row">
-                      <div className="af-fijos-txt">
-                        <div className="af-fijos-nombre">{f.descripcion}</div>
-                        <div className="af-fijos-sub">
-                          {f.porDia > 0
-                            ? `${money(f.porDia)} al día · ${diasDeEsteMes} días este mes`
-                            : `${f.categoria} · cada día ${f.dia}`}
-                        </div>
-                      </div>
-                      <span className="af-fijos-monto">{money(montoAlMes(f))}</span>
-                      <button
-                        className="af-icon-btn"
-                        title="Cambiar"
-                        onClick={() => setDraftFijo({ ...f, ambito: ambitoDe(f), porDia: f.porDia || 0, monto: f.monto ? String(f.monto) : "" })}
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button className="af-icon-btn" title="Quitar" onClick={() => quitarFijo(f.id)}>
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))}
-                  <div className="af-fijos-total">
-                    {a.label}: <strong>{money(a.total)}</strong> al mes
-                  </div>
-                </div>
-              ))}
-              <div className="af-fijos-total">
-                Todo junto suma <strong>{money(totalFijosAlMes)}</strong> al mes
+              <div className="af-reparto-barra">
+                {repartoPeso.map((r) => (
+                  r.pct > 0 && (
+                    <div
+                      key={r.id}
+                      className={"af-reparto-parte " + r.id}
+                      style={{ width: `${r.pct}%` }}
+                      title={`${r.label}: ${money(r.valor)}`}
+                    />
+                  )
+                ))}
+              </div>
+              <div className="af-reparto-leyenda">
+                {repartoPeso.map((r) => (
+                  <span key={r.id} className="af-reparto-item">
+                    <span className={"af-legend-dot af-punto-" + r.id} />
+                    {r.label}
+                    <strong>{money(r.valor)}</strong>
+                    <em>{Math.round(r.pct)}%</em>
+                  </span>
+                ))}
               </div>
             </>
           )}
-
-          {draftFijo ? (
-            <div className="af-fijos-form mt-3">
-              <div className="af-field">
-                <label>¿De dónde sale?</label>
-                <div className="af-ambito-switch">
-                  {AMBITOS.map((a) => (
-                    <button
-                      key={a.id}
-                      className={"af-ambito-btn" + ((draftFijo.ambito || "negocio") === a.id ? " active" : "")}
-                      onClick={() => setDraftFijo({ ...draftFijo, ambito: a.id })}
-                    >
-                      {a.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="af-field">
-                <label>¿De qué es?</label>
-                <CampoConSugerencias
-                  value={draftFijo.descripcion}
-                  placeholder="Ej. Renta del local, sueldo de Lupita..."
-                  sugerencias={nombresUsados}
-                  onChange={(descripcion) => setDraftFijo({ ...draftFijo, descripcion })}
-                />
-              </div>
-              <div className="af-field">
-                <label>Categoría</label>
-                <select
-                  className="af-input"
-                  value={draftFijo.categoria}
-                  onChange={(e) => setDraftFijo({ ...draftFijo, categoria: e.target.value })}
-                >
-                  {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              {/* Hay gastos que se piensan al día aunque se apunten una vez al
-                  mes, como los cigarros. Se captura el diario y la app hace la
-                  cuenta según los días que traiga cada mes. */}
-              <div className="af-field">
-                <label>¿Cómo lo tienes contado?</label>
-                <div className="af-ambito-switch">
-                  <button
-                    className={"af-ambito-btn" + (!(draftFijo.porDia > 0) ? " active" : "")}
-                    onClick={() => setDraftFijo({ ...draftFijo, porDia: 0 })}
-                  >
-                    Al mes
-                  </button>
-                  <button
-                    className={"af-ambito-btn" + (draftFijo.porDia > 0 ? " active" : "")}
-                    onClick={() => setDraftFijo({ ...draftFijo, porDia: draftFijo.porDia || draftFijo.monto || 1, monto: "" })}
-                  >
-                    Por día
-                  </button>
-                </div>
-              </div>
-              {draftFijo.porDia > 0 ? (
-                <div className="af-field">
-                  <label>Cuánto al día</label>
-                  <NumberField
-                    value={draftFijo.porDia}
-                    min={0}
-                    className="af-input"
-                    onChange={(v) => setDraftFijo({ ...draftFijo, porDia: v })}
-                  />
-                  <div className="af-hint mt-1">
-                    Este mes serían <strong>{money((parseFloat(draftFijo.porDia) || 0) * diasDeEsteMes)}</strong>{" "}
-                    ({diasDeEsteMes} días).
-                  </div>
-                </div>
-              ) : (
-                <div className="af-field">
-                  <label>Cuánto es</label>
-                  <NumberField
-                    value={draftFijo.monto}
-                    min={0}
-                    className="af-input"
-                    onChange={(v) => setDraftFijo({ ...draftFijo, monto: v })}
-                  />
-                </div>
-              )}
-              <div className="af-field">
-                <label>Qué día del mes se paga</label>
-                <NumberField
-                  value={draftFijo.dia}
-                  min={1}
-                  max={28}
-                  className="af-input"
-                  onChange={(v) => setDraftFijo({ ...draftFijo, dia: v })}
-                />
-                <div className="af-hint mt-1">Del 1 al 28, para que caiga en todos los meses.</div>
-              </div>
-              <button
-                className="af-btn-primary w-full"
-                onClick={guardarFijo}
-                disabled={!draftFijo.descripcion.trim() || (!draftFijo.monto && !draftFijo.porDia)}
-              >
-                {draftFijo.id ? "Guardar cambios" : "Agregar gasto fijo"}
-              </button>
-              <button className="af-btn-ghost w-full mt-2" onClick={() => setDraftFijo(null)}>Cancelar</button>
-            </div>
-          ) : (
-            <button
-              className="af-btn-secondary w-full"
-              onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", porDia: 0, monto: "", dia: 1 })}
-            >
-              <Plus size={16} className="inline mr-1" /> Agregar gasto fijo
-            </button>
-          )}
         </div>
-        )}
-
-        </>
-        )}
 
         {/* Agregar un gasto lo puede hacer cualquiera del negocio, no solo el
             administrador: Pepe es quien va a la tienda y quien tiene el ticket
@@ -5359,6 +5005,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             casi siempre se entra aquí a consultar, no a capturar. */}
         <div className="af-encabezado-accion">
           <div className="af-section-title" style={{ margin: 0 }}>Gastos</div>
+          {/* El aviso de lo que falta facturar era una sección entera que
+              repetía la misma lista de compras. Ahora es un aviso de un
+              renglón: se pica y la lista de abajo se filtra a eso. */}
+          {pendientesFactura.length > 0 && (
+            <button
+              className="af-aviso-facturar"
+              onClick={() => { setFiltroFactura("pendiente"); setFiltroAmbito("negocio"); setMesGasto("todos"); }}
+            >
+              <Receipt size={14} />
+              {pendientesFactura.length} por facturar · {money(totalPorFacturar)}
+              {porFacturar[0]?.quedan != null && porFacturar[0].quedan <= 7 && (
+                <span className="af-aviso-urgente">
+                  {porFacturar[0].quedan < 0
+                    ? "una ya se venció"
+                    : porFacturar[0].quedan === 0
+                    ? "una vence hoy"
+                    : `una vence en ${porFacturar[0].quedan} días`}
+                </span>
+              )}
+            </button>
+          )}
           <button
             className={"af-btn-accion" + (abrirGasto ? "" : " af-btn-verde")}
             onClick={() => setAbrirGasto((v) => !v)}
@@ -5570,269 +5237,66 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </div>
         )}
 
-        {/* Lo que falta facturar. Va antes de la lista de gastos porque es
-            trabajo pendiente con fecha límite, no historia. */}
-        {esAdmin && porFacturar.length > 0 && (
-          <>
-            <div className="af-section-title">
-              Por facturar <span className="af-pill-total">{money(totalPorFacturar)}</span>
-            </div>
-            <div className="af-card p-4 mb-5">
-              <p className="af-ink-soft text-sm mb-3">
-                Compras en {TIENDAS_FACTURABLES.join(", ")} que todavía no tienen factura.
-              </p>
-              {porFacturar.map((g) => {
-                const info = infoDeTienda(g.tienda);
-                const q = g.quedan;
-                const urgencia = q == null ? "" : q < 0 ? " vencido" : q <= 5 ? " urge" : "";
-                return (
-                  <div key={g.id} className={"af-factura" + urgencia}>
-                    <div className="af-factura-arriba">
-                      <span className="af-confirmar-nombre">{g.tienda}</span>
-                      {q != null && (
-                        <span className={"af-chip" + (q < 0 ? " af-chip-vencido" : q <= 5 ? " af-chip-sin-ticket" : " af-chip-neutral")}>
-                          {q < 0 ? "Ya venció" : q === 0 ? "Vence hoy" : `Quedan ${q} día${q === 1 ? "" : "s"}`}
-                        </span>
-                      )}
-                    </div>
-                    <div className="af-ink-soft text-sm">
-                      {money(g.monto)} · {fmtDateHuman(g.fecha)}
-                      {g.descripcion ? ` · ${g.descripcion}` : ""}
-                    </div>
-                    {/* Qué pide ese portal en concreto: cada tienda es distinta
-                        y de memoria no se acuerda uno. */}
-                    {/* Si el ticket ya se leyó, el folio está aquí y se copia de
-                        un toque: era el dato que había que teclear a mano en el
-                        portal, veinte dígitos sin equivocarse. */}
-                    {g.folio ? (
-                      <div className="af-factura-folio">
-                        <span className="af-mini-label">Folio del ticket</span>
-                        <code>{g.folio}</code>
-                        {g.folio2 && <><span className="af-mini-label">Segundo número</span><code>{g.folio2}</code></>}
-                      </div>
-                    ) : (
-                      info && <div className="af-factura-pide">{info.pide}</div>
-                    )}
-                    <div className="af-factura-acciones">
-                      {info && (
-                        <a className="af-chip af-chip-portal" href={info.portal} target="_blank" rel="noopener noreferrer">
-                          Abrir portal
-                        </a>
-                      )}
-                      {g.ticket ? (
-                        <button className="af-chip af-chip-neutral" onClick={() => abrirTicket(g)}>
-                          <Receipt size={12} /> Ver ticket
-                        </button>
-                      ) : (
-                        <span className="af-chip af-chip-sin-ticket">Sin foto</span>
-                      )}
-                      {g.folio && (
-                        <button
-                          className="af-chip af-chip-neutral"
-                          onClick={() => {
-                            navigator.clipboard.writeText(g.folio);
-                            showToast("Folio copiado", "ok");
-                          }}
-                        >
-                          <Copy size={12} /> Copiar folio
-                        </button>
-                      )}
-                      <button className="af-chip af-chip-neutral" onClick={() => copiarDatosFiscales(g)}>
-                        <ClipboardPaste size={12} /> Copiar mis datos
-                      </button>
-                      <button className="af-chip af-chip-wa-mini" onClick={() => setConfirmarFactura(g)}>
-                        <Check size={12} /> Ya facturé
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {/* Una sola fila: buscar y filtrar. Antes había cinco filas de filtros
-            apiladas (bolsa, categorías, meses, texto y fecha) antes de ver un
-            solo gasto; ahora se entra viendo la lista y los filtros se abren
-            solo si hacen falta. */}
-        {/* Un solo botón para todo. Antes había una barra de buscar aparte del
-            filtro, y no quedaba claro qué hacía cada cosa: ahora la búsqueda
-            por texto es un filtro más, dentro del mismo panel. */}
-        {/* Qué bolsa se está viendo: unas pestañas de siempre, no un filtro que
-            hay que descubrir. Es la pregunta que más se hace y la respuesta
-            está a un toque. */}
-        <div className="af-ambito-switch mb-3">
-          {[...AMBITOS, { id: "todos", label: "Todo" }].map((a) => (
+        {/* El mes se elige aquí arriba, como pestañas. Antes había que abrir
+            y cerrar cada mes en la lista para encontrar algo; ahora se pica
+            el mes y la lista ya viene con lo de ese mes y nada más. */}
+        <div className="af-barra-gastos mb-3">
+          <div className="af-mes-pills">
             <button
-              key={a.id}
-              className={"af-ambito-btn" + (filtroAmbito === a.id ? " active" : "")}
-              onClick={() => setFiltroAmbito(a.id)}
+              className={"af-mes-pill" + (mesGasto === "todos" ? " active" : "")}
+              onClick={() => { setMesGasto("todos"); setDesdeGasto(""); setHastaGasto(""); }}
             >
-              {a.label}
+              Todo el año
             </button>
-          ))}
-        </div>
-
-        <div className="af-barra-filtros mb-3">
-          <button
-            className={"af-btn-accion af-btn-filtrar" + (cuantosFiltros > 0 ? " con-filtros" : "")}
-            onClick={() => setAbrirFiltros((v) => !v)}
-          >
-            <Filter size={15} /> {abrirFiltros ? "Cerrar filtros" : "Buscar y filtrar"}
-            {cuantosFiltros > 0 && <span className="af-filtros-cuenta">{cuantosFiltros}</span>}
-          </button>
-          <span className="af-filtros-resultado">
-            {gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · {money(totalFiltrado)}
-          </span>
-        </div>
-
-        {/* Lo que está filtrando ahora mismo, siempre a la vista aunque el
-            panel esté cerrado: si no, uno no entiende por qué faltan gastos. */}
-        {cuantosFiltros > 0 && (
-          <div className="af-filtros-activos mb-3">
-            {buscaGasto.trim() && (
-              <button className="af-chip-filtro" onClick={() => setBuscaGasto("")}>
-                “{buscaGasto.trim()}” <X size={12} />
+            {mesesConGastos.map((i) => (
+              <button
+                key={i}
+                className={"af-mes-pill" + (mesGasto === i && !hayRango ? " active" : "")}
+                onClick={() => { setMesGasto(i); setDesdeGasto(""); setHastaGasto(""); }}
+              >
+                {MESES[i].slice(0, 3)}
               </button>
-            )}
-            {filtroTienda !== "todas" && (
-              <button className="af-chip-filtro" onClick={() => setFiltroTienda("todas")}>
-                {filtroTienda} <X size={12} />
-              </button>
-            )}
-            {filtroCategoria !== "todos" && (
-              <button className="af-chip-filtro" onClick={() => setFiltroCategoria("todos")}>
-                {filtroCategoria} <X size={12} />
-              </button>
-            )}
-            {mesGasto !== "todos" && !hayRango && (
-              <button className="af-chip-filtro" onClick={() => setMesGasto("todos")}>
-                {MESES[mesGasto]} <X size={12} />
-              </button>
-            )}
-            {hayRango && (
-              <button className="af-chip-filtro" onClick={() => { setDesdeGasto(""); setHastaGasto(""); }}>
-                {desdeGasto ? fmtDateHuman(desdeGasto) : "Desde el principio"}
-                {" — "}
-                {hastaGasto ? fmtDateHuman(hastaGasto) : "hoy"} <X size={12} />
-              </button>
-            )}
-            <button className="af-btn-ghost" onClick={limpiarFiltros}>Quitar todos</button>
+            ))}
           </div>
-        )}
 
-        {abrirFiltros && (
-          <div className="af-card p-4 mb-3">
-            <div className="af-mini-label">Buscar por nombre, tienda o monto</div>
-            <div className="af-buscador-gastos mb-4">
-              <Search size={16} />
-              <input
-                className="af-input"
-                placeholder="Ej. camarón, Costco, 900…"
-                value={buscaGasto}
-                onChange={(e) => setBuscaGasto(e.target.value)}
-              />
-              {buscaGasto && (
-                <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscaGasto("")}><X size={16} /></button>
-              )}
-            </div>
+          {/* Los filtros que de verdad se usan, a la vista y todos del mismo
+              tipo: se elige de una lista. Antes vivían escondidos detrás de un
+              botón y había que descubrirlos. */}
+          <div className="af-filtros-fila">
+          <select className="af-input" value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
+            <option value="todos">Negocio y casa</option>
+            {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
+          </select>
 
-            <div className="af-mini-label">¿De qué bolsa?</div>
-            <div className="af-ambito-switch mb-4">
-              <button
-                className={"af-ambito-btn" + (filtroAmbito === "negocio" ? " active" : "")}
-                onClick={() => { setFiltroAmbito("negocio"); setFiltroCategoria("todos"); }}
-              >
-                Del negocio <span className="af-pill-total">{money(totalGastosAnio)}</span>
-              </button>
-              <button
-                className={"af-ambito-btn" + (filtroAmbito === "familia" ? " active" : "")}
-                onClick={() => { setFiltroAmbito("familia"); setFiltroCategoria("todos"); }}
-              >
-                De la casa <span className="af-pill-total">{money(totalFamiliaAnio)}</span>
-              </button>
-              <button
-                className={"af-ambito-btn" + (filtroAmbito === "todos" ? " active" : "")}
-                onClick={() => { setFiltroAmbito("todos"); setFiltroCategoria("todos"); }}
-              >
-                Todo
-              </button>
-            </div>
+          <select className="af-input" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+            <option value="todos">Todos los tipos</option>
+            {CATEGORIAS_GASTO.map((c) => (<option key={c} value={c}>{c}</option>))}
+          </select>
 
-            {/* La tienda faltaba y es de lo más útil: "todo lo de Costco". */}
-            {tiendasUsadas.length > 0 && (
-              <>
-                <div className="af-mini-label">¿En qué tienda?</div>
-                <div className="af-mes-pills mb-4">
-                  <button className={"af-mes-pill" + (filtroTienda === "todas" ? " active" : "")} onClick={() => setFiltroTienda("todas")}>
-                    Todas
-                  </button>
-                  {tiendasUsadas.map((t) => (
-                    <button key={t} className={"af-mes-pill" + (filtroTienda === t ? " active" : "")} onClick={() => setFiltroTienda(t)}>
-                      {t} <span className="af-pill-total">{money(totalPorTienda[normalizarNombreGasto(t)] || 0)}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+          <select className="af-input" value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
+            <option value="todos">Facturadas y no</option>
+            {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
+          </select>
 
-            <div className="af-mini-label">¿De qué fue?</div>
-            <div className="af-mes-pills mb-4">
-              <button className={"af-mes-pill" + (filtroCategoria === "todos" ? " active" : "")} onClick={() => setFiltroCategoria("todos")}>
-                Todas <span className="af-pill-total">{money(totalDelAmbito)}</span>
-              </button>
-              {CATEGORIAS_GASTO.map((c) => (
-                <button key={c} className={"af-mes-pill" + (filtroCategoria === c ? " active" : "")} onClick={() => setFiltroCategoria(c)}>
-                  {c} <span className="af-pill-total">{money(totalPorCategoria[c] || 0)}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="af-mini-label">¿De cuándo?</div>
-            {/* Atajos primero, porque es como uno lo piensa. */}
-            <div className="af-mes-pills mb-2">
-              <button className="af-mes-pill" onClick={() => rangoRapido(7)}>Última semana</button>
-              <button className="af-mes-pill" onClick={() => rangoRapido(30)}>Último mes</button>
-              <button className="af-mes-pill" onClick={() => rangoRapido(90)}>Últimos 3 meses</button>
-            </div>
-            {mesesConGastos.length > 1 && (
-              <div className="af-mes-pills mb-2">
-                <button
-                  className={"af-mes-pill" + (mesGasto === "todos" && !hayRango ? " active" : "")}
-                  onClick={() => { setMesGasto("todos"); setDesdeGasto(""); setHastaGasto(""); }}
-                >
-                  Todo el año
-                </button>
-                {mesesConGastos.map((m) => (
-                  <button
-                    key={m}
-                    className={"af-mes-pill" + (String(mesGasto) === String(m) && !hayRango ? " active" : "")}
-                    onClick={() => { setMesGasto(m); setDesdeGasto(""); setHastaGasto(""); }}
-                  >
-                    {MESES[m].slice(0, 3)}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="af-rango-fechas">
-              <label className="af-rango-campo">
-                <span>Desde</span>
-                <input type="date" className="af-input" value={desdeGasto} onChange={(e) => setDesdeGasto(e.target.value)} />
-              </label>
-              <label className="af-rango-campo">
-                <span>Hasta</span>
-                <input type="date" className="af-input" value={hastaGasto} onChange={(e) => setHastaGasto(e.target.value)} />
-              </label>
-            </div>
-
-            <button className="af-btn-primary w-full mt-4" onClick={() => setAbrirFiltros(false)}>
-              Ver {gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · {money(totalFiltrado)}
-            </button>
-            {cuantosFiltros > 0 && (
-              <button className="af-btn-secondary w-full mt-2" onClick={limpiarFiltros}>Quitar todos los filtros</button>
+          <div className="af-buscador-gastos af-filtro-busca">
+            <Search size={16} />
+            <input
+              className="af-input"
+              placeholder="Buscar: camarón, Costco, 900…"
+              value={buscaGasto}
+              onChange={(e) => setBuscaGasto(e.target.value)}
+            />
+            {buscaGasto && (
+              <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscaGasto("")}><X size={16} /></button>
             )}
           </div>
-        )}
+
+          </div>
+        </div>
+
+        <div className="af-filtros-resultado mb-2">
+          {gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · <strong>{money(totalFiltrado)}</strong>
+        </div>
 
         {/* Nombres escritos de varias formas. Se avisa, pero se junta solo si
             quien lleva las cuentas dice que sí: a veces se parecen y no son
@@ -5889,18 +5353,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           />
         ) : (
           <div className="mb-4">
-            {gastosPorMes.map((grupo) => {
-              const abierto = mesesAbiertos[grupo.mesIdx];
-              return (
-                <div key={grupo.mesIdx} className="af-mes-grupo">
-                  <button className="af-mes-cabecera" onClick={() => alternarMes(grupo.mesIdx)}>
-                    <ChevronRight size={16} className={"af-mes-flecha" + (abierto ? " abierta" : "")} />
-                    <span className="af-mes-nombre">{grupo.nombre}</span>
-                    <span className="af-mes-cuenta">{grupo.lista.length}</span>
-                    <span className="af-mes-total">{money(grupo.total)}</span>
-                  </button>
-
-                  {abierto && (
                     <div className="af-tabla-gastos">
                       {/* Los títulos de las columnas, para no adivinar qué es
                           cada cosa. Solo donde hay ancho: en el celular los
@@ -5914,7 +5366,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         <span />
                       </div>
 
-                      {grupo.lista.map((g) => (
+                      {gastosFiltrados.map((g) => (
                         <div key={g.id} className="af-gasto-fila">
                           <span className="af-gasto-fecha">{fmtDiaCorto(g.fecha)}</span>
 
@@ -5969,12 +5421,249 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
         )}
+
+        {esAdmin && (
+        <>
+        {/* Gastos que caen igual todos los meses (renta, sueldos, servicios).
+            Se capturan una vez aquí y la app los registra sola cada mes, para
+            no teclearlos de nuevo ni que se olviden y descuadren los reportes. */}
+        {/* Minimizado por omisión: son una regla que ya funciona sola, se
+            entra a revisarlos de vez en cuando, no todos los días. */}
+        <div className="af-encabezado-accion">
+          <div className="af-section-title" style={{ margin: 0 }}>Gastos fijos del mes</div>
+          <button className="af-btn-accion" onClick={() => setAbrirFijos((v) => !v)}>
+            {abrirFijos ? <><X size={15} /> Cerrar</> : <><Pencil size={15} /> Revisar</>}
+          </button>
+        </div>
+
+        {!abrirFijos && (
+          <div className="af-card p-4 mb-5">
+            <div className="af-fijos-resumen">
+              {fijosPorAmbito.map((a) => (
+                <div key={a.id} className="af-fijos-resumen-item">
+                  <span className="af-fijos-resumen-label">{a.label}</span>
+                  <strong>{money(a.total)}</strong>
+                  <span className="af-fijos-sub">
+                    {a.lista.length} {pluralSimple("gasto", a.lista.length)} al mes
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {abrirFijos && (
+        <div className="af-card p-4 mb-5">
+          <div className="af-hint mb-3">
+            Se registran solos cada mes. Revisa que los montos estén al día: si sube la
+            renta o cambia un sueldo, corrígelo aquí.
+          </div>
+
+          {gastosFijos.length === 0 ? (
+            <div className="af-hint mb-3" style={{ textAlign: "center" }}>
+              Todavía no hay gastos fijos.
+            </div>
+          ) : (
+            <>
+              {/* Separados por bolsa: lo del negocio y lo de la casa no se
+                  mezclan, que es justo lo que se viene a comprobar aquí. */}
+              {fijosPorAmbito.filter((a) => a.lista.length > 0).map((a) => (
+                <div key={a.id} className="mb-3">
+                  <div className="af-fijos-grupo">{a.label}</div>
+                  {a.lista.map((f) => (
+                    <div key={f.id} className="af-fijos-row">
+                      <div className="af-fijos-txt">
+                        <div className="af-fijos-nombre">{f.descripcion}</div>
+                        <div className="af-fijos-sub">
+                          {f.porDia > 0
+                            ? `${money(f.porDia)} al día · ${diasDeEsteMes} días este mes`
+                            : `${f.categoria} · cada día ${f.dia}`}
+                        </div>
+                      </div>
+                      <span className="af-fijos-monto">{money(montoAlMes(f))}</span>
+                      <button
+                        className="af-icon-btn"
+                        title="Cambiar"
+                        onClick={() => setDraftFijo({ ...f, ambito: ambitoDe(f), porDia: f.porDia || 0, monto: f.monto ? String(f.monto) : "" })}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button className="af-icon-btn" title="Quitar" onClick={() => quitarFijo(f.id)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="af-fijos-total">
+                    {a.label}: <strong>{money(a.total)}</strong> al mes
+                  </div>
+                </div>
+              ))}
+              <div className="af-fijos-total">
+                Todo junto suma <strong>{money(totalFijosAlMes)}</strong> al mes
+              </div>
+            </>
+          )}
+
+          {draftFijo ? (
+            <div className="af-fijos-form mt-3">
+              <div className="af-field">
+                <label>¿De dónde sale?</label>
+                <div className="af-ambito-switch">
+                  {AMBITOS.map((a) => (
+                    <button
+                      key={a.id}
+                      className={"af-ambito-btn" + ((draftFijo.ambito || "negocio") === a.id ? " active" : "")}
+                      onClick={() => setDraftFijo({ ...draftFijo, ambito: a.id })}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="af-field">
+                <label>¿De qué es?</label>
+                <CampoConSugerencias
+                  value={draftFijo.descripcion}
+                  placeholder="Ej. Renta del local, sueldo de Lupita..."
+                  sugerencias={nombresUsados}
+                  onChange={(descripcion) => setDraftFijo({ ...draftFijo, descripcion })}
+                />
+              </div>
+              <div className="af-field">
+                <label>Categoría</label>
+                <select
+                  className="af-input"
+                  value={draftFijo.categoria}
+                  onChange={(e) => setDraftFijo({ ...draftFijo, categoria: e.target.value })}
+                >
+                  {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              {/* Hay gastos que se piensan al día aunque se apunten una vez al
+                  mes, como los cigarros. Se captura el diario y la app hace la
+                  cuenta según los días que traiga cada mes. */}
+              <div className="af-field">
+                <label>¿Cómo lo tienes contado?</label>
+                <div className="af-ambito-switch">
+                  <button
+                    className={"af-ambito-btn" + (!(draftFijo.porDia > 0) ? " active" : "")}
+                    onClick={() => setDraftFijo({ ...draftFijo, porDia: 0 })}
+                  >
+                    Al mes
+                  </button>
+                  <button
+                    className={"af-ambito-btn" + (draftFijo.porDia > 0 ? " active" : "")}
+                    onClick={() => setDraftFijo({ ...draftFijo, porDia: draftFijo.porDia || draftFijo.monto || 1, monto: "" })}
+                  >
+                    Por día
+                  </button>
+                </div>
+              </div>
+              {draftFijo.porDia > 0 ? (
+                <div className="af-field">
+                  <label>Cuánto al día</label>
+                  <NumberField
+                    value={draftFijo.porDia}
+                    min={0}
+                    className="af-input"
+                    onChange={(v) => setDraftFijo({ ...draftFijo, porDia: v })}
+                  />
+                  <div className="af-hint mt-1">
+                    Este mes serían <strong>{money((parseFloat(draftFijo.porDia) || 0) * diasDeEsteMes)}</strong>{" "}
+                    ({diasDeEsteMes} días).
+                  </div>
+                </div>
+              ) : (
+                <div className="af-field">
+                  <label>Cuánto es</label>
+                  <NumberField
+                    value={draftFijo.monto}
+                    min={0}
+                    className="af-input"
+                    onChange={(v) => setDraftFijo({ ...draftFijo, monto: v })}
+                  />
+                </div>
+              )}
+              <div className="af-field">
+                <label>Qué día del mes se paga</label>
+                <NumberField
+                  value={draftFijo.dia}
+                  min={1}
+                  max={28}
+                  className="af-input"
+                  onChange={(v) => setDraftFijo({ ...draftFijo, dia: v })}
+                />
+                <div className="af-hint mt-1">Del 1 al 28, para que caiga en todos los meses.</div>
+              </div>
+              <button
+                className="af-btn-primary w-full"
+                onClick={guardarFijo}
+                disabled={!draftFijo.descripcion.trim() || (!draftFijo.monto && !draftFijo.porDia)}
+              >
+                {draftFijo.id ? "Guardar cambios" : "Agregar gasto fijo"}
+              </button>
+              <button className="af-btn-ghost w-full mt-2" onClick={() => setDraftFijo(null)}>Cancelar</button>
+            </div>
+          ) : (
+            <button
+              className="af-btn-secondary w-full"
+              onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", porDia: 0, monto: "", dia: 1 })}
+            >
+              <Plus size={16} className="inline mr-1" /> Agregar gasto fijo
+            </button>
+          )}
+        </div>
+        )}
+
+        </>
+        )}
+
+        <div className="af-card p-4 mb-5 af-chart-card">
+          <div className="af-chart-title">Ingresos vs. gastos por mes — {anio}</div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
+              {/* Al tocar una barra se ve también lo que quedó ese mes, que es
+                  el dato que de verdad importa. */}
+              <Tooltip
+                contentStyle={chartTooltipStyle}
+                cursor={{ fill: "rgba(47,95,224,0.06)" }}
+                formatter={(v, nombre) => [money(v), nombre]}
+                labelFormatter={(mes) => {
+                  const d = datosFinanzasMensual.find((x) => x.mes === mes);
+                  if (!d) return mes;
+                  const queda = (d.ingreso || 0) - (d.gasto || 0);
+                  return `${mes} · quedan ${money(queda)}`;
+                }}
+              />
+              <Bar dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
+              <Bar dataKey="gasto" name="Gastos" fill={COLOR_GASTO} radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="af-chart-legend">
+            <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Ingresos</span>
+            <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos</span>
+          </div>
+
+        </div>
+
+        <div className="af-card p-4 mb-5 af-chart-card">
+          <div className="af-chart-title">Clientes nuevos por mes — {anio}</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={datosClientesMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+              <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(31,169,113,0.08)" }} />
+              <Bar dataKey="nuevos" name="Clientes nuevos" radius={[6, 6, 0, 0]} fill={COLOR_OLIVE} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
 
         {/* La foto del ticket, con lo que se le leyó al lado: así se compara
             el número contra el papel sin salir de la app. */}
@@ -5995,21 +5684,47 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <button className="af-icon-btn" onClick={() => setViendoTicket(null)}><X size={18} /></button>
               </div>
 
-              {viendoTicket.gasto?.folio && (
+              {/* Todo lo que hace falta para pedir la factura, junto a la foto:
+                  el folio que se leyó, la liga del portal de esa tienda y los
+                  datos fiscales listos para pegar. Antes vivía en una sección
+                  aparte que repetía la misma lista de compras. */}
+              {viendoTicket.gasto && (
                 <div className="af-ticket-datos">
-                  <span className="af-mini-label">Folio del ticket</span>
-                  <code>{viendoTicket.gasto.folio}</code>
-                  {viendoTicket.gasto.folio2 && (
+                  {viendoTicket.gasto.folio ? (
                     <>
-                      <span className="af-mini-label">Segundo número</span>
-                      <code>{viendoTicket.gasto.folio2}</code>
+                      <span className="af-mini-label">Folio del ticket</span>
+                      <code>{viendoTicket.gasto.folio}</code>
+                      {viendoTicket.gasto.folio2 && (
+                        <>
+                          <span className="af-mini-label">Segundo número</span>
+                          <code>{viendoTicket.gasto.folio2}</code>
+                        </>
+                      )}
+                      <button
+                        className="af-chip af-chip-neutral"
+                        onClick={() => { navigator.clipboard?.writeText(viendoTicket.gasto.folio); showToast("Folio copiado", "ok"); }}
+                      >
+                        <Copy size={12} /> Copiar folio
+                      </button>
                     </>
+                  ) : (
+                    <span className="af-ink-soft text-xs">
+                      {infoDeTienda(viendoTicket.gasto.tienda)?.pide || "Busca el folio en la foto."}
+                    </span>
                   )}
-                  <button
-                    className="af-chip af-chip-neutral"
-                    onClick={() => { navigator.clipboard?.writeText(viendoTicket.gasto.folio); showToast("Folio copiado", "ok"); }}
-                  >
-                    <Copy size={12} /> Copiar folio
+
+                  {infoDeTienda(viendoTicket.gasto.tienda) && (
+                    <a
+                      className="af-chip af-chip-portal"
+                      href={infoDeTienda(viendoTicket.gasto.tienda).portal}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Abrir portal
+                    </a>
+                  )}
+                  <button className="af-chip af-chip-neutral" onClick={() => copiarDatosFiscales(viendoTicket.gasto)}>
+                    <ClipboardPaste size={12} /> Copiar mis datos
                   </button>
                 </div>
               )}
@@ -11120,7 +10835,53 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Agregar un gasto es LA acción de esta pantalla: se ve como tal, en verde,
    y no como un botón más de los que hay alrededor. */
-.af-btn-verde { background: #2f9e6d; border-color: #2f9e6d; color: #fff; font-weight: 700; }
+
+/* El aviso de lo que falta facturar, en el encabezado de Gastos. */
+.af-aviso-facturar { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: #b7791f; background: color-mix(in srgb, #b7791f 11%, transparent); border: 1px solid color-mix(in srgb, #b7791f 35%, transparent); margin-left: auto; margin-right: 10px; }
+.af-aviso-urgente { font-weight: 700; color: #c0392b; }
+
+/* ---- Resumen del año: cuatro cifras y una barra ---- */
+.af-resumen-anio { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+.af-resumen-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 22px; }
+.af-resumen-cifra { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.af-resumen-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
+.af-resumen-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 21px; color: var(--ink); line-height: 1.15; }
+.af-resumen-valor.positivo { color: #2f9e6d; }
+.af-resumen-valor.negativo { color: #E0524A; }
+
+/* A dónde se fue cada peso: una sola barra, en proporción. */
+.af-reparto-barra { display: flex; height: 12px; border-radius: 999px; overflow: hidden; margin-top: 18px; background: color-mix(in srgb, var(--ink-soft) 12%, transparent); }
+.af-reparto-parte { height: 100%; }
+.af-reparto-parte.negocio { background: #E0524A; }
+.af-reparto-parte.casa { background: #c2703d; }
+.af-reparto-parte.sobra { background: #2f9e6d; }
+.af-punto-negocio { background: #E0524A; }
+.af-punto-casa { background: #c2703d; }
+.af-punto-sobra { background: #2f9e6d; }
+.af-reparto-leyenda { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 12px; font-size: 12.5px; color: var(--ink-soft); }
+.af-reparto-item { display: inline-flex; align-items: center; gap: 6px; }
+.af-reparto-item strong { color: var(--ink); font-family: 'Space Grotesk', sans-serif; }
+.af-reparto-item em { font-style: normal; opacity: 0.7; }
+
+/* ---- Barra de gastos: los meses a la izquierda, los filtros a la derecha,
+       igual que se elige un mes en cualquier tablero de cuentas. ---- */
+.af-barra-gastos { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; }
+.af-barra-gastos .af-mes-pills { margin-bottom: 0; flex: 1 1 auto; }
+.af-filtros-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.af-filtros-fila .af-input { width: auto; min-width: 140px; font-size: 13px; padding: 8px 11px; }
+.af-filtro-busca { min-width: 210px; }
+.af-filtro-busca .af-input { min-width: 0; }
+
+/* En el celular no caben en una línea: cada filtro se acomoda solo y el aviso
+   de facturar se pone en su propio renglón en vez de exprimir el título. */
+@media (max-width: 700px) {
+  .af-barra-gastos { align-items: stretch; }
+  .af-filtros-fila { width: 100%; }
+  .af-filtros-fila .af-input { flex: 1 1 130px; min-width: 0; }
+  .af-filtro-busca { flex: 1 1 100%; min-width: 0; }
+  .af-aviso-facturar { order: 3; width: 100%; justify-content: center; margin: 4px 0 0; }
+  .af-encabezado-accion { flex-wrap: wrap; }
+}
 
 /* ---- Lista de gastos en renglones, como una libreta de cuentas ----
    Antes cada gasto era una tarjeta con su borde y su sombra: treinta compras
@@ -11131,13 +10892,15 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-gasto-encabezado,
 .af-gasto-fila {
   display: grid;
-  /* La última columna va con ancho fijo: dejándola automática, el encabezado
-     —que no tiene botones— reparte el ancho distinto que los renglones y los
-     títulos quedan corridos respecto a su columna. */
-  grid-template-columns: 74px minmax(120px, 1.6fr) 150px 110px 150px 96px;
+  /* Las dos últimas columnas van con ancho fijo: dejándolas automáticas, el
+     encabezado —que no tiene botones— reparte el ancho distinto que los
+     renglones y los títulos quedan corridos respecto a su columna.
+     Los tipos y el estado crecen con la pantalla en vez de amontonarse
+     contra el borde derecho. */
+  grid-template-columns: 88px minmax(160px, 2fr) minmax(150px, 1fr) 130px minmax(150px, 1fr) 124px;
   align-items: center;
-  gap: 10px;
-  padding: 9px 14px;
+  gap: 16px;
+  padding: 11px 18px;
 }
 .af-gasto-encabezado { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); background: color-mix(in srgb, var(--ink-soft) 7%, transparent); }
 .af-gasto-fila { border-top: 1px solid var(--line); }
@@ -11148,7 +10911,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-gasto-sub { font-size: 11.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-gasto-celda { min-width: 0; }
 .af-col-monto { text-align: right; }
-.af-gasto-acciones { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
+/* Botones grandes: se pican con el dedo en el iPad y con prisa. */
+.af-gasto-acciones { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.af-gasto-acciones .af-icon-btn { width: 34px; height: 34px; border-radius: 10px; }
+.af-gasto-acciones .af-icon-btn:hover { background: color-mix(in srgb, var(--ink-soft) 12%, transparent); }
 
 /* El tipo de gasto, con su color. Es una lista desplegable de verdad: se
    corrige desde aquí sin abrir el gasto a editar. */
@@ -11250,6 +11016,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rango-campo { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 4px; }
 .af-rango-campo > span { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
 .af-btn-accion.con-filtros { border-color: var(--wine); background: color-mix(in srgb, var(--wine) 10%, transparent); }
+/* Agregar un gasto es LA acción de esta pantalla: se ve como tal, en verde, y
+   no como un botón más de los que hay alrededor. Va después de
+   .af-btn-accion a propósito, para ganarle el color. */
+.af-btn-accion.af-btn-verde { background: #2f9e6d; border-color: #2f9e6d; color: #fff; padding: 10px 18px; font-size: 14px; }
+.af-btn-accion.af-btn-verde:hover { background: #28855c; border-color: #28855c; }
 .af-filtros-cuenta { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--wine); color: #fff; font-size: 11px; font-weight: 700; }
 .af-filtros-activos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .af-chip-filtro { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; border: none; background: color-mix(in srgb, var(--wine) 13%, transparent); color: var(--wine); font-size: 12.5px; font-weight: 700; cursor: pointer; }
