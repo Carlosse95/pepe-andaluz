@@ -8,7 +8,6 @@ import {
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell, Filter,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
-import jsPDF from "jspdf";
 import {
   nubeActiva, almacen, suscribirAlmacen,
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
@@ -7695,8 +7694,18 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
 /*  PDF: presupuesto y recibo de pago                                     */
 /* ---------------------------------------------------------------------- */
 
-const construirPDF = (form, tipoDoc, config) => {
+// El PDF y todo lo que arrastra pesan más de medio mega, y solo hacen falta
+// cuando de verdad se genera un documento. Se piden en ese momento, no al
+// abrir la app: es más de la mitad de lo que había que bajar para entrar.
+let jsPDFCargado = null;
+const cargarJsPDF = async () => {
+  if (!jsPDFCargado) jsPDFCargado = (await import("jspdf")).default;
+  return jsPDFCargado;
+};
+
+const construirPDF = async (form, tipoDoc, config) => {
   const esRecibo = tipoDoc === "recibo";
+  const jsPDF = await cargarJsPDF();
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -8602,7 +8611,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         <>
           {form.clienteId && form.items.length > 0 && (
             <div className="flex gap-2 mt-2">
-              <button className="af-btn-secondary flex-1" onClick={() => construirPDF(form, "presupuesto", config).save(nombreArchivoPDF(form, "presupuesto"))}>
+              <button className="af-btn-secondary flex-1" onClick={async () => (await construirPDF(form, "presupuesto", config)).save(nombreArchivoPDF(form, "presupuesto"))}>
                 <Download size={16} className="inline mr-1" /> PDF
               </button>
               <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago, config.mensajes))}>
@@ -8649,7 +8658,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           {/* El recibo solo aparece cuando ya no debe nada: es lo que el
               cliente pide "de comprobante" al terminar de pagar. */}
           {editando && form.items.length > 0 && pagadoNum > 0 && pagadoNum >= total && (
-            <button className="af-btn-secondary w-full mt-2" onClick={() => construirPDF(form, "recibo", config).save(nombreArchivoPDF(form, "recibo"))}>
+            <button className="af-btn-secondary w-full mt-2" onClick={async () => (await construirPDF(form, "recibo", config)).save(nombreArchivoPDF(form, "recibo"))}>
               <Download size={16} className="inline mr-1" /> Recibo de pagado (PDF)
             </button>
           )}
@@ -9382,7 +9391,7 @@ export default function App() {
     const ventana = window.open("", "_blank", "noopener,noreferrer");
     setSubiendoRecibo(true);
     try {
-      const doc = construirPDF(pedido, "recibo", config);
+      const doc = await construirPDF(pedido, "recibo", config);
       const url = await subirRecibo(doc.output("blob"), nombreArchivoPDF(pedido, "recibo"));
       const texto = `${mensajePago(pedido, abono || 0, config.mensajes)}\n\nSu recibo: ${url}`;
       const tel = telWhatsApp(pedido.clienteTelefono);

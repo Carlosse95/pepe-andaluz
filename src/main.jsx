@@ -10,3 +10,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
   </RedDeSeguridad>
 )
+
+// Ya arrancó la app: se quita la pantalla de "Abriendo…" que vive en el
+// index.html. Se hace aquí y no solo con CSS para que no quede colgada si el
+// navegador no entiende el selector.
+document.getElementById('arranque')?.remove()

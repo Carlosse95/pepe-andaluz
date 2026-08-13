@@ -4,6 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
     <title>Pepe Andaluz</title>
+    <style>
+      /* Lo primero que se ve, sin esperar a que baje la app.
+         La app pesa más de un mega y en el iPad con internet lento tarda
+         medio minuto en llegar. Todo ese rato la pantalla estaba en blanco y
+         se sentía descompuesta. Esto se dibuja de inmediato —vive aquí, en la
+         página, no en la app— y la app lo tapa cuando arranca. */
+      html, body { margin: 0; height: 100%; background: #eef2fb; }
+      #arranque {
+        position: fixed; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px;
+        font-family: system-ui, -apple-system, sans-serif; color: #16233f;
+      }
+      #arranque .marca { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+      #arranque .nota { font-size: 14px; color: #6b7a99; }
+      #arranque .rueda {
+        width: 30px; height: 30px; border-radius: 50%;
+        border: 3px solid rgba(59,91,219,0.2); border-top-color: #3b5bdb;
+        animation: gira 0.9s linear infinite;
+      }
+      @keyframes gira { to { transform: rotate(360deg); } }
+      #root:not(:empty) + #arranque, #root:not(:empty) ~ #arranque { display: none; }
+    </style>
     <script>
       // Red de seguridad contra la pantalla en blanco.
       //
@@ -13,13 +35,12 @@
       // no se puede recuperar sola: el aviso de "hay versión nueva" vive DENTRO
       // de la app, y si la app no arranca, ese código nunca corre.
       //
-      // Por eso este pedacito va aquí, suelto en la página: es lo único que
-      // sigue funcionando cuando lo demás falla. Si a los 10 segundos la app no
-      // se dibujó, recarga pidiendo los archivos de nuevo.
+      // El plazo era de 10 segundos y eso HACÍA daño: la app pesa más de un
+      // mega, y en una conexión lenta a los 10 segundos todavía va bajando.
+      // Recargar ahí tiraba lo descargado y volvía a empezar, una y otra vez.
+      // Ahora espera 45 segundos, que es tiempo de sobra para que baje.
       (function () {
         var MARCA = "pepe_rescate";
-        // Si esta carga YA es el reintento, no volver a intentar: así nunca
-        // se queda dando vueltas recargando.
         if (location.search.indexOf("r=") !== -1) {
           try { sessionStorage.setItem(MARCA, "1"); } catch (e) {}
           return;
@@ -32,12 +53,27 @@
             sessionStorage.setItem(MARCA, "1");
           } catch (e) {}
           location.replace(location.pathname + "?r=" + Date.now());
-        }, 10000);
+        }, 45000);
+
+        // Si tarda mucho, se avisa que es la conexión y no que esté rota: la
+        // diferencia entre esperar tranquilo y cerrar la app pensando que
+        // dejó de servir.
+        setTimeout(function () {
+          var nota = document.getElementById("arranque-nota");
+          if (nota && document.getElementById("root").childElementCount === 0) {
+            nota.textContent = "Va lento por la conexión. Ya casi…";
+          }
+        }, 8000);
       })();
     </script>
   </head>
   <body>
     <div id="root"></div>
+    <div id="arranque">
+      <div class="rueda"></div>
+      <div class="marca">Pepe Andaluz</div>
+      <div class="nota" id="arranque-nota">Abriendo…</div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
