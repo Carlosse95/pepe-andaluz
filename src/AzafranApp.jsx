@@ -1811,8 +1811,9 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
         <button className="af-btn-secondary w-full mt-2" disabled={subiendo} onClick={onCerrar}>Ahora no</button>
         {quedoSaldado && (
           <p className="af-ink-soft text-xs mt-3">
-            El recibo se sube y se manda como liga. Deja de abrirse a los 30 días, porque
-            trae los datos del cliente.
+            El recibo se sube y se manda como liga, que sirve un año. Si prefieres
+            mandarle el archivo, usa "Recibo de pagado (PDF)" ahí abajo: te sale el
+            menú de compartir y el PDF le llega dentro del chat.
           </p>
         )}
       </div>
@@ -8092,6 +8093,33 @@ const cargarJsPDF = async () => {
   return jsPDFCargado;
 };
 
+// Entregar el PDF: como ARCHIVO cuando el aparato sabe compartir archivos
+// (iPad, iPhone y Android), y si no, descargándolo como siempre.
+//
+// Esto no es un adorno. En el iPad, "descargar" abre el PDF en el visor de
+// Safari, y la dirección de ese visor es una temporal del navegador
+// (blob:https://…/un-código-largo) que solo existe en ese aparato. Al
+// compartir desde ahí, al cliente le llegaba esa dirección: WhatsApp le
+// quitaba el "blob:" y quedaba una liga al dominio de la app que no lleva a
+// ningún lado — el "404" que veía la gente. Compartiendo el ARCHIVO, al
+// cliente le llega el PDF de verdad, dentro del chat, sin ninguna liga.
+const entregarPDF = async (doc, nombre) => {
+  const blob = doc.output("blob");
+  try {
+    const archivo = new File([blob], nombre, { type: "application/pdf" });
+    if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+      await navigator.share({ files: [archivo], title: nombre });
+      return "compartido";
+    }
+  } catch (e) {
+    // Si la persona cancela el menú de compartir, no se descarga nada: ya
+    // decidió que no. Cualquier otro fallo sí cae a la descarga de siempre.
+    if (e && e.name === "AbortError") return "cancelado";
+  }
+  doc.save(nombre);
+  return "descargado";
+};
+
 const construirPDF = async (form, tipoDoc, config) => {
   const esRecibo = tipoDoc === "recibo";
   const jsPDF = await cargarJsPDF();
@@ -9005,7 +9033,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         <>
           {form.clienteId && form.items.length > 0 && (
             <div className="flex gap-2 mt-2">
-              <button className="af-btn-secondary flex-1" onClick={async () => (await construirPDF(form, "presupuesto", config)).save(nombreArchivoPDF(form, "presupuesto"))}>
+              <button className="af-btn-secondary flex-1" onClick={async () => entregarPDF(await construirPDF(form, "presupuesto", config), nombreArchivoPDF(form, "presupuesto"))}>
                 <Download size={16} className="inline mr-1" /> PDF
               </button>
               <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago, config.mensajes))}>
@@ -9052,7 +9080,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           {/* El recibo solo aparece cuando ya no debe nada: es lo que el
               cliente pide "de comprobante" al terminar de pagar. */}
           {editando && form.items.length > 0 && pagadoNum > 0 && pagadoNum >= total && (
-            <button className="af-btn-secondary w-full mt-2" onClick={async () => (await construirPDF(form, "recibo", config)).save(nombreArchivoPDF(form, "recibo"))}>
+            <button className="af-btn-secondary w-full mt-2" onClick={async () => entregarPDF(await construirPDF(form, "recibo", config), nombreArchivoPDF(form, "recibo"))}>
               <Download size={16} className="inline mr-1" /> Recibo de pagado (PDF)
             </button>
           )}
