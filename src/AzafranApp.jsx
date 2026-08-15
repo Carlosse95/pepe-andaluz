@@ -1849,7 +1849,14 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
   // ¿Ya se le mandó este mismo aviso a este pedido? Si sí, se dice CUÁNDO y
   // el botón deja de ser el obvio: al cliente no hay que contarle dos veces
   // lo mismo.
-  const yaSeMando = (pedido.avisosEnviados || {})[tipo];
+  //
+  // Con el de pago hay un pero. Muchos clientes abonan un día y liquidan
+  // otro, semanas antes de la fecha del pedido, y ESO SÍ es noticia nueva:
+  // llegó dinero. Solo cuenta como repetido si desde el último mensaje no ha
+  // entrado un peso más; si entró, el aviso vuelve a ser el botón principal.
+  const dineroNuevo =
+    tipo === "pago" && Math.abs(sumaAbonos(pedido.abonos) - (pedido.avisoPagoMonto ?? -1)) > 0.5;
+  const yaSeMando = dineroNuevo ? null : (pedido.avisosEnviados || {})[tipo];
   return (
     <div className="af-modal-overlay af-modal-overlay-center" onClick={subiendo ? undefined : onCerrar}>
       <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
@@ -9969,10 +9976,20 @@ export default function App() {
   // Deja constancia de que a ese pedido ya se le mandó ESE aviso. Con eso la
   // app puede avisar antes de repetirlo: al cliente le llegaban el resumen,
   // el recibo y el mensaje de pago casi al mismo tiempo, y eso cansa.
+  // En el de pago se apunta además CUÁNTO llevaba pagado el cliente en ese
+  // momento. Así, si después abona otra vez —cosa normal: apartan con
+  // anticipo y liquidan días más tarde—, la app sabe que es dinero nuevo y no
+  // lo trata como mensaje repetido.
   const apuntarAvisoEnviado = (pedidoId, tipo) => {
     guardarPedidos(
       pedidos.map((p) =>
-        p.id !== pedidoId ? p : { ...p, avisosEnviados: { ...(p.avisosEnviados || {}), [tipo]: Date.now() } }
+        p.id !== pedidoId
+          ? p
+          : {
+              ...p,
+              avisosEnviados: { ...(p.avisosEnviados || {}), [tipo]: Date.now() },
+              ...(tipo === "pago" ? { avisoPagoMonto: sumaAbonos(p.abonos) } : {}),
+            }
       )
     );
   };
