@@ -9613,6 +9613,10 @@ export default function App() {
       // captura es justo lo que se sentía como "se salió sola".
       const taparPantalla = mostrarPantalla && !hayDatosEnPantalla.current;
       if (taparPantalla) setCargando(true);
+      // Se apunta CUÁNDO se salió a preguntar. Si al volver resulta que
+      // mientras tanto se guardó algo, esta respuesta trae la foto de antes y
+      // no se usa: pisaría lo que el usuario acaba de hacer.
+      const emitidaEn = Date.now();
       try {
         const [rp, rc, rcfg, rh, rpr, rav, rg] = await Promise.allSettled([
           almacen.get("pedidos"),
@@ -9634,8 +9638,10 @@ export default function App() {
         marcarLeida(rpr, "presupuestos");
         marcarLeida(rav, "avatares");
         marcarLeida(rg, "gastos");
-        if (rp.status === "fulfilled" && rp.value) aplicarClave("pedidos", rp.value.value);
-        if (rc.status === "fulfilled" && rc.value) aplicarClave("clientes", rc.value.value);
+        // `aplicar` solo deja pasar lo que no esté viejo (ver lecturaVigente).
+        const aplicar = (clave, raw) => { if (lecturaVigente(clave, emitidaEn)) aplicarClave(clave, raw); };
+        if (rp.status === "fulfilled" && rp.value) aplicar("pedidos", rp.value.value);
+        if (rc.status === "fulfilled" && rc.value) aplicar("clientes", rc.value.value);
         // Los valores de fábrica SOLO se siembran cuando la consulta salió
         // bien y de verdad no hay nada guardado (la primera vez que se usa la
         // app). Si la consulta falló —un parpadeo de internet, la sesión, la
@@ -9643,7 +9649,7 @@ export default function App() {
         // fábrica encima del menú real y se perdía todo por un error de red.
         if (rcfg.status === "fulfilled") {
           if (rcfg.value) {
-            aplicarClave("config-productos", rcfg.value.value);
+            aplicar("config-productos", rcfg.value.value);
             configCargada.current = true;
           } else {
             almacen.set("config-productos", JSON.stringify(DEFAULT_CONFIG)).catch(() => {});
@@ -9652,10 +9658,10 @@ export default function App() {
         } else {
           console.error("No se pudo leer la configuración; no se toca la que está guardada.", rcfg.reason);
         }
-        if (rh.status === "fulfilled" && rh.value) aplicarClave("historico-mensual", rh.value.value);
-        if (rpr.status === "fulfilled" && rpr.value) aplicarClave("presupuestos", rpr.value.value);
-        if (rav.status === "fulfilled" && rav.value) aplicarClave("avatares", rav.value.value);
-        if (rg.status === "fulfilled" && rg.value) aplicarClave("gastos", rg.value.value);
+        if (rh.status === "fulfilled" && rh.value) aplicar("historico-mensual", rh.value.value);
+        if (rpr.status === "fulfilled" && rpr.value) aplicar("presupuestos", rpr.value.value);
+        if (rav.status === "fulfilled" && rav.value) aplicar("avatares", rav.value.value);
+        if (rg.status === "fulfilled" && rg.value) aplicar("gastos", rg.value.value);
         // A partir de aquí ya hay algo en pantalla: las siguientes lecturas
         // se hacen en silencio.
         hayDatosEnPantalla.current = true;
@@ -9730,7 +9736,14 @@ export default function App() {
     cargarTodo(true).then(incorporarPedidosWhatsApp);
 
     // Tiempo real: si alguien más guarda desde otro dispositivo, se refleja aquí.
-    const desuscribir = suscribirAlmacen((clave, raw) => aplicarClave(clave, raw));
+    // Mientras un guardado nuestro va en camino no se hace caso al aviso de
+    // tiempo real: puede ser el eco del valor de antes, y pisaría lo que se
+    // acaba de hacer. En cuanto termina el guardado, el ping de 3 segundos
+    // trae lo que haya de nuevo.
+    const desuscribir = suscribirAlmacen((clave, raw) => {
+      if (escriturasEnVuelo.current[clave]) return;
+      aplicarClave(clave, raw);
+    });
     const desuscribirWhatsApp = suscribirPedidosWhatsApp(incorporarPedidosWhatsApp);
 
     // En celular (sobre todo iOS) la conexión en tiempo real se corta cuando
@@ -9790,17 +9803,42 @@ export default function App() {
   // había. Pasa cuando la app arranca con los valores de fábrica en memoria y
   // la lectura falla, o cuando algo la reconecta a la nube a media sesión.
   const leidasDeLaNube = useRef(new Set());
+
+  // Candado contra las lecturas viejas. ESTE ES EL QUE FALTABA.
+  //
+  // La app le pregunta a la nube cada 3 segundos. Esa pregunta tarda en ir y
+  // volver (en el iPad de Pepe, cerca de un segundo). Si mientras tanto se
+  // guarda algo, la respuesta llega con la foto de ANTES y pisaba lo recién
+  // hecho: el estado se regresaba solo, y si en ese momento se tocaba
+  // cualquier otra cosa, ese estado viejo se escribía en la nube y el cambio
+  // se perdía de verdad. Lo mismo con un pedido nuevo.
+  //
+  // Los dos relojes son de ESTE aparato, así que no importa que el reloj del
+  // otro dispositivo esté adelantado o atrasado: la regla es "una respuesta
+  // que salí a pedir ANTES de terminar mi guardado no puede traer mi
+  // guardado, así que no sirve".
+  const escriturasEnVuelo = useRef({}); // clave -> cuántos guardados van en camino
+  const guardadoEn = useRef({});        // clave -> cuándo terminó el último
+
+  // ¿Sirve lo que acaba de llegar de la nube para esta clave?
+  const lecturaVigente = (clave, emitidaEn) =>
+    !escriturasEnVuelo.current[clave] && emitidaEn > (guardadoEn.current[clave] || 0);
+
   const persist = async (key, value) => {
     if (nubeActiva && !leidasDeLaNube.current.has(key)) {
       console.warn(`No se guarda "${key}": todavía no se ha leído de la nube.`);
       showToast("Todavía no se terminan de cargar los datos; no se guardó", "error");
       return;
     }
+    escriturasEnVuelo.current[key] = (escriturasEnVuelo.current[key] || 0) + 1;
     try {
       await almacen.set(key, JSON.stringify(value));
+      guardadoEn.current[key] = Date.now();
     } catch (e) {
       console.error("Error guardando " + key, e);
       showToast("No se pudo guardar en la nube, revisa tu conexión", "error");
+    } finally {
+      escriturasEnVuelo.current[key] = Math.max(0, (escriturasEnVuelo.current[key] || 1) - 1);
     }
   };
 
