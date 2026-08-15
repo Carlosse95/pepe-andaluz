@@ -457,6 +457,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
     if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
     lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
     lineas.push("Por favor, en el concepto de la transferencia ponga únicamente su nombre.");
+    lineas.push(lineaEfectivo(datos.entrega));
   }
   // Dónde recoger, desde que se aparta el pedido: así el cliente ya sabe a
   // dónde ir y no tiene que esperar al aviso de "ya está listo" para buscarlo.
@@ -477,6 +478,14 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   );
   return lineas.join("\n");
 };
+
+// Los datos para transferir daban a entender que era la ÚNICA forma de pagar,
+// y no lo es: el cliente puede pagar en efectivo cuando recoge o cuando se le
+// entrega. Este renglón acompaña siempre a la CLABE para que quede claro.
+const lineaEfectivo = (esEntrega) =>
+  esEntrega
+    ? "O si prefiere, en efectivo al momento de la entrega."
+    : "O si prefiere, en efectivo cuando pase por su pedido.";
 
 // Lo que el cliente debe, para pegarlo al final de un mensaje.
 //
@@ -502,6 +511,7 @@ const bloqueSaldo = (pedido, pago) => {
     if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
     if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
     lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
+    lineas.push(lineaEfectivo(pedido?.entrega));
   }
   return lineas.join("\n");
 };
@@ -552,6 +562,7 @@ const mensajePago = (pedido, abono, mensajes, pago) => {
     if (pago.banco) banco.push(`Banco: ${pago.banco}`);
     if (pago.titular) banco.push(`A nombre de: ${pago.titular}`);
     banco.push(`CLABE / Tarjeta: ${pago.clabe}`);
+    banco.push(lineaEfectivo(pedido?.entrega));
     return texto + "\n\n" + banco.join("\n");
   }
   return texto;
@@ -8594,6 +8605,7 @@ const construirPDF = async (form, tipoDoc, config) => {
       config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
       `CLABE / Tarjeta: ${config.pago.clabe}`,
       "En el concepto de la transferencia ponga únicamente su nombre, por favor.",
+      lineaEfectivo(form.entrega),
     ].filter(Boolean);
     const alto = 14 + lineasPago.length * 5;
     doc.rect(margin, y, anchoUtil, alto, "F");
