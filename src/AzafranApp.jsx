@@ -3140,6 +3140,15 @@ const esPedidoDeIA = (pedido) => (pedido?.notas || "").includes("tomado por IA")
 // pudiera capturar contradictorio: categoría familiar con ámbito del negocio).
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Otros"];
 
+// Nombres de tienda y descripción: la primera letra en mayúscula y el resto
+// como se escribió. Así "chedraui", "CHEDRAUI" y "Chedraui" acaban iguales y
+// la lista se lee pareja, sin renglones a gritos.
+const conMayusculaInicial = (texto) => {
+  const s = (texto || "").trim();
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+};
+
 // Cuántos gastos se enseñan antes de pedir "ver más".
 const PASO_GASTOS = 25;
 
@@ -3520,6 +3529,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // que la página no se haga interminable con un año entero de compras.
   const [cuantosGastos, setCuantosGastos] = useState(PASO_GASTOS);
   const [buscaGasto, setBuscaGasto] = useState("");
+  // El día concreto que se quiere ver. Manda sobre el mes.
+  const [diaGasto, setDiaGasto] = useState("");
   const [mesGasto, setMesGasto] = useState("todos");
   // Rango de fechas en vez de un solo día: "lo de la semana pasada" no se
   // podía buscar con una fecha exacta.
@@ -3555,6 +3566,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // El bote de basura está junto al lápiz y en el iPad se pica con el dedo:
   // demasiado fácil borrar una compra sin querer y no enterarse.
   const [confirmarBorrarGasto, setConfirmarBorrarGasto] = useState(null);
+  const [borrandoTipos, setBorrandoTipos] = useState(false);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
   // Rentabilidad se ve por secciones del menú. Arranca con las paellas
@@ -3743,9 +3755,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     // Un rango de fechas manda sobre el mes: si se pidieron dias concretos,
     // eso es lo que se quiere ver. Buscar "lo de la semana pasada" con un solo
     // dia no servia; con desde/hasta si.
+    .filter((g) => (diaGasto ? g.fecha === diaGasto : true))
     .filter((g) => (desdeGasto ? g.fecha >= desdeGasto : true))
     .filter((g) => (hastaGasto ? g.fecha <= hastaGasto : true))
-    .filter((g) => hayRango || mesGasto === "todos" || Number(g.fecha.split("-")[1]) - 1 === Number(mesGasto))
+    .filter((g) => diaGasto || hayRango || mesGasto === "todos" || Number(g.fecha.split("-")[1]) - 1 === Number(mesGasto))
     .filter((g) => {
       const q = normalizarNombreGasto(buscaGasto);
       if (!q) return true;
@@ -3809,7 +3822,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // "falta facturar" y sigue viendo el "ver más" de la búsqueda anterior.
   useEffect(() => {
     setCuantosGastos(PASO_GASTOS);
-  }, [filtroAmbito, filtroCategoria, filtroFactura, mesGasto, buscaGasto, desdeGasto, hastaGasto, anio]);
+  }, [filtroAmbito, filtroCategoria, filtroFactura, mesGasto, buscaGasto, diaGasto, desdeGasto, hastaGasto, anio]);
 
   const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
@@ -3821,6 +3834,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const cuantosFiltros =
     (filtroCategoria !== "todos" ? 1 : 0) +
     (filtroFactura !== "todos" ? 1 : 0) +
+    (diaGasto ? 1 : 0) +
     (filtroTienda !== "todas" ? 1 : 0) +
     (mesGasto !== "todos" && !hayRango ? 1 : 0) +
     (hayRango ? 1 : 0) +
@@ -3831,6 +3845,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const limpiarFiltros = () => {
     setFiltroAmbito("todos");
     setFiltroFactura("todos");
+    setDiaGasto("");
     setFiltroCategoria("todos");
     setFiltroTienda("todas");
     setMesGasto("todos");
@@ -4148,9 +4163,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       id: uid(),
       fecha: nuevoGasto.fecha,
       ambito: nuevoGasto.ambito || "negocio",
-      tienda: (nuevoGasto.tienda || "").trim().toUpperCase(),
+      tienda: conMayusculaInicial(nuevoGasto.tienda),
       categoria: nuevoGasto.categoria,
-      descripcion: nuevoGasto.descripcion.trim().toUpperCase(),
+      descripcion: conMayusculaInicial(nuevoGasto.descripcion),
       monto: parseFloat(nuevoGasto.monto),
       // Ruta de la foto en el almacén de la nube (no la foto en sí).
       ticket: nuevoGasto.ticket || null,
@@ -4306,7 +4321,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     onGuardarGastos(
       gastos.map((g) =>
         g.id === gastoEditando.id
-          ? { ...g, fecha: gastoEditando.fecha, ambito: gastoEditando.ambito || ambitoDe(g), tienda: (gastoEditando.tienda || "").trim().toUpperCase(), categoria: gastoEditando.categoria, descripcion: (gastoEditando.descripcion || "").trim().toUpperCase(), monto: parseFloat(gastoEditando.monto) }
+          ? { ...g, fecha: gastoEditando.fecha, ambito: gastoEditando.ambito || ambitoDe(g), tienda: conMayusculaInicial(gastoEditando.tienda), categoria: gastoEditando.categoria, descripcion: conMayusculaInicial(gastoEditando.descripcion), monto: parseFloat(gastoEditando.monto) }
           : g
       )
     );
@@ -4349,6 +4364,22 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     return [...todas.filter((c) => c !== "Otros"), ...(todas.includes("Otros") ? ["Otros"] : [])];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(config?.categoriasGasto || []), JSON.stringify(gastos.map((g) => g.categoria))]);
+
+  // Los tipos que se inventaron, aparte de los seis de siempre.
+  const categoriasPropias = categoriasEnUso.filter((c) => !CATEGORIAS_GASTO.includes(c));
+  // Cuántos gastos usa cada tipo: los que no usa nadie se pueden quitar.
+  const gastosPorCategoria = {};
+  gastos.forEach((g) => { gastosPorCategoria[g.categoria] = (gastosPorCategoria[g.categoria] || 0) + 1; });
+
+  const quitarCategoria = (nombre) => {
+    if (!onGuardarConfig || !config) return;
+    onGuardarConfig({
+      ...config,
+      categoriasGasto: (config.categoriasGasto || []).filter((c) => c !== nombre),
+    });
+    if (filtroCategoria === nombre) setFiltroCategoria("todos");
+    showToast(`Se quitó "${nombre}"`);
+  };
 
   // Un tipo nuevo, para lo que no cabe en ninguno de los de siempre.
   const agregarCategoria = () => {
@@ -5360,9 +5391,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <input
                   className="af-input flex-1"
                   autoFocus
-                  placeholder="NOMBRE DE LA TIENDA"
+                  placeholder="Nombre de la tienda"
                   value={nuevoGasto.tienda || ""}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value.toUpperCase() })}
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value })}
                 />
                 <button
                   className="af-btn-ghost"
@@ -5387,7 +5418,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 }}
               >
                 <option value="">Sin tienda</option>
-                {tiendasParaElegir.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                {tiendasParaElegir.map((t) => <option key={t} value={t}>{t}</option>)}
                 {/* Crear tiendas es solo del administrador: si cada quien puede
                     escribir una nueva, la misma acaba con cuatro nombres y los
                     reportes la cuentan cuatro veces. */}
@@ -5509,7 +5540,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               }}
             >
               {categoriasEnUso.map((c) => <option key={c} value={c}>{c}</option>)}
-              <option value="__nueva__">Otro tipo…</option>
+              {/* Inventar tipos es solo del administrador: si cada quien puede,
+                  la lista se llena de cosas que no van y ya no se entiende. */}
+              {esAdmin && <option value="__nueva__">Otro tipo…</option>}
             </select>
           </div>
           <div className="af-field">
@@ -5518,9 +5551,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 todas las veces y no acaba escrito de tres formas distintas. */}
             <CampoConSugerencias
               value={nuevoGasto.descripcion}
-              placeholder="EJ. CAMARÓN, GASOLINA…"
+              placeholder="Ej. Camarón, gasolina…"
               sugerencias={nombresUsados}
-              onChange={(descripcion) => setNuevoGasto({ ...nuevoGasto, descripcion: descripcion.toUpperCase() })}
+              onChange={(descripcion) => setNuevoGasto({ ...nuevoGasto, descripcion })}
               onBlur={() => {
                 // Al salir del campo, si lo escrito es el mismo nombre que uno
                 // ya usado (aunque sea con otra ortografía), se deja el que ya
@@ -5546,7 +5579,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <div className="af-mes-pills">
             <button
               className={"af-mes-pill" + (mesGasto === "todos" ? " active" : "")}
-              onClick={() => { setMesGasto("todos"); setDesdeGasto(""); setHastaGasto(""); }}
+              onClick={() => { setMesGasto("todos"); setDiaGasto(""); setDesdeGasto(""); setHastaGasto(""); }}
             >
               Todo el año
             </button>
@@ -5554,7 +5587,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <button
                 key={i}
                 className={"af-mes-pill" + (mesGasto === i && !hayRango ? " active" : "")}
-                onClick={() => { setMesGasto(i); setDesdeGasto(""); setHastaGasto(""); }}
+                onClick={() => { setMesGasto(i); setDiaGasto(""); setDesdeGasto(""); setHastaGasto(""); }}
               >
                 {MESES[i].slice(0, 3)}
               </button>
@@ -5591,22 +5624,35 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </select>
           </label>
 
-          <div className="af-buscador-gastos af-filtro-busca">
-            <Search size={16} />
-            <input
-              className="af-input"
-              placeholder="Buscar: camarón, Costco, 900…"
-              value={buscaGasto}
-              onChange={(e) => setBuscaGasto(e.target.value)}
-            />
-            {buscaGasto && (
-              <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscaGasto("")}><X size={16} /></button>
-            )}
-          </div>
+          {/* Un día concreto, en vez del buscador de texto. Para encontrar
+              algo ya están la bolsa, el tipo y la factura; lo que no había era
+              cómo llegar a "lo del sábado pasado". */}
+          <label className="af-filtro af-filtro-dia">
+            <span className="af-mini-label">Un día</span>
+            <div className="af-buscador-gastos">
+              <input
+                type="date"
+                className="af-input"
+                value={diaGasto}
+                onChange={(e) => setDiaGasto(e.target.value)}
+              />
+              {diaGasto && (
+                <button className="af-icon-btn" title="Quitar el día" onClick={() => setDiaGasto("")}><X size={16} /></button>
+              )}
+            </div>
+          </label>
 
           {cuantosFiltros > 0 && (
             <button className="af-btn-quitar-filtros" onClick={limpiarFiltros} title="Quitar todos los filtros">
               <X size={15} /> Quitar filtros
+            </button>
+          )}
+          {/* Los tipos que se inventaron y ya no se quieren. Solo se pueden
+              quitar los que no están en uso: borrar uno que tiene gastos
+              dejaría esos gastos apuntando a un tipo que ya no existe. */}
+          {esAdmin && categoriasPropias.length > 0 && (
+            <button className="af-btn-quitar-filtros" onClick={() => setBorrandoTipos(true)} title="Quitar tipos de gasto">
+              <Trash2 size={15} /> Tipos
             </button>
           )}
           </div>
@@ -5891,7 +5937,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   value={draftFijo.descripcion}
                   placeholder="Ej. Renta del local, sueldo de Lupita..."
                   sugerencias={nombresUsados}
-                  onChange={(descripcion) => setDraftFijo({ ...draftFijo, descripcion: descripcion.toUpperCase() })}
+                  onChange={(descripcion) => setDraftFijo({ ...draftFijo, descripcion })}
                 />
               </div>
               <div className="af-field">
@@ -6027,6 +6073,40 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </ResponsiveContainer>
         </div>
 
+
+        {/* Quitar los tipos que se inventaron y ya no se quieren. */}
+        {borrandoTipos && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setBorrandoTipos(false)}>
+            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-section-title" style={{ marginTop: 0 }}>Tipos que agregaste</div>
+              <p className="af-ink-soft text-sm mb-3">
+                Los seis de siempre no se pueden quitar. Uno que ya tiene gastos tampoco: primero
+                cámbiales el tipo a esos gastos.
+              </p>
+              {categoriasPropias.length === 0 ? (
+                <p className="af-ink-soft text-sm">No has agregado ninguno.</p>
+              ) : (
+                categoriasPropias.map((c) => {
+                  const enUso = gastosPorCategoria[c] || 0;
+                  return (
+                    <div key={c} className="af-parecidos-row">
+                      <div className="af-parecidos-txt">
+                        <strong>{c}</strong>
+                        {enUso > 0 && <span className="af-ink-soft"> · en {enUso} {enUso === 1 ? "gasto" : "gastos"}</span>}
+                      </div>
+                      {enUso > 0 ? (
+                        <span className="af-ink-soft text-xs">En uso</span>
+                      ) : (
+                        <button className="af-btn-chip" onClick={() => quitarCategoria(c)}>Quitar</button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+              <button className="af-btn-secondary w-full mt-3" onClick={() => setBorrandoTipos(false)}>Listo</button>
+            </div>
+          </div>
+        )}
 
         {confirmarBorrarGasto && (
           <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmarBorrarGasto(null)}>
@@ -6220,22 +6300,47 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <label>Fecha</label>
                 <input type="date" className="af-input" value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
               </div>
+              {/* La tienda y la descripción se ELIGEN de las que ya hay, igual
+                  que al capturar. Escritas a mano acababan con una letra de
+                  diferencia y en los reportes contaban como dos cosas. */}
               <div className="af-field">
                 <label>¿En qué tienda?</label>
-                <input className="af-input" placeholder="EJ. CHEDRAUI, COSTCO…" value={gastoEditando.tienda || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, tienda: e.target.value.toUpperCase() })} />
-              </div>
-              <div className="af-field">
-                <label>Categoría</label>
-                <select className="af-input" value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
-                  {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
-                  {!CATEGORIAS_GASTO.includes(gastoEditando.categoria) && (
-                    <option value={gastoEditando.categoria}>{gastoEditando.categoria}</option>
+                <select
+                  className="af-input"
+                  value={gastoEditando.tienda || ""}
+                  onChange={(e) => setGastoEditando({ ...gastoEditando, tienda: e.target.value })}
+                >
+                  <option value="">Sin tienda</option>
+                  {tiendasParaElegir.map((x) => <option key={x} value={x}>{x}</option>)}
+                  {gastoEditando.tienda && !tiendasParaElegir.some((x) => x === gastoEditando.tienda) && (
+                    <option value={gastoEditando.tienda}>{gastoEditando.tienda}</option>
                   )}
                 </select>
               </div>
               <div className="af-field">
+                <label>Categoría</label>
+                <select className="af-input" value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
+                  {categoriasEnUso.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="af-field">
                 <label>Descripción (opcional)</label>
-                <input className="af-input" placeholder="EJ. CAMARÓN, GASOLINA…" value={gastoEditando.descripcion || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value.toUpperCase() })} />
+                <select
+                  className="af-input"
+                  value={nombresUsados.includes(gastoEditando.descripcion) ? gastoEditando.descripcion : "__otra__"}
+                  onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value === "__otra__" ? "" : e.target.value })}
+                >
+                  <option value="__otra__">Escribirla…</option>
+                  {nombresUsados.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+                {!nombresUsados.includes(gastoEditando.descripcion) && (
+                  <input
+                    className="af-input mt-2"
+                    placeholder="De qué fue"
+                    value={gastoEditando.descripcion || ""}
+                    onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value })}
+                  />
+                )}
               </div>
               <div className="af-field">
                 <label>Monto</label>
@@ -8055,7 +8160,12 @@ const construirPDF = async (form, tipoDoc, config) => {
   const logoW = 46;
   const logoH = logoW * (497 / 945);
   try {
-    doc.addImage(`data:image/png;base64,${LOGO_MASK_B64}`, "PNG", margin, (34 - logoH) / 2, logoW, logoH);
+    // El "SLOW" del final es lo que comprime la imagen. Sin eso, la librería
+    // guardaba el logo pixel por pixel sin comprimir y CADA recibo pesaba 1.9
+    // megas — por un papelito de una hoja. Los clientes le picaban al enlace
+    // desde WhatsApp y no les abría. Comprimido pesa una fracción y se ve
+    // exactamente igual.
+    doc.addImage(`data:image/png;base64,${LOGO_MASK_B64}`, "PNG", margin, (34 - logoH) / 2, logoW, logoH, "logo", "SLOW");
   } catch (e) {
     // si por lo que sea la imagen falla, el PDF se genera igual sin el logo
   }
