@@ -3575,6 +3575,24 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [rentSecciones, setRentSecciones] = useState({ paella: true });
   const [buscarRent, setBuscarRent] = useState("");
 
+  // QUÉ CUENTA EN LOS REPORTES. Son dos preguntas distintas y llevan dos
+  // respuestas distintas.
+  //
+  // 1) EL DINERO (lo que entró): solo lo que YA ESTÁ del lado del negocio.
+  //    Un pedido apuntado para el sábado no es dinero — puede caerse. Pero si
+  //    dejaron adelanto, ese adelanto ya está en la cuenta y sí cuenta. Por
+  //    eso el ingreso de un mes es lo COBRADO, no lo apuntado.
+  const dineroCobrado = (p) => parseFloat(p?.pagado) || 0;
+  //
+  // 2) LO QUE SE VENDIÓ (kilos, platillos, margen): los pedidos ENTREGADOS.
+  //    Aquí el dinero no sirve de vara: si un cliente pagó la mitad no se
+  //    cocinó media paella. Para saber qué se vende y si deja margen hay que
+  //    contar la comida que de verdad salió.
+  const esVentaHecha = (p) => (p?.estado || "pendiente") === "entregado";
+  //
+  // La Agenda sigue enseñando todo —lo que falta por entregar y por cobrar—,
+  // que para eso es.
+
   const claveMes = (a, m) => `${a}-${String(m + 1).padStart(2, "0")}`;
 
   const autoPorMes = Array(12).fill(0);
@@ -3582,8 +3600,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   pedidos.forEach((p) => {
     const [y, m] = p.fecha.split("-").map(Number);
     if (y === anio) {
-      autoPorMes[m - 1] += p.total;
-      pedidosPorMes[m - 1] += 1;
+      autoPorMes[m - 1] += dineroCobrado(p);
+      if (esVentaHecha(p)) pedidosPorMes[m - 1] += 1;
     }
   });
 
@@ -3591,7 +3609,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     let auto = 0;
     pedidos.forEach((p) => {
       const [py, pm] = p.fecha.split("-").map(Number);
-      if (py === a && pm === m + 1) auto += p.total;
+      if (py === a && pm === m + 1) auto += dineroCobrado(p);
     });
     if (auto > 0) return { valor: auto, esAuto: true };
     return { valor: historico[claveMes(a, m)] || 0, esAuto: false };
@@ -3654,7 +3672,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const porProducto = {};
   pedidos.forEach((p) => {
     const [y] = p.fecha.split("-").map(Number);
-    if (y !== anio) return;
+    if (y !== anio || !esVentaHecha(p)) return;
     p.items.forEach((it) => {
       const clave = it.tipo === "paella" ? "paella:" + it.paellaId : "extra:" + it.extraId;
       const nombre = nombreDeHoy[clave] || (it.tipo === "paella" ? it.paellaNombre : it.nombre);
@@ -3716,9 +3734,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // dio de alta en la app. Están capturando pedidos viejos de enero y todos
   // esos clientes caían en agosto, que es cuando se teclearon: la gráfica
   // contaba el trabajo de captura, no cuándo llegó la gente.
+  // Un cliente cuenta como nuevo con su primer pedido ENTREGADO. Con uno
+  // apuntado todavía no: si se cae, quedaría contado un cliente que nunca
+  // compró.
   const primerPedidoDe = {};
   (pedidos || []).forEach((p) => {
-    if (!p.clienteId || !p.fecha) return;
+    if (!p.clienteId || !p.fecha || !esVentaHecha(p)) return;
     if (!primerPedidoDe[p.clienteId] || p.fecha < primerPedidoDe[p.clienteId]) {
       primerPedidoDe[p.clienteId] = p.fecha;
     }
@@ -4339,7 +4360,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     ventasPorProducto[clave].ingreso += campos.ingreso;
   };
   pedidos.forEach((p) => {
-    if (Number(p.fecha.split("-")[0]) !== anio) return;
+    if (Number(p.fecha.split("-")[0]) !== anio || !esVentaHecha(p)) return;
     (p.items || []).forEach((it) => {
       if (it.tipo === "paella") {
         // Solo la paella en sí: los extras (langosta, chorizo) se cobran aparte
@@ -5060,12 +5081,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       </div>
 
       <div className="af-card af-year-total-card mb-5">
-        <div className="af-ink-soft text-sm">Total {anio}</div>
+        <div className="af-ink-soft text-sm">Cobrado en {anio}</div>
         <div className="af-year-total">{money(totalAnio)}</div>
+        <div className="af-ink-soft text-xs">Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</div>
       </div>
 
       <div className="af-card p-4 mb-5 af-chart-card">
-        <div className="af-chart-title">Ingresos por mes — {anio}</div>
+        <div className="af-chart-title">Cobrado por mes — {anio}</div>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={datosMensuales} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
@@ -5285,6 +5307,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <div className="af-resumen-cifra">
               <span className="af-resumen-label">Entró por ventas</span>
               <span className="af-resumen-valor">{money(totalAnio)}</span>
+              <span className="af-resumen-pie">lo que ya se cobró</span>
             </div>
             <div className="af-resumen-cifra">
               <span className="af-resumen-label">Gastos del negocio</span>
@@ -11519,6 +11542,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-resumen-anio { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
 .af-resumen-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 22px; }
 .af-resumen-cifra { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.af-resumen-pie { font-size: 11px; color: var(--ink-soft); }
 .af-resumen-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
 .af-resumen-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 21px; color: var(--ink); line-height: 1.15; }
 .af-resumen-valor.positivo { color: #2f9e6d; }
