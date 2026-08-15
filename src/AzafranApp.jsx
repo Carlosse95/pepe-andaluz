@@ -2098,7 +2098,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia, onSaldarPedido }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
@@ -2107,6 +2107,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   // hay que resolver antes de que sea tarde.
   const [verCompras, setVerCompras] = useState(false);
   const [verPorConfirmar, setVerPorConfirmar] = useState(true);
+  const [verSinPagar, setVerSinPagar] = useState(true);
 
   // Transferencias apuntadas que todavía no se han visto en el banco. Se
   // buscan en todos los pedidos, no solo los de hoy: el dinero de un pedido
@@ -2117,6 +2118,16 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
       if (a.porConfirmar) porConfirmar.push({ pedido: p, abono: a });
     });
   });
+
+  // Comida que YA SE ENTREGÓ y todavía no se cobra completa. Es dinero de
+  // verdad: salió el pedido y falta que entre. Se buscan en todos los
+  // pedidos, no solo los de hoy — un adeudo de enero sigue siendo un adeudo.
+  const entregadosSinPagar = (pedidos || [])
+    .filter((p) => (p.estado || "pendiente") === "entregado")
+    .map((p) => ({ pedido: p, saldo: Math.round(((p.total || 0) - (p.pagado || 0)) * 100) / 100 }))
+    .filter((x) => x.saldo > 0.009)
+    .sort((a, b) => (a.pedido.fecha < b.pedido.fecha ? -1 : 1));
+  const totalSinPagar = entregadosSinPagar.reduce((a, x) => a + x.saldo, 0);
   // Filtro por estado: se maneja aquí (y no en Agenda) porque estos son los
   // pedidos que se están trabajando hoy.
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -2269,6 +2280,43 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                     onClick={() => onConfirmarTransferencia && onConfirmarTransferencia(pedido.id, abono.id)}
                   >
                     <Check size={12} /> Ya cayó
+                  </button>
+                </div>
+              ))}
+            </PanelPlegable>
+          )}
+
+          {/* Lo entregado que sigue sin cobrarse. Va junto a las transferencias
+              por confirmar porque es la misma pregunta —¿ya entró el dinero?—
+              y el mismo gesto para resolverlo. */}
+          {entregadosSinPagar.length > 0 && (
+            <PanelPlegable
+              tono="alerta"
+              icono={<Wallet size={15} />}
+              titulo="Entregados sin pagar"
+              resumen={money(totalSinPagar)}
+              abierto={verSinPagar}
+              onToggle={() => setVerSinPagar((v) => !v)}
+            >
+              <p className="af-ink-soft text-xs mb-2">
+                Ya salió la comida y falta que entre el dinero. Si alguno ya se pagó y
+                nada más no se apuntó, márcalo aquí.
+              </p>
+              {entregadosSinPagar.map(({ pedido, saldo }) => (
+                <div key={pedido.id} className="af-confirmar-row">
+                  <button className="flex-1 min-w-0 af-fila-limpia" onClick={() => onAbrir && onAbrir(pedido)}>
+                    <div className="af-confirmar-nombre">{pedido.clienteNombre}</div>
+                    <div className="af-ink-soft text-sm">
+                      {fmtFolio(pedido.folio, "#")} · {fmtDateHuman(pedido.fecha)}
+                      {(pedido.pagado || 0) > 0 && ` · abonó ${money(pedido.pagado)}`}
+                    </div>
+                  </button>
+                  <div className="af-gasto-monto">{money(saldo)}</div>
+                  <button
+                    className="af-chip af-chip-wa-mini"
+                    onClick={() => onSaldarPedido && onSaldarPedido(pedido.id)}
+                  >
+                    <Check size={12} /> Ya me pagaron
                   </button>
                 </div>
               ))}
@@ -9795,6 +9843,26 @@ export default function App() {
   };
 
   // Marca que la transferencia ya se vio en el banco.
+  // "Ya me pagaron": se salda lo que faltaba de un pedido entregado. Se apunta
+  // como un abono más —no se toca el total— para que quede el rastro de que
+  // ese dinero entró y con qué método.
+  const saldarPedido = (pedidoId) => {
+    const pedido = pedidos.find((p) => p.id === pedidoId);
+    if (!pedido) return;
+    const falta = Math.round(((pedido.total || 0) - (pedido.pagado || 0)) * 100) / 100;
+    if (falta <= 0) return;
+    const abonos = [...(pedido.abonos || []), { id: uid(), monto: falta, metodo: "efectivo", fecha: todayISO() }];
+    const pagado = sumaAbonos(abonos);
+    guardarPedidos(
+      pedidos.map((p) =>
+        p.id !== pedidoId
+          ? p
+          : { ...p, abonos, pagado, saldo: Math.max(0, (p.total || 0) - pagado), estadoPago: estadoPagoDe(pagado, p.total || 0) }
+      )
+    );
+    showToast(`Cobrado ${money(falta)} de ${pedido.clienteNombre}`);
+  };
+
   const confirmarTransferencia = (pedidoId, abonoId) => {
     guardarPedidos(
       pedidos.map((p) =>
@@ -10494,7 +10562,7 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
@@ -11095,6 +11163,9 @@ const AZAFRAN_CSS = `
 .af-ticket-campo { background: color-mix(in srgb, var(--wine) 5%, transparent); border-radius: 12px; padding: 12px; }
 .af-ticket-listo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #15803d; }
 
+/* El nombre del pedido es un botón para abrirlo, pero no debe verse como
+   botón: se lee como el renglón que es. */
+.af-fila-limpia { background: none; border: none; padding: 0; text-align: left; cursor: pointer; font: inherit; color: inherit; }
 .af-confirmar-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
 .af-confirmar-row:last-child { border-bottom: none; }
 .af-confirmar-nombre { font-weight: 700; font-size: 14px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
