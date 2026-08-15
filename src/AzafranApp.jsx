@@ -2829,6 +2829,9 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
   // espacios o guiones: antes "999 279" no encontraba nada porque el teléfono
   // guardado no trae los espacios en el mismo lugar.
   const soloNumeros = q.replace(/\D/g, "");
+  // El folio tecleado, sin los ceros de adelante: el pedido #248 se escribía
+  // "0248" antes, y así quedó en libretas y mensajes viejos.
+  const folioBuscado = soloNumeros.replace(/^0+/, "");
 
   const resultados =
     term.length === 0
@@ -2846,9 +2849,11 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
             // También por folio, que es como se refieren a un pedido concreto.
             // Se acepta con ceros adelante ("0248") porque así se veía antes y
             // así quedó escrito en libretas y mensajes viejos.
-            (p.folio &&
-              (String(p.folio).includes(term.replace(/^0+/, "")) ||
-                String(p.folio) === soloNumeros.replace(/^0+/, ""))) ||
+            //
+            // `folioBuscado` se calcula arriba y es "" cuando lo tecleado son
+            // puros ceros: sin eso, buscar "0" sacaba TODOS los pedidos, porque
+            // cualquier texto contiene la cadena vacía.
+            (p.folio && folioBuscado && String(p.folio).includes(folioBuscado)) ||
             enProductos
           );
         });
