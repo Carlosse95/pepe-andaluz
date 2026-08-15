@@ -10615,8 +10615,13 @@ const AZAFRAN_CSS = `
   --neutral-soft: #EAF0FB;
   --line: #D7E3F5;
   --glass: rgba(255,255,255,0.7);
-  /* Para barras fijas: casi opaco, para que nada se lea por detrás al deslizar. */
-  --glass-solido: rgba(255,255,255,0.94);
+  /* Para barras fijas: OPACO, sin nada de transparencia.
+     Con 0.94 quedaba un 6% de translucidez, y en Safari de iPad el desenfoque
+     que la disimulaba no siempre se aplica sobre una barra pegada: entonces
+     ese 6% deja ver el contenido pasando por detrás. Ese defecto ha vuelto
+     tres veces por bajarle la opacidad en vez de quitarla; en blanco sólido
+     no puede volver, y a la vista no se distingue del 94%. */
+  --glass-solido: #FFFFFF;
 
   /* La medida de TODO lo que se escribe o se elige. Un solo número aquí, y
      campos, listas, fechas y botones quedan parejos en toda la app. 46px es
@@ -11776,16 +11781,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
     border-bottom: 1px solid var(--line);
     position: sticky; top: 0; z-index: 30;
   }
-  /* El desenfoque solo donde funciona, y aun así con el fondo casi opaco: en
-     Safari de iPad el desenfoque falla en barras pegadas al deslizar, y con
-     el 70% de antes se alcanzaba a leer el contenido pasando por detrás. */
-  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .af-topbar {
-      background: var(--glass-solido);
-      backdrop-filter: blur(24px) saturate(180%);
-      -webkit-backdrop-filter: blur(24px) saturate(180%);
-    }
-  }
+  /* Antes aquí se le devolvía algo de transparencia junto con el desenfoque.
+     Se quitó: el desenfoque en Safari de iPad no siempre se aplica sobre una
+     barra pegada, y cuando no se aplica lo único que queda es la
+     transparencia — y se lee el contenido pasando por detrás. La barra va
+     opaca siempre; es la única forma de que no vuelva a pasar. */
   /* min-width:0 + scroll propio: si no, los 6 botones empujan la barra más
      allá del ancho de la pantalla y aparece scroll horizontal en toda la app
      (se notaba sobre todo en iPad vertical). */
