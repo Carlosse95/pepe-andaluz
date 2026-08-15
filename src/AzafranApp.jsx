@@ -454,34 +454,83 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   return lineas.join("\n");
 };
 
+// Lo que el cliente debe, para pegarlo al final de un mensaje.
+//
+// Pepe volvía a mandar el resumen completo del pedido cada vez que había un
+// movimiento, porque ERA EL ÚNICO mensaje que decía cuánto se debe y a dónde
+// transferir. Por eso al cliente le llegaba todo repetido. Ahora la cuenta va
+// pegada al aviso que corresponde, así que ya no hace falta repetir nada.
+//
+// Devuelve "" cuando no hay nada por cobrar: ahí sobra decirlo.
+const bloqueSaldo = (pedido, pago) => {
+  const total = pedido?.total || 0;
+  const pagado = pedido?.pagado || 0;
+  const saldo = Math.max(Math.round((total - pagado) * 100) / 100, 0);
+  if (saldo <= 0) return "";
+  // Dos vacíos: uno cierra el saludo y el otro separa la cuenta, para que no
+  // se lea como si fuera parte de la misma frase.
+  const lineas = ["", "", `Total: ${money(total)}`];
+  if (pagado > 0) lineas.push(`Pagado: ${money(pagado)}`);
+  lineas.push(`Queda pendiente: ${money(saldo)}`);
+  // Los datos para transferir, para que no tenga que pedirlos aparte.
+  if (pago && (pago.clabe || "").trim()) {
+    lineas.push("");
+    if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
+    if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
+    lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
+  }
+  return lineas.join("\n");
+};
+
+// Pega la cuenta al final del mensaje, salvo que la plantilla de Ajustes ya
+// hable del saldo por su cuenta: quien se tomó la molestia de escribirlo ahí
+// no quiere verlo dos veces.
+const conCuenta = (texto, plantilla, pedido, pago) => {
+  if (/\{saldo\}|\{pagado\}|\{total\}/.test(plantilla || "")) return texto;
+  return texto + bloqueSaldo(pedido, pago);
+};
+
 // Mensaje corto para avisar que el pedido ya está listo (al marcarlo "Avisar"),
 // distinto según sea para recoger o a domicilio.
-const mensajeAvisado = (pedido, mensajes, local) => {
+const mensajeAvisado = (pedido, mensajes, local, pago) => {
   const plantilla = pedido.entrega
     ? mensajes?.avisadoDomicilio || MENSAJES_DEFAULT.avisadoDomicilio
     : mensajes?.avisadoRecoger || MENSAJES_DEFAULT.avisadoRecoger;
-  return aplicarPlantillaMensaje(plantilla, pedido, { dondeRecoger: bloqueDondeRecoger(local) });
+  const texto = aplicarPlantillaMensaje(plantilla, pedido, { dondeRecoger: bloqueDondeRecoger(local) });
+  return conCuenta(texto, plantilla, pedido, pago);
 };
 
 // Mensaje corto para avisar que el pedido ya se entregó (al marcarlo "Entregado").
+// Aquí NO va la cuenta: al entregar se cobra en la mano, y la idea es mandarle
+// menos cosas al cliente, no ponerle la cuenta en todos los mensajes.
 const mensajeEntregado = (pedido, mensajes) =>
   aplicarPlantillaMensaje(mensajes?.entregado || MENSAJES_DEFAULT.entregado, pedido);
 
 // Mensaje que se manda cuando el cliente acaba de abonar: le confirma cuánto
 // pagó y qué le falta, o que ya no debe nada. A Pepe le gusta mandar el saldo
 // al día cada vez que le pagan, y así no tiene que sacar la cuenta a mano.
-const mensajePago = (pedido, abono, mensajes) => {
+const mensajePago = (pedido, abono, mensajes, pago) => {
   const saldo = Math.max(pedido.saldo || 0, 0);
   const plantilla =
     saldo <= 0
       ? mensajes?.pagoLiquidado || MENSAJES_DEFAULT.pagoLiquidado
       : mensajes?.pagoAbono || MENSAJES_DEFAULT.pagoAbono;
-  return aplicarPlantillaMensaje(plantilla, pedido, {
+  const texto = aplicarPlantillaMensaje(plantilla, pedido, {
     abono: money(abono),
     pagado: money(pedido.pagado || 0),
     saldo: money(saldo),
     total: money(pedido.total || 0),
   });
+  // Si todavía debe algo, van los datos para transferir el resto. Sin esto Pepe
+  // tenía que mandarle el resumen completo aparte nada más por la CLABE.
+  if (saldo > 0 && pago && (pago.clabe || "").trim()) {
+    const banco = [];
+    if (pago.banco) banco.push(`Banco: ${pago.banco}`);
+    if (pago.titular) banco.push(`A nombre de: ${pago.titular}`);
+    banco.push(`CLABE / Tarjeta: ${pago.clabe}`);
+    return texto + "\n\n" + banco.join("\n");
+  }
+  return texto;
 };
 
 // Saludo para el cliente que lleva mucho sin pedir. Recibe un cliente, no un
@@ -9934,10 +9983,10 @@ export default function App() {
     if (pedido.clienteTelefono) {
       const clase = tipo || (pedido.estado === "entregado" ? "entregado" : "avisado");
       let mensaje;
-      if (clase === "pago") mensaje = mensajePago(pedido, extra?.abono || 0, config.mensajes);
+      if (clase === "pago") mensaje = mensajePago(pedido, extra?.abono || 0, config.mensajes, config.pago);
       else if (clase === "nuevo") mensaje = mensajeWhatsApp(pedido, "pedido", config.pago, config.mensajes, config.local);
       else if (clase === "entregado") mensaje = mensajeEntregado(pedido, config.mensajes);
-      else mensaje = mensajeAvisado(pedido, config.mensajes, config.local);
+      else mensaje = mensajeAvisado(pedido, config.mensajes, config.local, config.pago);
       abrirWhatsApp(pedido.clienteTelefono, mensaje);
       apuntarAvisoEnviado(pedido.id, clase);
     }
@@ -9969,7 +10018,7 @@ export default function App() {
     // chat como UNA sola cosa —el PDF con su texto— en vez de tres (el
     // mensaje, la liga larguísima y el archivo aparte). A Michelle le
     // llegaron cuatro cosas en quince segundos y eso cansa a cualquiera.
-    const texto = mensajePago(pedido, abono || 0, config.mensajes);
+    const texto = mensajePago(pedido, abono || 0, config.mensajes, config.pago);
     setSubiendoRecibo(true);
     try {
       const doc = await construirPDF(pedido, "recibo", config);
