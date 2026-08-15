@@ -452,8 +452,12 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   const pagadoYa = sumaAbonos(datos.abonos);
   if (pago && (pago.clabe || "").trim() && pagadoYa < total) {
     lineas.push("");
+    // El texto viejo exigía el 50% de anticipo como si fuera la única forma de
+    // apartar, y no lo es: hay clientes que pagan TODO en efectivo al llegar.
+    // Primero va esa opción, que es la que más usan, y el anticipo queda como
+    // lo otro que se puede hacer.
     lineas.push(
-      `💳 Para confirmar su pedido se requiere el 50% de anticipo; el resto lo puede pagar ${enEfectivo(datos.entrega)}, o por transferencia:`
+      `💳 Puede pagar todo ${enEfectivo(datos.entrega)}, o apartarlo con el 50% de anticipo por transferencia y liquidar el resto ${datos.entrega ? "al recibirlo" : "al recogerlo"}:`
     );
     if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
     if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
@@ -8617,7 +8621,7 @@ const construirPDF = async (form, tipoDoc, config) => {
     // Corto a propósito: es el encabezado de un recuadro, no cabe la frase
     // larga del mensaje de WhatsApp.
     doc.text(
-      `Para confirmar: 50% de anticipo; el resto ${form.entrega ? "en efectivo a la entrega" : "en efectivo al recoger"} o por transferencia`,
+      `Puede pagar todo en efectivo ${form.entrega ? "a la entrega" : "al recoger"}, o apartar con 50% de anticipo`,
       margin + 5,
       y + 7
     );
