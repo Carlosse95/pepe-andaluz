@@ -452,12 +452,13 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   const pagadoYa = sumaAbonos(datos.abonos);
   if (pago && (pago.clabe || "").trim() && pagadoYa < total) {
     lineas.push("");
-    lineas.push("💳 Para confirmar su pedido se requiere el 50% de anticipo; el resto se liquida a la entrega.");
+    lineas.push(
+      `💳 Para confirmar su pedido se requiere el 50% de anticipo; el resto lo puede pagar ${enEfectivo(datos.entrega)}, o por transferencia:`
+    );
     if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
     if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
     lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
     lineas.push("Por favor, en el concepto de la transferencia ponga únicamente su nombre.");
-    lineas.push(lineaEfectivo(datos.entrega));
   }
   // Dónde recoger, desde que se aparta el pedido: así el cliente ya sabe a
   // dónde ir y no tiene que esperar al aviso de "ya está listo" para buscarlo.
@@ -481,11 +482,14 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
 
 // Los datos para transferir daban a entender que era la ÚNICA forma de pagar,
 // y no lo es: el cliente puede pagar en efectivo cuando recoge o cuando se le
-// entrega. Este renglón acompaña siempre a la CLABE para que quede claro.
-const lineaEfectivo = (esEntrega) =>
-  esEntrega
-    ? "O si prefiere, en efectivo al momento de la entrega."
-    : "O si prefiere, en efectivo cuando pase por su pedido.";
+// entrega.
+//
+// Esto es un pedazo de frase, no un renglón aparte. Antes iba de último, ya
+// después de la CLABE, y ahí se leía como una nota suelta que no venía a
+// cuento. Va DENTRO de la frase que habla de cómo se paga, y los datos del
+// banco quedan abajo como lo que son: el cómo de la transferencia.
+const enEfectivo = (esEntrega) =>
+  esEntrega ? "en efectivo al momento de la entrega" : "en efectivo cuando pase por su pedido";
 
 // Lo que el cliente debe, para pegarlo al final de un mensaje.
 //
@@ -505,13 +509,13 @@ const bloqueSaldo = (pedido, pago) => {
   const lineas = ["", "", `Total: ${money(total)}`];
   if (pagado > 0) lineas.push(`Pagado: ${money(pagado)}`);
   lineas.push(`Queda pendiente: ${money(saldo)}`);
-  // Los datos para transferir, para que no tenga que pedirlos aparte.
+  // Cómo pagarlo, para que no tenga que preguntarlo aparte.
   if (pago && (pago.clabe || "").trim()) {
     lineas.push("");
+    lineas.push(`Lo puede pagar ${enEfectivo(pedido?.entrega)}, o por transferencia:`);
     if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
     if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
     lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
-    lineas.push(lineaEfectivo(pedido?.entrega));
   }
   return lineas.join("\n");
 };
@@ -558,11 +562,10 @@ const mensajePago = (pedido, abono, mensajes, pago) => {
   // Si todavía debe algo, van los datos para transferir el resto. Sin esto Pepe
   // tenía que mandarle el resumen completo aparte nada más por la CLABE.
   if (saldo > 0 && pago && (pago.clabe || "").trim()) {
-    const banco = [];
+    const banco = [`Lo que falta lo puede pagar ${enEfectivo(pedido?.entrega)}, o por transferencia:`];
     if (pago.banco) banco.push(`Banco: ${pago.banco}`);
     if (pago.titular) banco.push(`A nombre de: ${pago.titular}`);
     banco.push(`CLABE / Tarjeta: ${pago.clabe}`);
-    banco.push(lineaEfectivo(pedido?.entrega));
     return texto + "\n\n" + banco.join("\n");
   }
   return texto;
@@ -8605,14 +8608,19 @@ const construirPDF = async (form, tipoDoc, config) => {
       config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
       `CLABE / Tarjeta: ${config.pago.clabe}`,
       "En el concepto de la transferencia ponga únicamente su nombre, por favor.",
-      lineaEfectivo(form.entrega),
     ].filter(Boolean);
     const alto = 14 + lineasPago.length * 5;
     doc.rect(margin, y, anchoUtil, alto, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(CUERPO);
     tinta(TINTA);
-    doc.text("Para confirmar: 50% de anticipo, el resto a la entrega", margin + 5, y + 7);
+    // Corto a propósito: es el encabezado de un recuadro, no cabe la frase
+    // larga del mensaje de WhatsApp.
+    doc.text(
+      `Para confirmar: 50% de anticipo; el resto ${form.entrega ? "en efectivo a la entrega" : "en efectivo al recoger"} o por transferencia`,
+      margin + 5,
+      y + 7
+    );
     doc.setFont("helvetica", "normal");
     doc.setFontSize(CUERPO);
     tinta(SUAVE);
