@@ -287,6 +287,19 @@ const fmtDiaCorto = (iso) => {
   return `${d} ${MESES_CORTOS[m - 1] || ""}`;
 };
 
+// "hace 15 minutos", "hace 2 horas", "ayer". Para decir cuándo se le mandó
+// el último mensaje a un cliente sin hacerlo leer una fecha completa.
+const haceCuanto = (cuando) => {
+  if (!cuando) return "";
+  const min = Math.floor((Date.now() - cuando) / 60000);
+  if (min < 1) return "hace un momento";
+  if (min < 60) return `hace ${min} ${min === 1 ? "minuto" : "minutos"}`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} ${h === 1 ? "hora" : "horas"}`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? "ayer" : `hace ${d} días`;
+};
+
 const esHoy = (iso) => iso === todayISO();
 
 // El subtotal de una paella = kilos × precio/kg + sus extras (langosta, chorizo...).
@@ -1784,6 +1797,10 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
   // El recibo solo tiene sentido cuando el pedido acaba de quedar saldado:
   // es el comprobante de que ya no debe nada.
   const quedoSaldado = tipo === "pago" && sumaAbonos(pedido.abonos) >= (pedido.total || 0) - 0.5;
+  // ¿Ya se le mandó este mismo aviso a este pedido? Si sí, se dice CUÁNDO y
+  // el botón deja de ser el obvio: al cliente no hay que contarle dos veces
+  // lo mismo.
+  const yaSeMando = (pedido.avisosEnviados || {})[tipo];
   return (
     <div className="af-modal-overlay af-modal-overlay-center" onClick={subiendo ? undefined : onCerrar}>
       <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
@@ -1794,6 +1811,12 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
             ? <>¿Le mandamos su saldo al día a <strong>{pedido.clienteNombre}</strong>?</>
             : <>¿Enviamos el mensaje de WhatsApp a <strong>{pedido.clienteNombre}</strong>?</>}
         </p>
+        {yaSeMando && (
+          <div className="af-ya-enviado">
+            <AlertTriangle size={14} />
+            <span>Este mismo mensaje ya se le mandó {haceCuanto(yaSeMando)}.</span>
+          </div>
+        )}
         {quedoSaldado && (
           <button className="af-btn-primary w-full" disabled={subiendo} onClick={onEnviarConRecibo}>
             {subiendo
@@ -1802,18 +1825,24 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
           </button>
         )}
         <button
-          className={quedoSaldado ? "af-btn-secondary w-full mt-2" : "af-btn-primary w-full"}
+          className={quedoSaldado || yaSeMando ? "af-btn-secondary w-full mt-2" : "af-btn-primary w-full"}
           disabled={subiendo}
           onClick={onEnviar}
         >
-          <MessageCircle size={15} className="inline mr-1" /> {quedoSaldado ? "Solo el mensaje" : "Enviar por WhatsApp"}
+          <MessageCircle size={15} className="inline mr-1" />
+          {yaSeMando ? "Mandarlo otra vez" : quedoSaldado ? "Solo el mensaje" : "Enviar por WhatsApp"}
         </button>
-        <button className="af-btn-secondary w-full mt-2" disabled={subiendo} onClick={onCerrar}>Ahora no</button>
+        <button
+          className={yaSeMando ? "af-btn-primary w-full mt-2" : "af-btn-secondary w-full mt-2"}
+          disabled={subiendo}
+          onClick={onCerrar}
+        >
+          {yaSeMando ? "No, ya se enteró" : "Ahora no"}
+        </button>
         {quedoSaldado && (
           <p className="af-ink-soft text-xs mt-3">
-            El recibo se sube y se manda como liga, que sirve un año. Si prefieres
-            mandarle el archivo, usa "Recibo de pagado (PDF)" ahí abajo: te sale el
-            menú de compartir y el PDF le llega dentro del chat.
+            Le llega el PDF con su mensaje, en una sola cosa. En la computadora,
+            donde no se pueden compartir archivos, va como liga.
           </p>
         )}
       </div>
@@ -8508,7 +8537,7 @@ const nombreArchivoPDF = (form, tipoDoc) => {
   return `${tipoDoc === "recibo" ? "Recibo" : "Presupuesto"}-${limpio}-${form.fecha}.pdf`;
 };
 
-function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
+function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido", pedidoDelForm, onAvisoEnviado }) {
   const [busqueda, setBusqueda] = useState("");
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [nuevoCliente, setNuevoCliente] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "" });
@@ -9155,11 +9184,25 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <Download size={16} className="inline mr-1" /> Recibo de pagado (PDF)
             </button>
           )}
-          {form.clienteId && form.items.length > 0 && (
-            <button className="af-btn-wa w-full mt-2" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago, config.mensajes, config.local))}>
-              <MessageCircle size={16} className="inline mr-1" /> Enviar resumen por WhatsApp
-            </button>
-          )}
+          {/* El resumen a mano. Si ya se le mandó, el botón lo dice: a Michelle
+              le llegó el mismo resumen dos veces con quince minutos de
+              diferencia, y desde el otro lado eso se siente como spam. */}
+          {form.clienteId && form.items.length > 0 && (() => {
+            const yaLoMande = (pedidoDelForm?.avisosEnviados || {}).nuevo;
+            return (
+              <button
+                className={"w-full mt-2 " + (yaLoMande ? "af-btn-secondary" : "af-btn-wa")}
+                onClick={() => {
+                  if (yaLoMande && !window.confirm(`Ya le mandaste el resumen ${haceCuanto(yaLoMande)}. ¿Se lo mando otra vez?`)) return;
+                  abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago, config.mensajes, config.local));
+                  if (form.pedidoId && onAvisoEnviado) onAvisoEnviado(form.pedidoId, "nuevo");
+                }}
+              >
+                <MessageCircle size={16} className="inline mr-1" />
+                {yaLoMande ? `Resumen ya enviado ${haceCuanto(yaLoMande)}` : "Enviar resumen por WhatsApp"}
+              </button>
+            );
+          })()}
           <button className="af-btn-primary w-full mt-2" onClick={onGuardar}>
             {editando ? "Guardar cambios" : "Guardar pedido"}
           </button>
@@ -9874,6 +9917,17 @@ export default function App() {
     showToast("Confirmado, ya cayó el dinero");
   };
 
+  // Deja constancia de que a ese pedido ya se le mandó ESE aviso. Con eso la
+  // app puede avisar antes de repetirlo: al cliente le llegaban el resumen,
+  // el recibo y el mensaje de pago casi al mismo tiempo, y eso cansa.
+  const apuntarAvisoEnviado = (pedidoId, tipo) => {
+    guardarPedidos(
+      pedidos.map((p) =>
+        p.id !== pedidoId ? p : { ...p, avisosEnviados: { ...(p.avisosEnviados || {}), [tipo]: Date.now() } }
+      )
+    );
+  };
+
   // `tipo` decide qué mensaje se manda; `extra` trae lo que ese mensaje
   // necesite (por ahora, cuánto acaba de abonar).
   const enviarAvisoWhatsApp = (pedido, tipo, extra) => {
@@ -9885,6 +9939,7 @@ export default function App() {
       else if (clase === "entregado") mensaje = mensajeEntregado(pedido, config.mensajes);
       else mensaje = mensajeAvisado(pedido, config.mensajes, config.local);
       abrirWhatsApp(pedido.clienteTelefono, mensaje);
+      apuntarAvisoEnviado(pedido.id, clase);
     }
     setAvisosPendientes((prev) => {
       if (!(pedido.id in prev)) return prev;
@@ -9910,21 +9965,45 @@ export default function App() {
     // el recibo estaba listo. Eso era la pantalla en blanco del iPad: la
     // pestaña se abría vacía y ahí se quedaba para siempre. El enlace se
     // desconecta enseguida a mano, que es lo que noopener hacía por nosotros.
+    // PRIMERO se intenta mandarlo como archivo con su mensaje: eso llega al
+    // chat como UNA sola cosa —el PDF con su texto— en vez de tres (el
+    // mensaje, la liga larguísima y el archivo aparte). A Michelle le
+    // llegaron cuatro cosas en quince segundos y eso cansa a cualquiera.
+    const texto = mensajePago(pedido, abono || 0, config.mensajes);
+    setSubiendoRecibo(true);
+    try {
+      const doc = await construirPDF(pedido, "recibo", config);
+      const nombre = nombreArchivoPDF(pedido, "recibo");
+      const archivo = new File([doc.output("blob")], nombre, { type: "application/pdf" });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], text: texto });
+        apuntarAvisoEnviado(pedido.id, "pago");
+        setAvisoModal(null);
+        setSubiendoRecibo(false);
+        return;
+      }
+    } catch (e) {
+      // Si canceló el menú de compartir, no se insiste por otro lado.
+      if (e && e.name === "AbortError") { setSubiendoRecibo(false); return; }
+    }
+
+    // Y si el aparato no sabe compartir archivos (una computadora), entonces
+    // sí: se sube el recibo y va la liga, como antes.
     const ventana = window.open("", "_blank");
     if (ventana) {
       try { ventana.opener = null; } catch { /* algunos navegadores no dejan */ }
       escribirEnPestana(ventana, "Preparando el recibo…", "No cierres esta pestaña.");
     }
 
-    setSubiendoRecibo(true);
     try {
       const doc = await construirPDF(pedido, "recibo", config);
       const url = await subirRecibo(doc.output("blob"), nombreArchivoPDF(pedido, "recibo"));
-      const texto = `${mensajePago(pedido, abono || 0, config.mensajes)}\n\nSu recibo: ${url}`;
+      const conLiga = `${texto}\n\nSu recibo: ${url}`;
       const tel = telWhatsApp(pedido.clienteTelefono);
-      const destino = `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
+      const destino = `https://wa.me/${tel}?text=${encodeURIComponent(conLiga)}`;
       if (ventana && !ventana.closed) ventana.location.href = destino;
-      else abrirWhatsApp(pedido.clienteTelefono, texto);
+      else abrirWhatsApp(pedido.clienteTelefono, conLiga);
+      apuntarAvisoEnviado(pedido.id, "pago");
       setAvisoModal(null);
     } catch (e) {
       // Si algo falla, la pestaña dice qué pasó en vez de quedarse en blanco.
@@ -10620,6 +10699,8 @@ export default function App() {
               onDuplicar={duplicarActual}
               error={error}
               modo={formModo}
+              pedidoDelForm={form.pedidoId ? pedidos.find((p) => p.id === form.pedidoId) : null}
+              onAvisoEnviado={apuntarAvisoEnviado}
             />
           )}
         </div>
@@ -10809,6 +10890,7 @@ const AZAFRAN_CSS = `
 .af-alerta-modal { background: var(--surface); border-radius: 20px; width: 320px; max-width: 90vw; padding: 24px 22px; box-shadow: 0 20px 50px rgba(22,35,63,0.3); text-align: center; }
 .af-alerta-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--wine-soft); color: var(--wine); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
 .af-alerta-titulo { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; margin-bottom: 8px; }
+.af-ya-enviado { display: flex; align-items: center; gap: 7px; justify-content: center; font-size: 12.5px; font-weight: 600; color: #b7791f; background: color-mix(in srgb, #b7791f 10%, transparent); border: 1px solid color-mix(in srgb, #b7791f 32%, transparent); border-radius: 10px; padding: 8px 10px; margin-bottom: 12px; }
 .af-alerta-texto { color: var(--ink-soft); font-size: 14px; line-height: 1.5; margin-bottom: 18px; }
 
 .af-content { flex: 1; padding: 16px 16px 100px; overflow-y: auto; }
