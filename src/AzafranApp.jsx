@@ -330,10 +330,19 @@ const totalDe = (obj) => computeTotal(obj.items) + envioDe(obj) + ivaDe(obj);
 // igual, para no acabar con "Paella Paella Valenciana".
 //
 // Solo aplica a las paellas: los demás platillos ya se llaman por su nombre.
+//
+// La fideuá se queda fuera aunque viva en el catálogo de paellas: se hace en
+// paellera, pero es de fideo, no de arroz, y "Paella Fideuá" le suena mal a
+// quien sabe. Si algún día entra otro platillo así, se agrega aquí.
+// Ojo con el \b después de la "á": para JavaScript la á no es letra, así que
+// "Fideuá" no casaba y le ponía "Paella" de todos modos. Por eso el corte de
+// palabra va solo donde termina en letra normal.
+const NO_LLEVAN_LA_PALABRA_PAELLA = /^(paella\b|fideu[áa])/i;
+
 const nombreParaCliente = (it) => {
   if (it?.tipo !== "paella") return it?.nombre || "";
-  const nombre = it.paellaNombre || "";
-  return /^paella\b/i.test(nombre.trim()) ? nombre : `Paella ${nombre}`;
+  const nombre = (it.paellaNombre || "").trim();
+  return NO_LLEVAN_LA_PALABRA_PAELLA.test(nombre) ? nombre : `Paella ${nombre}`;
 };
 
 const resumenProductos = (items) => {
