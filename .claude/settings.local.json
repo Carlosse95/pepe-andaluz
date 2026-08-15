@@ -464,7 +464,9 @@
       "Bash(curl -s -w ' [%{http_code}]\\\\n' https://sykfhnznbneuipibatmx.supabase.co/functions/v1/leer-ticket)",
       "Bash(time curl -s -w '\\\\n[%{http_code}]\\\\n' -X POST -H 'content-type: application/json' -d '{\"ruta\":\"2026-08-08/baf495bb-28ee-4587-ab94-3c5c8defa10d.jpg\"}' https://sykfhnznbneuipibatmx.supabase.co/functions/v1/leer-ticket)",
       "Bash(/usr/bin/grep -n \"TIENDAS_INFO\" -A 30 src/AzafranApp.jsx)",
-      "Bash(/usr/bin/grep -c \"folio2\" supabase/functions/leer-ticket/index.ts)"
+      "Bash(/usr/bin/grep -c \"folio2\" supabase/functions/leer-ticket/index.ts)",
+      "Bash(/usr/bin/grep -n \"enviarReciboWhatsApp\" -A 40 src/AzafranApp.jsx)",
+      "Bash(/usr/bin/grep -n \"window.open\" src/AzafranApp.jsx)"
     ]
   }
 }

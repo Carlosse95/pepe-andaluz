@@ -478,6 +478,24 @@ const mensajeExtranamos = (cliente, mensajes) =>
     clienteNombre: cliente?.nombre || "",
   });
 
+// Pone un mensaje dentro de una pestaña recién abierta. Sin esto, mientras se
+// arma el PDF y sube a la nube, la pestaña está en blanco y se ve descompuesta.
+const escribirEnPestana = (ventana, titulo, nota) => {
+  try {
+    ventana.document.write(
+      `<!doctype html><html lang="es"><head><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<title>${titulo}</title></head>` +
+      `<body style="margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;` +
+      `justify-content:center;gap:12px;background:#eef2fb;color:#16233f;` +
+      `font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:24px">` +
+      `<div style="font-size:18px;font-weight:700">${titulo}</div>` +
+      `<div style="font-size:14px;color:#6b7a99">${nota}</div></body></html>`
+    );
+    ventana.document.close();
+  } catch { /* si el navegador no deja escribir, se queda como estaba */ }
+};
+
 const abrirWhatsApp = (telefono, texto) => {
   const tel = telWhatsApp(telefono);
   const query = texto ? `?text=${encodeURIComponent(texto)}` : "";
@@ -4130,9 +4148,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       id: uid(),
       fecha: nuevoGasto.fecha,
       ambito: nuevoGasto.ambito || "negocio",
-      tienda: (nuevoGasto.tienda || "").trim(),
+      tienda: (nuevoGasto.tienda || "").trim().toUpperCase(),
       categoria: nuevoGasto.categoria,
-      descripcion: nuevoGasto.descripcion.trim(),
+      descripcion: nuevoGasto.descripcion.trim().toUpperCase(),
       monto: parseFloat(nuevoGasto.monto),
       // Ruta de la foto en el almacén de la nube (no la foto en sí).
       ticket: nuevoGasto.ticket || null,
@@ -4288,7 +4306,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     onGuardarGastos(
       gastos.map((g) =>
         g.id === gastoEditando.id
-          ? { ...g, fecha: gastoEditando.fecha, ambito: gastoEditando.ambito || ambitoDe(g), tienda: (gastoEditando.tienda || "").trim(), categoria: gastoEditando.categoria, descripcion: (gastoEditando.descripcion || "").trim(), monto: parseFloat(gastoEditando.monto) }
+          ? { ...g, fecha: gastoEditando.fecha, ambito: gastoEditando.ambito || ambitoDe(g), tienda: (gastoEditando.tienda || "").trim().toUpperCase(), categoria: gastoEditando.categoria, descripcion: (gastoEditando.descripcion || "").trim().toUpperCase(), monto: parseFloat(gastoEditando.monto) }
           : g
       )
     );
@@ -4324,14 +4342,24 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const categoriasEnUso = useMemo(() => {
     const propias = (config?.categoriasGasto || []).filter(Boolean);
     const usadas = gastos.map((g) => g.categoria).filter(Boolean);
-    return [...new Set([...CATEGORIAS_GASTO, ...propias, ...usadas])];
+    const todas = [...new Set([...CATEGORIAS_GASTO, ...propias, ...usadas])];
+    // "Otros" es el cajón de lo que no cabe en ningún lado: va al final de la
+    // lista, siempre. Un tipo nuevo aparecía debajo de él y se veía como si
+    // "Otros" fuera un tipo más en medio de la lista.
+    return [...todas.filter((c) => c !== "Otros"), ...(todas.includes("Otros") ? ["Otros"] : [])];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(config?.categoriasGasto || []), JSON.stringify(gastos.map((g) => g.categoria))]);
 
   // Un tipo nuevo, para lo que no cabe en ninguno de los de siempre.
   const agregarCategoria = () => {
-    const nombre = (window.prompt("¿Cómo se llama el tipo de gasto?") || "").trim();
-    if (!nombre) return;
+    const escrito = (window.prompt("¿Cómo se llama el tipo de gasto?") || "").trim();
+    if (!escrito) return;
+    // Con la primera letra en mayúscula, igual que los de siempre
+    // (Ingredientes, Sueldos, Renta). Escritos a mano salían "AGUA", "cel",
+    // "Software" y la lista se veía de tres estilos distintos. La tienda y la
+    // descripción sí van TODAS en mayúsculas: ahí lo que importa es que el
+    // mismo nombre salga idéntico siempre.
+    const nombre = escrito.charAt(0).toUpperCase() + escrito.slice(1).toLowerCase();
     if (categoriasEnUso.some((c) => normalizarNombreGasto(c) === normalizarNombreGasto(nombre))) {
       showToast("Ese tipo ya existe", "aviso");
       return;
@@ -5490,9 +5518,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 todas las veces y no acaba escrito de tres formas distintas. */}
             <CampoConSugerencias
               value={nuevoGasto.descripcion}
-              placeholder="Ej. Camarón, gasolina..."
+              placeholder="EJ. CAMARÓN, GASOLINA…"
               sugerencias={nombresUsados}
-              onChange={(descripcion) => setNuevoGasto({ ...nuevoGasto, descripcion })}
+              onChange={(descripcion) => setNuevoGasto({ ...nuevoGasto, descripcion: descripcion.toUpperCase() })}
               onBlur={() => {
                 // Al salir del campo, si lo escrito es el mismo nombre que uno
                 // ya usado (aunque sea con otra ortografía), se deja el que ya
@@ -5863,7 +5891,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   value={draftFijo.descripcion}
                   placeholder="Ej. Renta del local, sueldo de Lupita..."
                   sugerencias={nombresUsados}
-                  onChange={(descripcion) => setDraftFijo({ ...draftFijo, descripcion })}
+                  onChange={(descripcion) => setDraftFijo({ ...draftFijo, descripcion: descripcion.toUpperCase() })}
                 />
               </div>
               <div className="af-field">
@@ -6194,7 +6222,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
               <div className="af-field">
                 <label>¿En qué tienda?</label>
-                <input className="af-input" placeholder="Ej. Chedraui, Costco..." value={gastoEditando.tienda || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, tienda: e.target.value })} />
+                <input className="af-input" placeholder="EJ. CHEDRAUI, COSTCO…" value={gastoEditando.tienda || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, tienda: e.target.value.toUpperCase() })} />
               </div>
               <div className="af-field">
                 <label>Categoría</label>
@@ -6207,7 +6235,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
               <div className="af-field">
                 <label>Descripción (opcional)</label>
-                <input className="af-input" placeholder="Ej. Camarón, gasolina..." value={gastoEditando.descripcion || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value })} />
+                <input className="af-input" placeholder="EJ. CAMARÓN, GASOLINA…" value={gastoEditando.descripcion || ""} onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value.toUpperCase() })} />
               </div>
               <div className="af-field">
                 <label>Monto</label>
@@ -9644,7 +9672,21 @@ export default function App() {
   // en silencio. Por eso se abre una pestaña vacía de inmediato —eso sí
   // cuenta— y cuando el recibo está listo se le pone la dirección.
   const enviarReciboWhatsApp = async (pedido, abono) => {
-    const ventana = window.open("", "_blank", "noopener,noreferrer");
+    // La pestaña se abre AQUÍ, pegada al toque, porque después de esperar al
+    // PDF y a la nube Safari ya no lo cuenta como cosa del usuario y bloquea
+    // la ventana en silencio.
+    //
+    // Y se abre SIN "noopener": con esa palabra el navegador devuelve null en
+    // vez de la pestaña, así que no había forma de mandarla a WhatsApp cuando
+    // el recibo estaba listo. Eso era la pantalla en blanco del iPad: la
+    // pestaña se abría vacía y ahí se quedaba para siempre. El enlace se
+    // desconecta enseguida a mano, que es lo que noopener hacía por nosotros.
+    const ventana = window.open("", "_blank");
+    if (ventana) {
+      try { ventana.opener = null; } catch { /* algunos navegadores no dejan */ }
+      escribirEnPestana(ventana, "Preparando el recibo…", "No cierres esta pestaña.");
+    }
+
     setSubiendoRecibo(true);
     try {
       const doc = await construirPDF(pedido, "recibo", config);
@@ -9652,11 +9694,14 @@ export default function App() {
       const texto = `${mensajePago(pedido, abono || 0, config.mensajes)}\n\nSu recibo: ${url}`;
       const tel = telWhatsApp(pedido.clienteTelefono);
       const destino = `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
-      if (ventana && !ventana.closed) ventana.location = destino;
+      if (ventana && !ventana.closed) ventana.location.href = destino;
       else abrirWhatsApp(pedido.clienteTelefono, texto);
       setAvisoModal(null);
     } catch (e) {
-      if (ventana && !ventana.closed) ventana.close();
+      // Si algo falla, la pestaña dice qué pasó en vez de quedarse en blanco.
+      if (ventana && !ventana.closed) {
+        escribirEnPestana(ventana, "No se pudo preparar el recibo", (e.message || "Inténtalo otra vez.") + " Puedes cerrar esta pestaña.");
+      }
       showToast("No se pudo preparar el recibo: " + (e.message || ""), "error");
     }
     setSubiendoRecibo(false);
