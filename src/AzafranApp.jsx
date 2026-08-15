@@ -321,6 +321,21 @@ const IVA_TASA = 0.16;
 const ivaDe = (obj) => (obj.iva ? (computeTotal(obj.items) + envioDe(obj)) * IVA_TASA : 0);
 const totalDe = (obj) => computeTotal(obj.items) + envioDe(obj) + ivaDe(obj);
 
+// Cómo se llama el producto CUANDO LO LEE EL CLIENTE.
+//
+// En el catálogo las paellas se llaman "Mar y Tierra", "Carne", "Marisco".
+// Entre nosotros se entiende, pero al cliente le llega un renglón que dice
+// "Carne — para 4 personas" y no hay forma de saber que es una paella. Aquí
+// se le antepone la palabra; las que ya la traen en el nombre se quedan
+// igual, para no acabar con "Paella Paella Valenciana".
+//
+// Solo aplica a las paellas: los demás platillos ya se llaman por su nombre.
+const nombreParaCliente = (it) => {
+  if (it?.tipo !== "paella") return it?.nombre || "";
+  const nombre = it.paellaNombre || "";
+  return /^paella\b/i.test(nombre.trim()) ? nombre : `Paella ${nombre}`;
+};
+
 const resumenProductos = (items) => {
   if (!items || items.length === 0) return "Sin productos";
   return items
@@ -402,7 +417,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   lineas.push("");
   datos.items.forEach((it) => {
     if (it.tipo === "paella") {
-      lineas.push(`• ${it.paellaNombre} ${fmtPersonas(it.kg)} — ${money(it.kg * it.precioKg)}`);
+      lineas.push(`• ${nombreParaCliente(it)} ${fmtPersonas(it.kg)} — ${money(it.kg * it.precioKg)}`);
       (it.extras || []).forEach((e) => {
         lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""} — ${money(e.precio * e.cantidad)}`);
       });
@@ -8426,7 +8441,9 @@ const construirPDF = async (form, tipoDoc, config) => {
   doc.setFontSize(CUERPO);
   form.items.forEach((it) => {
     cabe(9);
-    const nombre = it.tipo === "paella" ? it.paellaNombre : it.nombre;
+    // Igual que en el mensaje de WhatsApp: el cliente lee "Paella Mar y
+    // Tierra", no "Mar y Tierra" a secas.
+    const nombre = nombreParaCliente(it);
     // La paella se cobra POR KILO, y un kilo alcanza para dos personas. Antes
     // la cuenta se mostraba dividida entre personas ("$240.00/persona"), que
     // no es como se cobra y no cuadraba a simple vista con el importe. Ahora
@@ -8593,7 +8610,7 @@ const nombreArchivoPDF = (form, tipoDoc) => {
   return `${tipoDoc === "recibo" ? "Recibo" : "Presupuesto"}-${limpio}-${form.fecha}.pdf`;
 };
 
-function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido", pedidoDelForm, onAvisoEnviado }) {
+function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
   const [busqueda, setBusqueda] = useState("");
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [nuevoCliente, setNuevoCliente] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "" });
@@ -9240,25 +9257,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <Download size={16} className="inline mr-1" /> Recibo de pagado (PDF)
             </button>
           )}
-          {/* El resumen a mano. Si ya se le mandó, el botón lo dice: a Michelle
-              le llegó el mismo resumen dos veces con quince minutos de
-              diferencia, y desde el otro lado eso se siente como spam. */}
-          {form.clienteId && form.items.length > 0 && (() => {
-            const yaLoMande = (pedidoDelForm?.avisosEnviados || {}).nuevo;
-            return (
-              <button
-                className={"w-full mt-2 " + (yaLoMande ? "af-btn-secondary" : "af-btn-wa")}
-                onClick={() => {
-                  if (yaLoMande && !window.confirm(`Ya le mandaste el resumen ${haceCuanto(yaLoMande)}. ¿Se lo mando otra vez?`)) return;
-                  abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "pedido", config.pago, config.mensajes, config.local));
-                  if (form.pedidoId && onAvisoEnviado) onAvisoEnviado(form.pedidoId, "nuevo");
-                }}
-              >
-                <MessageCircle size={16} className="inline mr-1" />
-                {yaLoMande ? `Resumen ya enviado ${haceCuanto(yaLoMande)}` : "Enviar resumen por WhatsApp"}
-              </button>
-            );
-          })()}
+          {/* Aquí estaba "Enviar resumen por WhatsApp". Se quitó: hacía lo
+              mismo que guardar. Al guardar, la app ya ofrece el mensaje que
+              toca —la confirmación del pedido nuevo, el aviso de listo, el de
+              entregado o el saldo al día si se le abonó—, así que el botón
+              solo servía para mandar por segunda vez algo que ya iba a salir.
+              Ese era el botón que duplicaba los mensajes de los clientes. */}
           <button className="af-btn-primary w-full mt-2" onClick={onGuardar}>
             {editando ? "Guardar cambios" : "Guardar pedido"}
           </button>
@@ -10765,8 +10769,6 @@ export default function App() {
               onDuplicar={duplicarActual}
               error={error}
               modo={formModo}
-              pedidoDelForm={form.pedidoId ? pedidos.find((p) => p.id === form.pedidoId) : null}
-              onAvisoEnviado={apuntarAvisoEnviado}
             />
           )}
         </div>
