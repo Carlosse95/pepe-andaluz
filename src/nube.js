@@ -215,9 +215,12 @@ export const borrarTicket = async (ruta) => {
 // WhatsApp no deja adjuntar un archivo desde una liga, así que el recibo se
 // sube y en el mensaje va el enlace.
 
-// Días que el enlace sigue sirviendo. Suficiente para que el cliente lo
-// guarde, y no eterno: el recibo trae su nombre y su teléfono.
-const DIAS_QUE_DURA_EL_RECIBO = 30;
+// Días que el enlace sigue sirviendo. Un año: un recibo de pago es el
+// comprobante de que el cliente pagó, y lo puede querer buscar meses después
+// —para su contabilidad, o porque se le perdió—. Con 30 días el enlace se
+// moría antes que la necesidad, y el cliente veía un error sin entender por
+// qué. No es eterno porque el recibo trae su nombre y su teléfono.
+const DIAS_QUE_DURA_EL_RECIBO = 365;
 
 export const subirRecibo = async (blob, nombreArchivo) => {
   if (!nubeActiva) throw new Error("Sin conexión a la nube no se puede compartir el recibo.");
