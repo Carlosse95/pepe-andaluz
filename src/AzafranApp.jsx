@@ -364,7 +364,10 @@ const estadoPagoDe = (pagado, total) => {
 
 // Folio consecutivo: busca el mayor folio existente en la lista y suma 1.
 const siguienteFolio = (lista) => lista.reduce((max, x) => Math.max(max, x.folio || 0), 0) + 1;
-const fmtFolio = (n, prefijo = "") => (n ? `${prefijo}${String(n).padStart(4, "0")}` : "");
+// El folio se escribe tal cual, sin ceros de relleno: el 260 es "#260", no
+// "#0260". Los ceros salían de rellenar siempre a cuatro cifras, y mientras
+// los folios sean de tres solo hacen ruido.
+const fmtFolio = (n, prefijo = "") => (n ? `${prefijo}${n}` : "");
 
 // Muestra el teléfono legible: del formato de WhatsApp (5219991234567) saca
 // los últimos 10 dígitos y los separa como se leen aquí.
@@ -397,7 +400,7 @@ const telWhatsApp = (tel) => {
 // ejemplo {saldo} al confirmar un pago), para no calcularlos cuando no se usan.
 const aplicarPlantillaMensaje = (texto, datos, extra) => {
   const nombre = (datos.clienteNombre || "").split(/\s+/)[0] || "";
-  const folio = datos.folio ? fmtFolio(datos.folio) : "";
+  const folio = datos.folio ? fmtFolio(datos.folio, "#") : "";
   let salida = (texto || "").replaceAll("{nombre}", nombre).replaceAll("{folio}", folio);
   Object.entries(extra || {}).forEach(([clave, valor]) => {
     salida = salida.replaceAll(`{${clave}}`, valor);
@@ -419,7 +422,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   } else {
     lineas.push(`¡Hola${nombre ? " " + nombre : ""}! Le compartimos el resumen de su presupuesto en Pepe Andaluz 🥘`);
   }
-  if (datos.folio) lineas.push(`Folio: ${fmtFolio(datos.folio, modo === "presupuesto" ? "P-" : "")}`);
+  if (datos.folio) lineas.push(`Folio: ${fmtFolio(datos.folio, modo === "presupuesto" ? "P-" : "#")}`);
   lineas.push("");
   lineas.push(`📅 ${fmtDateHuman(datos.fecha)} · ${fmtHora12(datos.hora)}`);
   lineas.push(datos.entrega ? "🚚 Entrega a domicilio" : "🏠 Para recoger en el local");
@@ -2841,7 +2844,11 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
             p.fecha.includes(term) ||
             normNombre(fmtDateHuman(p.fecha)).includes(term) ||
             // También por folio, que es como se refieren a un pedido concreto.
-            (p.folio && (fmtFolio(p.folio).toLowerCase().includes(term) || String(p.folio) === soloNumeros)) ||
+            // Se acepta con ceros adelante ("0248") porque así se veía antes y
+            // así quedó escrito en libretas y mensajes viejos.
+            (p.folio &&
+              (String(p.folio).includes(term.replace(/^0+/, "")) ||
+                String(p.folio) === soloNumeros.replace(/^0+/, ""))) ||
             enProductos
           );
         });
@@ -8402,7 +8409,7 @@ const construirPDF = async (form, tipoDoc, config) => {
   if (form.folio) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(CUERPO);
-    doc.text(fmtFolio(form.folio, esRecibo ? "Pedido " : "Folio P-"), pageWidth - margin, 24, { align: "right" });
+    doc.text(fmtFolio(form.folio, esRecibo ? "Pedido #" : "Folio P-"), pageWidth - margin, 24, { align: "right" });
   }
 
   /* ---- Cliente y entrega, en dos columnas ---- */
@@ -10395,7 +10402,7 @@ export default function App() {
     const paellasPropias = form.items.filter((it) => it.tipo === "paella").length;
     const otrasEnFranja = contarPaellasEnFranja(pedidos, form.fecha, form.hora, form.pedidoId);
     const totalFranja = otrasEnFranja + paellasPropias;
-    const base = form.pedidoId ? "Pedido actualizado" : `Pedido ${fmtFolio(pedidoObj.folio)} guardado`;
+    const base = form.pedidoId ? "Pedido actualizado" : `Pedido ${fmtFolio(pedidoObj.folio, "#")} guardado`;
     showToast(base);
     // La alerta de demasiadas paellas en una franja de horario se muestra en
     // su propia ventana (no en el toast, que desaparece solo y es fácil de
@@ -10518,7 +10525,7 @@ export default function App() {
     }
 
     irAEditar(nuevoPedido);
-    showToast(`Convertido en pedido ${fmtFolio(nuevoPedido.folio)}`);
+    showToast(`Convertido en pedido ${fmtFolio(nuevoPedido.folio, "#")}`);
   };
 
   // Acepta un presupuesto directo desde su tarjeta: lo convierte en pedido
