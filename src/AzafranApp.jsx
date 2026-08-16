@@ -6712,6 +6712,40 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
   const [importPreview, setImportPreview] = useState(null);
   const [importError, setImportError] = useState("");
 
+  // Al añadir algo al menú, la fila nueva no cae donde uno está mirando.
+  // Los platillos se agrupan por sección (Platillos, Entradas, Postres), así
+  // que el renglón nuevo aparece ARRIBA, con los otros platillos, mientras el
+  // botón de "Añadir platillo" está hasta abajo, después de los postres.
+  // Medido en un celular: la fila nueva quedaba a 1,762 píxeles por encima
+  // del borde de la pantalla —más de dos pantallas hacia arriba—, así que se
+  // sentía como que el botón no hacía nada y se le picaba otra vez.
+  //
+  // Ahora se apunta lo que se acaba de crear y, en cuanto se dibuja, la
+  // pantalla se va hasta ahí con el cursor puesto para escribir el nombre.
+  const [recienCreado, setRecienCreado] = useState(null);
+  useEffect(() => {
+    if (!recienCreado) return;
+    const campo = document.querySelector(`[data-nuevo="${recienCreado}"]`);
+    if (campo) {
+      // El orden importa y costó encontrarlo: llamando primero a
+      // scrollIntoView con desplazamiento suave, el focus de después CANCELA
+      // la animación a medio camino y la pantalla se queda donde estaba
+      // (medido: seguía en 0). Se pone el cursor primero —sin que mueva nada—
+      // y luego se lleva la vista de un salto, que además en el celular es
+      // mejor: el teclado sube enseguida y una animación se pierde.
+      campo.focus({ preventScroll: true });
+      campo.scrollIntoView({ block: "center" });
+    }
+    setRecienCreado(null);
+  }, [recienCreado]);
+
+  // Añade al menú y deja la fila nueva a la vista, lista para escribirle.
+  const agregarAlMenu = (clave, hacerNuevo) => {
+    const id = uid();
+    setDraft((prev) => ({ ...prev, [clave]: [...(prev[clave] || []), hacerNuevo(id)] }));
+    setRecienCreado(id);
+  };
+
   const exportarRespaldo = () => {
     const payload = { ...datosRespaldo, app: "pepe-andaluz", exportadoEl: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -7214,6 +7248,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 <div className="af-menu-card-top">
                   <input
                     className="af-input af-menu-name"
+                    data-nuevo={p.id}
                     value={p.nombre}
                     placeholder="Nombre del platillo"
                     onChange={(e) => {
@@ -7245,7 +7280,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             ))}
             <button
               className="af-add-card"
-              onClick={() => setDraft({ ...draft, paellas: [...draft.paellas, { id: uid(), nombre: "", precioKg: 0 }] })}
+              onClick={() => agregarAlMenu("paellas", (id) => ({ id, nombre: "", precioKg: 0 }))}
             >
               <Plus size={20} />
               <span>Añadir paella</span>
@@ -7274,6 +7309,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 <div className="af-menu-card-top">
                   <input
                     className="af-input af-menu-name"
+                    data-nuevo={ex.id}
                     value={ex.nombre}
                     placeholder="Nombre"
                     onChange={(e) => {
@@ -7387,7 +7423,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             ))}
             <button
               className="af-add-card"
-              onClick={() => setDraft({ ...draft, extras: [...draft.extras, { id: uid(), nombre: "", unidad: "pieza", precio: 0, categoria: "platillo" }] })}
+              onClick={() => agregarAlMenu("extras", (id) => ({ id, nombre: "", unidad: "pieza", precio: 0, categoria: "platillo" }))}
             >
               <Plus size={20} />
               <span>Añadir platillo</span>
