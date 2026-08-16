@@ -315,6 +315,16 @@ const resumenExtras = (it) =>
   (it.extras || []).map((e) => ` + ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""}`).join("");
 const calcExtraSubtotal = (cantidad, precio) => cantidad * precio;
 
+// Unidades del menú. Antes se escribían a mano y pasó lo que tenía que pasar:
+// tres platillos quedaron con "Kg" y dos con "kg". Para el código NO son la
+// misma cosa, así que a los de "Kg" les salía "× 3" en vez de "— 3 kg" en el
+// WhatsApp del cliente y en el PDF, y el precio se leía "c/u" en vez de "/kg".
+// (Las cuentas no cambiaban: las dos fórmulas multiplican igual.)
+const UNIDADES_MENU = ["pieza", "kg", "litro", "ración", "bolsa", "frasco", "charola", "orden"];
+
+// ¿Este platillo se vende por kilo? Sin importar cómo se haya escrito.
+const esPorKg = (x) => String((x && x.unidad) || "").trim().toLowerCase() === "kg";
+
 const computeTotal = (items) => items.reduce((acc, it) => acc + it.subtotal, 0);
 
 // Costo de envío: solo aplica cuando el pedido es a domicilio.
@@ -438,7 +448,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
         lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""} — ${money(e.precio * e.cantidad)}`);
       });
     } else {
-      lineas.push(`• ${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${money(it.subtotal)}`);
+      lineas.push(`• ${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${money(it.subtotal)}`);
     }
   });
   lineas.push("");
@@ -1553,7 +1563,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
           <li key={it.id}>
             {it.tipo === "paella"
               ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}${it.enPaellera ? " · paellera" : ""}`
-              : `${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
+              : `${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
             {it.nota && (
               <div className="af-item-nota">
                 <StickyNote size={12} className="inline mr-1" />{it.nota}
@@ -2793,7 +2803,7 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
       <ul className="af-resumen-lista">
         {presupuesto.items.map((it) => (
           <li key={it.id}>
-            {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}` : `${it.nombre} ${it.unidad === "kg" ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
+            {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}` : `${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
           </li>
         ))}
         {presupuesto.envio > 0 && <li>Envío a domicilio — {money(presupuesto.envio)}</li>}
@@ -6739,10 +6749,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     setRecienCreado(null);
   }, [recienCreado]);
 
-  // Añade al menú y deja la fila nueva a la vista, lista para escribirle.
-  const agregarAlMenu = (clave, hacerNuevo) => {
+  // Añade al menú y deja la ficha nueva abierta, a la vista y lista para
+  // escribirle. Se abre también su grupo: si no, lo recién creado quedaría
+  // dentro de una sección cerrada, que es otra forma de no verlo.
+  const agregarAlMenu = (clave, hacerNuevo, grupoId) => {
     const id = uid();
     setDraft((prev) => ({ ...prev, [clave]: [...(prev[clave] || []), hacerNuevo(id)] }));
+    if (grupoId) setGruposMenuAbiertos((prev) => ({ ...prev, [grupoId]: true }));
+    setPlatilloAbierto(id);
     setRecienCreado(id);
   };
 
@@ -6814,21 +6828,299 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     (extras) => setDraft((prev) => ({ ...prev, extras }))
   );
 
-  // Los platillos se muestran agrupados por categoría —igual que salen al hacer
-  // un pedido— pero conservando el índice real dentro de draft.extras, que es
-  // con el que trabajan los campos y las flechas de orden.
-  const filasExtras = (() => {
-    const orden = CATEGORIAS_ITEM.filter((c) => c.id !== "paella").map((c) => c.id);
-    const conIndice = draft.extras.map((ex, i) => ({ ex, i }));
-    conIndice.sort((a, b) => orden.indexOf(a.ex.categoria || "platillo") - orden.indexOf(b.ex.categoria || "platillo"));
-    let anterior = null;
-    return conIndice.map((fila) => {
-      const cat = fila.ex.categoria || "platillo";
-      const abreCategoria = cat !== anterior;
-      anterior = cat;
-      return { ...fila, abreCategoria };
-    });
+  // ---------- El menú, plegado ----------
+  // Antes el menú era una sola tirada con TODAS las fichas abiertas: seis
+  // paellas y catorce platillos, cada uno con sus diez campos. Más de cinco
+  // mil píxeles de largo. En el celular, encontrar un platillo para cambiarle
+  // el precio era bajar y bajar. Ahora funciona como Inventario: grupos
+  // cerrados, un renglón por platillo, y la ficha completa solo del que se va
+  // a tocar.
+  const [buscarMenu, setBuscarMenu] = useState("");
+  const [gruposMenuAbiertos, setGruposMenuAbiertos] = useState({});
+  const [platilloAbierto, setPlatilloAbierto] = useState(null);
+
+  const CATS_DE_EXTRA = CATEGORIAS_ITEM.filter((c) => c.id !== "paella");
+
+  // Los grupos del menú, cada uno sabiendo de qué lista sale, cómo se ordena
+  // y qué se apunta en el renglón cerrado. Se conserva el índice REAL dentro
+  // de su lista: es con el que escriben los campos y el que mueve el arrastre.
+  const gruposMenu = (() => {
+    const busca = normNombre(buscarMenu);
+    const pasa = (nombre) => !busca || normNombre(nombre || "").includes(busca);
+
+    const grupos = [
+      {
+        id: "paellas",
+        label: "Paellas",
+        lista: "paellas",
+        acomodar: acomodarPaellas,
+        hint: "Deja el dedo encima de una y arrástrala para acomodarlas a tu gusto.",
+        textoAgregar: "Añadir paella",
+        nuevo: (id) => ({ id, nombre: "", precioKg: 0 }),
+        items: (draft.paellas || []).map((it, i) => ({ it, i })).filter(({ it }) => pasa(it.nombre)),
+        metaDe: (it) => `${money(it.precioKg || 0)}/kg`,
+      },
+      ...CATS_DE_EXTRA.map((c) => ({
+        id: "extras:" + c.id,
+        label: c.label,
+        lista: "extras",
+        acomodar: acomodarExtras,
+        hint:
+          c.id === "platillo"
+            ? "Deja el dedo encima un momento y arrástralo. El orden de aquí es el que verás al hacer un pedido: pon primero lo que más se vende."
+            : null,
+        textoAgregar: "Añadir a " + c.label.toLowerCase(),
+        nuevo: (id) => ({ id, nombre: "", unidad: "pieza", precio: 0, categoria: c.id }),
+        items: (draft.extras || [])
+          .map((it, i) => ({ it, i }))
+          .filter(({ it }) => (it.categoria || "platillo") === c.id && pasa(it.nombre)),
+        metaDe: (it) => money(it.precio || 0),
+      })),
+      {
+        id: "extrasPaella",
+        label: "Extras de paella",
+        lista: "extrasPaella",
+        acomodar: null,
+        hint: "Se suman a la paella sin cambiar su precio por kilo.",
+        textoAgregar: "Añadir extra",
+        nuevo: (id) => ({ id, nombre: "", precio: 0 }),
+        items: (draft.extrasPaella || []).map((it, i) => ({ it, i })).filter(({ it }) => pasa(it.nombre)),
+        metaDe: (it) => money(it.precio || 0),
+      },
+    ];
+    // Buscando, un grupo vacío es ruido; sin buscar sí se enseña, para poder
+    // añadir el primero de esa sección.
+    return busca ? grupos.filter((g) => g.items.length > 0) : grupos;
   })();
+
+  const cuantosEnElMenu =
+    (draft.paellas || []).length + (draft.extras || []).length + (draft.extrasPaella || []).length;
+
+
+  // La ficha completa de lo que se está editando. Es la misma de siempre; lo
+  // único nuevo es el botón de cerrar, porque ahora se abre de una en una.
+  const fichaDelMenu = (g, it, i) => {
+    const cerrar = (
+      <button className="af-icon-btn" title="Cerrar" onClick={() => setPlatilloAbierto(null)}>
+        <ChevronRight size={16} className="af-mes-flecha abierta" />
+      </button>
+    );
+    const propsArrastre = g.acomodar
+      ? {
+          ref: (n) => g.acomodar.registrar(i, n),
+          ...g.acomodar.propsDe(i),
+          onPointerDown: g.acomodar.alBajar(i),
+          onPointerMove: g.acomodar.alMover,
+          onPointerUp: g.acomodar.alSoltar,
+          onPointerCancel: g.acomodar.alSoltar,
+        }
+      : { className: "af-menu-card" };
+
+    if (g.lista === "paellas") {
+      return (
+        <div key={it.id} {...propsArrastre}>
+          <div className="af-menu-card-top">
+            <input
+              className="af-input af-menu-name"
+              data-nuevo={it.id}
+              value={it.nombre}
+              placeholder="Nombre de la paella"
+              onChange={(e) => {
+                const paellas = draft.paellas.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
+                setDraft({ ...draft, paellas });
+              }}
+            />
+            <button
+              className="af-icon-btn"
+              title="Quitar"
+              onClick={() => setPorBorrar({ lista: "paellas", indice: i, nombre: it.nombre, que: "la paella" })}
+            >
+              <Trash2 size={15} />
+            </button>
+            {cerrar}
+          </div>
+          <div className="af-menu-card-row">
+            <NumberField
+              value={it.precioKg}
+              min={0}
+              className="af-input af-menu-price"
+              onChange={(v) => {
+                const paellas = draft.paellas.map((x, xi) => (xi === i ? { ...x, precioKg: v } : x));
+                setDraft({ ...draft, paellas });
+              }}
+            />
+            <span className="af-price-suffix">$/kg</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (g.lista === "extrasPaella") {
+      return (
+        <div key={it.id} {...propsArrastre}>
+          <div className="af-menu-card-top">
+            <input
+              className="af-input af-menu-name"
+              data-nuevo={it.id}
+              value={it.nombre}
+              placeholder="Ej. Langosta"
+              onChange={(e) => {
+                const extrasPaella = draft.extrasPaella.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
+                setDraft({ ...draft, extrasPaella });
+              }}
+            />
+            <button
+              className="af-icon-btn"
+              title="Quitar"
+              onClick={() => setPorBorrar({ lista: "extrasPaella", indice: i, nombre: it.nombre, que: "el extra" })}
+            >
+              <Trash2 size={15} />
+            </button>
+            {cerrar}
+          </div>
+          <div className="af-menu-card-row">
+            <NumberField
+              value={it.precio}
+              min={0}
+              className="af-input af-menu-price"
+              onChange={(v) => {
+                const extrasPaella = draft.extrasPaella.map((x, xi) => (xi === i ? { ...x, precio: v } : x));
+                setDraft({ ...draft, extrasPaella });
+              }}
+            />
+            <span className="af-price-suffix">$ por porción</span>
+          </div>
+        </div>
+      );
+    }
+
+    const ex = it;
+    return (
+      <div key={it.id} {...propsArrastre}>
+        <div className="af-menu-card-top">
+          <input
+            className="af-input af-menu-name"
+            data-nuevo={ex.id}
+            value={ex.nombre}
+            placeholder="Nombre"
+            onChange={(e) => {
+              const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
+              setDraft({ ...draft, extras });
+            }}
+          />
+          <button
+            className="af-icon-btn"
+            title="Quitar"
+            onClick={() => setPorBorrar({ lista: "extras", indice: i, nombre: ex.nombre, que: "el platillo" })}
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+        <div className="af-mini-label mt-1">¿Cómo se vende?</div>
+        <select
+          className="af-input"
+          value={ex.unidad || "pieza"}
+          onChange={(e) => {
+            const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, unidad: e.target.value } : x));
+            setDraft({ ...draft, extras });
+          }}
+        >
+          {UNIDADES_MENU.map((u) => (<option key={u} value={u}>{u}</option>))}
+          {/* Lo que ya estaba escrito a mano y no aparece en la lista se
+              conserva como opción: no se le cambia la unidad a un platillo sin
+              avisar. Dice "(como estaba)" justo para invitar a pasarlo a una
+              de las de arriba. */}
+          {ex.unidad && !UNIDADES_MENU.includes(ex.unidad) && (
+            <option value={ex.unidad}>{ex.unidad} (como estaba)</option>
+          )}
+        </select>
+        <div className="af-mini-label mt-1">¿En qué sección va?</div>
+        <select
+          className="af-input"
+          value={ex.categoria || "platillo"}
+          onChange={(e) => {
+            const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, categoria: e.target.value } : x));
+            setDraft({ ...draft, extras });
+          }}
+        >
+          {CATEGORIAS_ITEM.filter((c) => c.id !== "paella").map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+        <div className="af-menu-card-row">
+          <NumberField
+            value={ex.precio}
+            min={0}
+            className="af-input af-menu-price"
+            onChange={(v) => {
+              const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, precio: v } : x));
+              setDraft({ ...draft, extras });
+            }}
+          />
+          <span className="af-price-suffix">$</span>
+        </div>
+        {/* Solo sirve para los que se venden en paquete. Se llamaba
+            "piezas por orden" a secas y no se entendía: parecía que
+            había que llenarlo siempre, y que de ahí salía el descuento
+            de envases, que sale del Empaque de abajo. */}
+        <div className="af-mini-label mt-1">¿Una orden trae varias piezas?</div>
+        <div className="af-menu-card-row">
+          <NumberField
+            value={ex.piezasPorUnidad || 0}
+            min={0}
+            className="af-input af-menu-kgrange"
+            onChange={(v) => {
+              const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, piezasPorUnidad: v } : x));
+              setDraft({ ...draft, extras });
+            }}
+          />
+          <span className="af-price-suffix flex-1">
+            {ex.piezasPorUnidad > 0 ? "piezas en cada orden" : "déjalo en 0 si se vende por pieza"}
+          </span>
+        </div>
+        <div className="af-hint">
+          {ex.piezasPorUnidad > 1
+            ? `Al pedir 2 saldrán ${2 * ex.piezasPorUnidad} piezas en la producción del día y en el WhatsApp del cliente.`
+            : ex.piezasPorUnidad === 1
+              ? "Poner 1 es lo mismo que poner 0: déjalo en 0 y te evitas la duda."
+              : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
+        </div>
+        <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
+        <select
+          className="af-input"
+          value={ex.empaqueTipo || "ninguno"}
+          onChange={(e) => {
+            const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueTipo: e.target.value } : x));
+            setDraft({ ...draft, extras });
+          }}
+        >
+          <option value="ninguno">Sin envase</option>
+          <option value="pieza">Un envase por cada unidad</option>
+          <option value="rango">Según el total de piezas (rangos en Envases desechables)</option>
+        </select>
+        {ex.empaqueTipo === "pieza" && (
+          <select
+            className="af-input"
+            value={ex.empaqueEnvaseId || ""}
+            onChange={(e) => {
+              const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueEnvaseId: e.target.value } : x));
+              setDraft({ ...draft, extras });
+            }}
+          >
+            <option value="">Elige el envase...</option>
+            {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
+          </select>
+        )}
+        {ex.empaqueTipo === "rango" && (
+          <div className="af-hint">
+            Se usará el envase (medido en piezas) cuyo rango incluya el total de piezas del pedido
+            ({ex.piezasPorUnidad > 0 ? `${ex.piezasPorUnidad} por orden` : "define las piezas por orden arriba"}).
+            Configura esos envases en <strong>Inventario → Envases desechables</strong>.
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const guardar = () => {
     // Se parte de `draft` entero y solo se reescribe lo que se edita aquí.
@@ -7230,249 +7522,79 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
       {tab === "menu" && (
         <fieldset disabled={!esAdmin} className="af-fieldset-reset">
-          <div className="af-section-title">Paellas <span className="af-ink-soft">(precio por kg)</span></div>
-          <div className="af-hint mb-2">
-            Deja el dedo encima de una y arrástrala para acomodarlas a tu gusto.
-          </div>
-          <div className="af-menu-grid mb-5">
-            {draft.paellas.map((p, i) => (
-              <div
-                key={p.id}
-                ref={(n) => acomodarPaellas.registrar(i, n)}
-                {...acomodarPaellas.propsDe(i)}
-                onPointerDown={acomodarPaellas.alBajar(i)}
-                onPointerMove={acomodarPaellas.alMover}
-                onPointerUp={acomodarPaellas.alSoltar}
-                onPointerCancel={acomodarPaellas.alSoltar}
-              >
-                <div className="af-menu-card-top">
-                  <input
-                    className="af-input af-menu-name"
-                    data-nuevo={p.id}
-                    value={p.nombre}
-                    placeholder="Nombre del platillo"
-                    onChange={(e) => {
-                      const paellas = draft.paellas.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
-                      setDraft({ ...draft, paellas });
-                    }}
-                  />
-                  <button
-                    className="af-icon-btn"
-                    title="Quitar"
-                    onClick={() => setPorBorrar({ lista: "paellas", indice: i, nombre: p.nombre, que: "la paella" })}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-                <div className="af-menu-card-row">
-                  <NumberField
-                    value={p.precioKg}
-                    min={0}
-                    className="af-input af-menu-price"
-                    onChange={(v) => {
-                      const paellas = draft.paellas.map((x, xi) => (xi === i ? { ...x, precioKg: v } : x));
-                      setDraft({ ...draft, paellas });
-                    }}
-                  />
-                  <span className="af-price-suffix">$/kg</span>
-                </div>
-              </div>
-            ))}
-            <button
-              className="af-add-card"
-              onClick={() => agregarAlMenu("paellas", (id) => ({ id, nombre: "", precioKg: 0 }))}
-            >
-              <Plus size={20} />
-              <span>Añadir paella</span>
-            </button>
-          </div>
+          {cuantosEnElMenu > 6 && (
+            <div className="af-buscador-gastos mb-3">
+              <Search size={16} />
+              <input
+                className="af-input"
+                placeholder="Buscar un platillo…"
+                value={buscarMenu}
+                onChange={(e) => setBuscarMenu(e.target.value)}
+              />
+              {buscarMenu && (
+                <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscarMenu("")}><X size={16} /></button>
+              )}
+            </div>
+          )}
 
-          <div className="af-section-title">Otros platillos</div>
-          <div className="af-hint mb-2">
-            Deja el dedo encima de un platillo un momento y arrástralo a donde quieras.
-            El orden de aquí es el que verás al hacer un pedido: pon primero lo que más
-            se vende. Con <strong>¿En qué sección va?</strong>{" "}
-            lo cambias entre Platillos, Entradas y Postres.
-          </div>
-          <div className="af-menu-grid">
-            {filasExtras.map(({ ex, i, abreCategoria }) => (
-              <React.Fragment key={ex.id}>
-              {abreCategoria && <div className="af-menu-grupo">{CATEGORIA_LABEL[ex.categoria || "platillo"]}</div>}
-              <div
-                ref={(n) => acomodarExtras.registrar(i, n)}
-                {...acomodarExtras.propsDe(i)}
-                onPointerDown={acomodarExtras.alBajar(i)}
-                onPointerMove={acomodarExtras.alMover}
-                onPointerUp={acomodarExtras.alSoltar}
-                onPointerCancel={acomodarExtras.alSoltar}
-              >
-                <div className="af-menu-card-top">
-                  <input
-                    className="af-input af-menu-name"
-                    data-nuevo={ex.id}
-                    value={ex.nombre}
-                    placeholder="Nombre"
-                    onChange={(e) => {
-                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
-                      setDraft({ ...draft, extras });
-                    }}
-                  />
+          <div className="mb-5">
+            {gruposMenu.length === 0 && <p className="af-ink-soft text-sm">Nada con ese nombre.</p>}
+            {gruposMenu.map((g) => {
+              // Buscando se abre todo: un resultado escondido detrás de un grupo
+              // cerrado es como no haberlo encontrado.
+              const abierto = !!gruposMenuAbiertos[g.id] || !!normNombre(buscarMenu);
+              return (
+                <div key={g.id} className="af-grupo">
                   <button
-                    className="af-icon-btn"
-                    title="Quitar"
-                    onClick={() => setPorBorrar({ lista: "extras", indice: i, nombre: ex.nombre, que: "el platillo" })}
+                    className="af-grupo-cabecera"
+                    onClick={() => setGruposMenuAbiertos((prev) => ({ ...prev, [g.id]: !prev[g.id] }))}
                   >
-                    <Trash2 size={15} />
+                    <ChevronRight size={16} className={"af-mes-flecha" + (abierto ? " abierta" : "")} />
+                    <span className="af-mes-nombre">{g.label}</span>
+                    <span className="af-mes-cuenta">{g.items.length}</span>
                   </button>
-                </div>
-                <input
-                  className="af-input"
-                  value={ex.unidad}
-                  placeholder="unidad: pieza, bolsa, kg..."
-                  onChange={(e) => {
-                    const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, unidad: e.target.value } : x));
-                    setDraft({ ...draft, extras });
-                  }}
-                />
-                <div className="af-mini-label mt-1">¿En qué sección va?</div>
-                <select
-                  className="af-input"
-                  value={ex.categoria || "platillo"}
-                  onChange={(e) => {
-                    const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, categoria: e.target.value } : x));
-                    setDraft({ ...draft, extras });
-                  }}
-                >
-                  {CATEGORIAS_ITEM.filter((c) => c.id !== "paella").map((c) => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
-                  ))}
-                </select>
-                <div className="af-menu-card-row">
-                  <NumberField
-                    value={ex.precio}
-                    min={0}
-                    className="af-input af-menu-price"
-                    onChange={(v) => {
-                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, precio: v } : x));
-                      setDraft({ ...draft, extras });
-                    }}
-                  />
-                  <span className="af-price-suffix">$</span>
-                </div>
-                {/* Solo sirve para los que se venden en paquete. Se llamaba
-                    "piezas por orden" a secas y no se entendía: parecía que
-                    había que llenarlo siempre, y que de ahí salía el descuento
-                    de envases, que sale del Empaque de abajo. */}
-                <div className="af-mini-label mt-1">¿Una orden trae varias piezas?</div>
-                <div className="af-menu-card-row">
-                  <NumberField
-                    value={ex.piezasPorUnidad || 0}
-                    min={0}
-                    className="af-input af-menu-kgrange"
-                    onChange={(v) => {
-                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, piezasPorUnidad: v } : x));
-                      setDraft({ ...draft, extras });
-                    }}
-                  />
-                  <span className="af-price-suffix flex-1">
-                    {ex.piezasPorUnidad > 0 ? "piezas en cada orden" : "déjalo en 0 si se vende por pieza"}
-                  </span>
-                </div>
-                <div className="af-hint">
-                  {ex.piezasPorUnidad > 1
-                    ? `Al pedir 2 saldrán ${2 * ex.piezasPorUnidad} piezas en la producción del día y en el WhatsApp del cliente.`
-                    : ex.piezasPorUnidad === 1
-                      ? "Poner 1 es lo mismo que poner 0: déjalo en 0 y te evitas la duda."
-                      : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
-                </div>
-                <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
-                <select
-                  className="af-input"
-                  value={ex.empaqueTipo || "ninguno"}
-                  onChange={(e) => {
-                    const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueTipo: e.target.value } : x));
-                    setDraft({ ...draft, extras });
-                  }}
-                >
-                  <option value="ninguno">Sin envase</option>
-                  <option value="pieza">Un envase por cada unidad</option>
-                  <option value="rango">Según el total de piezas (rangos en Envases desechables)</option>
-                </select>
-                {ex.empaqueTipo === "pieza" && (
-                  <select
-                    className="af-input"
-                    value={ex.empaqueEnvaseId || ""}
-                    onChange={(e) => {
-                      const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueEnvaseId: e.target.value } : x));
-                      setDraft({ ...draft, extras });
-                    }}
-                  >
-                    <option value="">Elige el envase...</option>
-                    {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
-                  </select>
-                )}
-                {ex.empaqueTipo === "rango" && (
-                  <div className="af-hint">
-                    Se usará el envase (medido en piezas) cuyo rango incluya el total de piezas del pedido
-                    ({ex.piezasPorUnidad > 0 ? `${ex.piezasPorUnidad} por orden` : "define las piezas por orden arriba"}).
-                    Configura esos envases en <strong>Inventario → Envases desechables</strong>.
-                  </div>
-                )}
-              </div>
-              </React.Fragment>
-            ))}
-            <button
-              className="af-add-card"
-              onClick={() => agregarAlMenu("extras", (id) => ({ id, nombre: "", unidad: "pieza", precio: 0, categoria: "platillo" }))}
-            >
-              <Plus size={20} />
-              <span>Añadir platillo</span>
-            </button>
-          </div>
 
-          <div className="af-section-title">Extras de paella <span className="af-ink-soft">(se suman a la paella sin cambiar su precio/kg)</span></div>
-          <div className="af-menu-grid mb-5">
-            {(draft.extrasPaella || []).map((ex, i) => (
-              <div key={ex.id} className="af-menu-card">
-                <div className="af-menu-card-top">
-                  <input
-                    className="af-input af-menu-name"
-                    value={ex.nombre}
-                    placeholder="Ej. Langosta"
-                    onChange={(e) => {
-                      const extrasPaella = draft.extrasPaella.map((x, xi) => (xi === i ? { ...x, nombre: e.target.value } : x));
-                      setDraft({ ...draft, extrasPaella });
-                    }}
-                  />
-                  <button
-                    className="af-icon-btn"
-                    title="Quitar"
-                    onClick={() => setPorBorrar({ lista: "extrasPaella", indice: i, nombre: ex.nombre, que: "el extra" })}
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {abierto && (
+                    <>
+                      {g.hint && <div className="af-hint mb-2">{g.hint}</div>}
+                      {g.items.length === 0 && (
+                        <p className="af-ink-soft text-sm mb-2">Todavía no hay nada en esta sección.</p>
+                      )}
+                      {g.items.map(({ it, i }) =>
+                        platilloAbierto === it.id ? (
+                          fichaDelMenu(g, it, i)
+                        ) : (
+                          <div
+                            key={it.id}
+                            className="af-ing-row af-menu-row"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setPlatilloAbierto(it.id)}
+                            onKeyDown={(e) => { if (e.key === "Enter") setPlatilloAbierto(it.id); }}
+                            ref={g.acomodar ? (n) => g.acomodar.registrar(i, n) : undefined}
+                            onPointerDown={g.acomodar ? g.acomodar.alBajar(i) : undefined}
+                            onPointerMove={g.acomodar ? g.acomodar.alMover : undefined}
+                            onPointerUp={g.acomodar ? g.acomodar.alSoltar : undefined}
+                            onPointerCancel={g.acomodar ? g.acomodar.alSoltar : undefined}
+                          >
+                            <span className="af-ing-row-nombre">{it.nombre || "Sin nombre"}</span>
+                            <span className="af-ing-row-meta">{g.metaDe(it)}</span>
+                            <ChevronRight size={15} className="af-mes-flecha" />
+                          </div>
+                        )
+                      )}
+                      <button
+                        className="af-add-card af-add-card-row"
+                        onClick={() => agregarAlMenu(g.lista, g.nuevo, g.id)}
+                      >
+                        <Plus size={18} />
+                        <span>{g.textoAgregar}</span>
+                      </button>
+                    </>
+                  )}
                 </div>
-                <div className="af-menu-card-row">
-                  <NumberField
-                    value={ex.precio}
-                    min={0}
-                    className="af-input af-menu-price"
-                    onChange={(v) => {
-                      const extrasPaella = draft.extrasPaella.map((x, xi) => (xi === i ? { ...x, precio: v } : x));
-                      setDraft({ ...draft, extrasPaella });
-                    }}
-                  />
-                  <span className="af-price-suffix">$ por porción</span>
-                </div>
-              </div>
-            ))}
-            <button
-              className="af-add-card"
-              onClick={() => setDraft({ ...draft, extrasPaella: [...(draft.extrasPaella || []), { id: uid(), nombre: "", precio: 0 }] })}
-            >
-              <Plus size={20} />
-              <span>Añadir extra</span>
-            </button>
+              );
+            })}
           </div>
         </fieldset>
       )}
@@ -8161,7 +8283,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   );
 
   const itemsCarrito = Object.values(carrito);
-  const subtotalDe = (p, cant) => (p.unidad === "kg" ? calcPaellaSubtotal(cant, p.precio) : calcExtraSubtotal(cant, p.precio));
+  const subtotalDe = (p, cant) => (esPorKg(p) ? calcPaellaSubtotal(cant, p.precio) : calcExtraSubtotal(cant, p.precio));
   const totalCarrito = itemsCarrito.reduce((a, { producto, cantidad }) => a + subtotalDe(producto, cantidad), 0);
   const mostrarDetalle = !!editando || verResumen;
 
@@ -8266,7 +8388,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                         <div className="min-w-0" style={{ flex: 1, cursor: "pointer" }} onClick={() => agregarAlCarrito(p)}>
                           <div className="af-item-nombre">{p.nombre}</div>
                           <div className="af-ink-soft text-sm">
-                            {enCarrito ? money(subtotalDe(p, enCarrito.cantidad)) : (p.unidad === "kg" ? "Precio por kg" : p.unidad)}
+                            {enCarrito ? money(subtotalDe(p, enCarrito.cantidad)) : (esPorKg(p) ? "Precio por kg" : p.unidad)}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -8333,7 +8455,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                     <div key={producto.id} className="af-carrito-row">
                       <div className="min-w-0" style={{ flex: 1 }}>
                         <div className="af-item-nombre">{producto.nombre}</div>
-                        <div className="af-ink-soft text-sm">{cantidad} {producto.unidad === "kg" ? "kg" : producto.unidad}</div>
+                        <div className="af-ink-soft text-sm">{cantidad} {esPorKg(producto) ? "kg" : producto.unidad}</div>
                       </div>
                       <span className="af-total">{money(subtotalDe(producto, cantidad))}</span>
                       <button className="af-icon-btn" onClick={() => quitarDelCarrito(producto.id)}><X size={14} /></button>
@@ -8565,8 +8687,8 @@ const construirPDF = async (form, tipoDoc, config) => {
     // se ve el kilaje —que es lo que multiplica— y las personas de referencia.
     const cant = it.tipo === "paella"
       ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg).replace("para ", "")}`
-      : it.unidad === "kg" ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
-    const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : it.unidad === "kg" ? `${money(it.precio)}/kg` : money(it.precio);
+      : esPorKg(it) ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
+    const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : esPorKg(it) ? `${money(it.precio)}/kg` : money(it.precio);
     // Para paellas con extras, la fila muestra solo la base; los extras van
     // en renglones propios para que la suma cuadre a la vista.
     const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
@@ -9091,7 +9213,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 <div className="af-items-col-nombre">
                   <div className="af-item-nombre">{it.tipo === "paella" ? it.paellaNombre : it.nombre}</div>
                   <div className="af-ink-soft text-sm">
-                    {it.tipo === "paella" || it.unidad === "kg" ? money(it.tipo === "paella" ? it.precioKg : it.precio) + "/kg" : money(it.precio) + " c/u"}
+                    {it.tipo === "paella" || esPorKg(it) ? money(it.tipo === "paella" ? it.precioKg : it.precio) + "/kg" : money(it.precio) + " c/u"}
                   </div>
                   {it.tipo === "paella" && (it.extras || []).map((e) => (
                     <div key={e.id} className="af-extra-line">
