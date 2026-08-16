@@ -39,6 +39,10 @@ const MENSAJES_DEFAULT = {
   avisadoRecoger:
     "¡Hola {nombre}! Su pedido {folio} ya está listo, puede pasar a recogerlo cuando guste 🥘",
   avisadoDomicilio: "¡Hola {nombre}! Su pedido {folio} ya está listo y va en camino a su domicilio 🚚",
+  // Para tocarlo desde la calle, ya afuera de la casa del cliente. Quien
+  // entrega no siempre tiene el número guardado en su teléfono, así que el
+  // botón abre el chat directo sin tener que buscar el contacto.
+  llegue: "¡Hola {nombre}! Ya llegué con su pedido {folio}, estoy afuera 🚚",
   entregado: "¡Hola {nombre}! Su pedido {folio} fue entregado. ¡Gracias por su preferencia, esperamos disfrute su comida! 🥘",
   pagoAbono:
     "¡Hola {nombre}! Recibimos su pago de {abono} 🙏\n\n" +
@@ -544,6 +548,10 @@ const mensajeAvisado = (pedido, mensajes, local, pago) => {
   const texto = aplicarPlantillaMensaje(plantilla, pedido, { dondeRecoger: bloqueDondeRecoger(local) });
   return conCuenta(texto, plantilla, pedido, pago);
 };
+
+// "Ya estoy afuera", para tocarlo al llegar a la puerta del cliente.
+const mensajeLlegue = (pedido, mensajes) =>
+  aplicarPlantillaMensaje(mensajes?.llegue || MENSAJES_DEFAULT.llegue, pedido);
 
 // Mensaje corto para avisar que el pedido ya se entregó (al marcarlo "Entregado").
 // Aquí NO va la cuenta: al entregar se cobra en la mano, y la idea es mandarle
@@ -1424,7 +1432,7 @@ function EstadoPedidoSelect({ estado, onChange }) {
   );
 }
 
-function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoWhatsApp, avisoPendiente }) {
+function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoWhatsApp, avisoPendiente, mensajes }) {
   const itemsPaellera = pedido.items.filter((it) => it.tipo === "paella" && it.enPaellera);
   const hayPaellera = itemsPaellera.length > 0;
   const todasDevueltas = hayPaellera && itemsPaellera.every((it) => it.paelleraDevuelta);
@@ -1518,6 +1526,25 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
           <span className={"af-chip " + (todasDevueltas ? "af-chip-olive" : "af-chip-gold")}>
             <ChefHat size={12} /> {todasDevueltas ? "Paellera devuelta" : itemsPaellera.length > 1 ? `${itemsPaellera.length} paelleras` : "Paellera"}
           </span>
+        )}
+        {/* "Ya llegué", para tocarlo desde la calle. Va pegado al chip del
+            mapa porque ese es el orden real de quien entrega: abrir el mapa,
+            manejar, llegar y avisar. Solo en pedidos a domicilio que todavía
+            no se entregan, y solo si hay teléfono: quien reparte no siempre
+            tiene el contacto guardado, y así no tiene que buscarlo.
+            Es una liga a wa.me, así que abre WhatsApp con el mensaje escrito
+            pero SIN mandarlo — todavía hay que darle enviar. */}
+        {pedido.entrega && pedido.clienteTelefono && estado !== "entregado" && (
+          <a
+            href={`https://wa.me/${telWhatsApp(pedido.clienteTelefono)}?text=${encodeURIComponent(mensajeLlegue(pedido, mensajes))}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="af-chip af-chip-llegue"
+            onClick={(e) => e.stopPropagation()}
+            title="Avisarle al cliente que ya estás afuera"
+          >
+            <MessageCircle size={12} /> Ya llegué
+          </a>
         )}
       </div>
 
@@ -2370,7 +2397,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           {activosFiltrados
             .slice()
             .sort((a, b) => a.hora.localeCompare(b.hora))
-            .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
+            .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />)}
         </div>
       )}
 
@@ -2508,7 +2535,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                 {entregadosHoy
                   .slice()
                   .sort((a, b) => a.hora.localeCompare(b.hora))
-                  .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
+                  .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />)}
               </div>
             </PanelPlegable>
           )}
@@ -2720,7 +2747,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                 .slice()
                 .sort((a, b) => a.hora.localeCompare(b.hora))
                 .map((p) => (
-                  <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
+                  <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />
                 ))}
             </div>
           </PanelPlegable>
@@ -2822,7 +2849,7 @@ function PresupuestosView({ presupuestos, onAbrir, onAceptar, onNuevo }) {
 /*  Vista: Buscar                                                         */
 /* ---------------------------------------------------------------------- */
 
-function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
+function BuscarView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [q, setQ] = useState("");
   const term = normNombre(q);
   // Los dígitos sueltos, para buscar por teléfono aunque se escriba con
@@ -2897,7 +2924,7 @@ function BuscarView({ pedidos, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, 
 
       <div className="af-card-grid">
         {ordenados.map((p) => (
-          <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />
+          <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />
         ))}
       </div>
     </div>
@@ -3063,7 +3090,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
           <EmptyState icon={<Users size={24} />} title="Sin pedidos todavía" />
         ) : (
           <div className="af-card-grid">
-            {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} />)}
+            {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />)}
           </div>
         )}
       </div>
@@ -7028,6 +7055,19 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
+              <label>Al llegar a la puerta — botón "Ya llegué"</label>
+              <textarea
+                className="af-input"
+                rows={2}
+                value={(draft.mensajes || MENSAJES_DEFAULT).llegue || MENSAJES_DEFAULT.llegue}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), llegue: e.target.value } })}
+              />
+              <p className="af-ink-soft text-xs mt-1">
+                Sale como un botón verde en los pedidos a domicilio que faltan por entregar.
+                Abre WhatsApp con el mensaje escrito, sin mandarlo: todavía hay que darle enviar.
+              </p>
+            </div>
+            <div className="af-field">
               <label>Al marcar Entregado</label>
               <textarea
                 className="af-input"
@@ -10796,7 +10836,7 @@ export default function App() {
         <div className="af-content">
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
-          {view === "buscar" && <BuscarView pedidos={pedidos} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
+          {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
             <MensajesView
               conversaciones={conversaciones}
@@ -11094,8 +11134,21 @@ const AZAFRAN_CSS = `
 .af-cliente-nombre { font-weight: 600; font-size: 15px; }
 .af-fecha-sub { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
 .af-resumen { font-size: 13px; color: var(--ink-soft); }
-.af-resumen-lista { font-size: 13px; color: var(--ink-soft); margin: 0; padding: 0 0 0 16px; }
-.af-resumen-lista li { padding: 1px 0; }
+/* Los platillos del pedido.
+   Antes la lista iba metida 16px hacia adentro y SIN viñeta: los platillos
+   se leían como un bloque corrido, y encima quedaban desalineados con todo
+   lo demás de la tarjeta (la hora, los chips, el total, que empiezan al ras).
+   Ahora la viñeta se pone al ras y el texto cuelga de ella: se distingue
+   cada platillo y la columna queda pareja. */
+.af-resumen-lista { font-size: 13px; color: var(--ink-soft); margin: 0; padding: 0; list-style: none; }
+.af-resumen-lista li { position: relative; padding: 1px 0 1px 13px; }
+.af-resumen-lista li::before {
+  content: "•";
+  position: absolute; left: 0; top: 1px;
+  color: var(--wine); font-weight: 700;
+}
+/* La nota del platillo cuelga del mismo texto, no de la viñeta. */
+.af-resumen-lista li .af-item-nota::before { content: none; }
 .af-total { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; }
 .af-saldo { font-size: 12px; color: var(--wine); font-weight: 600; }
 
@@ -11104,6 +11157,9 @@ const AZAFRAN_CSS = `
 .af-chip-gold { background: var(--gold-soft); color: #7A5A1E; }
 .af-chip-olive { background: var(--olive-soft); color: var(--olive); }
 .af-chip-domicilio { background: var(--wine-soft); color: var(--wine); }
+/* Verde de WhatsApp: es un chip pero manda un mensaje, y conviene que se
+   distinga de los que solo informan. */
+.af-chip-llegue { background: #DCF8E7; color: #0B7A43; font-weight: 700; }
 .af-chip-wine-strong { background: var(--wine); color: white; }
 
 /* Botón para desplegar/ocultar secciones secundarias (entregados, paelleras) */
