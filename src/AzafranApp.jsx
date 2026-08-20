@@ -224,6 +224,15 @@ const todayISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+// Mueve una fecha unos días, sin pasar por UTC. Se arma con los pedazos
+// locales (año, mes, día) porque restarle un día en horario de México a una
+// fecha interpretada como UTC te deja en el día anterior por un pelo.
+const moverFechaISO = (iso, dias) => {
+  const [a, m, d] = (iso || todayISO()).split("-").map(Number);
+  const f = new Date(a, m - 1, d + dias);
+  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}-${String(f.getDate()).padStart(2, "0")}`;
+};
+
 const nowHM = () => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -9089,7 +9098,45 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       <div className="af-card-grid">
         <div className="af-field">
           <label>Fecha</label>
-          <input type="date" className="af-input" value={form.fecha} onChange={(e) => setForm((p) => ({ ...p, fecha: e.target.value }))} />
+          {/* Las flechas son para capturar pedidos viejos: pasar del 5 al 6 de
+              enero es un toque, en vez de abrir el calendario y buscar el día.
+              Ese ir y venir es lo que más tiempo toma al meter meses pasados. */}
+          <div className="af-fecha-fila">
+            <button
+              type="button"
+              className="af-fecha-paso"
+              title="Un día antes"
+              onClick={() => setForm((p) => ({ ...p, fecha: moverFechaISO(p.fecha, -1) }))}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <input
+              type="date"
+              className="af-input"
+              value={form.fecha}
+              onChange={(e) => setForm((p) => ({ ...p, fecha: e.target.value }))}
+            />
+            <button
+              type="button"
+              className="af-fecha-paso"
+              title="Un día después"
+              onClick={() => setForm((p) => ({ ...p, fecha: moverFechaISO(p.fecha, 1) }))}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+          {/* Con una fecha que no es hoy, se dice en letras y se deja la
+              salida a un toque. Capturando lo viejo uno se acostumbra a no
+              mirar la fecha, y así un pedido de verdad no se va a enero. */}
+          {form.fecha !== todayISO() && (
+            <button
+              type="button"
+              className="af-fecha-aviso"
+              onClick={() => setForm((p) => ({ ...p, fecha: todayISO() }))}
+            >
+              {fmtDateHuman(form.fecha)} · toca para volver a hoy
+            </button>
+          )}
         </div>
         <div className="af-field">
           <label>Hora</label>
@@ -9604,6 +9651,13 @@ export default function App() {
   const [borradorPendiente, setBorradorPendiente] = useState(() => leerBorrador());
   const [formModo, setFormModo] = useState("pedido");
   const [form, setForm] = useState(emptyForm());
+  // Capturando los pedidos de meses pasados, lo que más tiempo toma es la
+  // fecha: abrir el calendario y retroceder ocho meses, pedido por pedido.
+  // Así que la app se queda con la última fecha usada y arranca ahí el
+  // siguiente. Vive SOLO en memoria: al cerrar y volver a abrir la app
+  // regresa a hoy, para que un pedido de verdad no salga con fecha de enero
+  // por un descuido.
+  const [fechaPegajosa, setFechaPegajosa] = useState(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const hayNuevaVersion = useNuevaVersion();
@@ -10427,6 +10481,7 @@ export default function App() {
 
   const goToNuevoPedido = (clientePre) => {
     const base = emptyForm();
+    if (fechaPegajosa) base.fecha = fechaPegajosa;
     if (clientePre) {
       base.clienteId = clientePre.id;
       base.clienteNombre = clientePre.nombre;
@@ -10609,6 +10664,11 @@ export default function App() {
     guardarConfig({ ...config, desechables, ingredientes });
 
     guardarPedidos(nuevaLista);
+    // Se recuerda la fecha para el SIGUIENTE pedido, pero solo si no es hoy:
+    // capturando enero, el que sigue casi siempre es del mismo día o del
+    // siguiente. Guardando uno de hoy se suelta, que es la señal de que ya
+    // se volvió al trabajo normal.
+    setFechaPegajosa(pedidoObj.fecha !== todayISO() ? pedidoObj.fecha : null);
     olvidarBorrador();
     setView(formOrigen);
     setError("");
@@ -11714,7 +11774,22 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-pago-propina { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 8px; font-weight: 700; color: var(--gold); }
 .af-hint { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
 .af-hora-preview { font-size: 12.5px; color: var(--wine); margin-top: 6px; }
-.af-hora-preview strong { font-family: 'Space Grotesk', sans-serif; }
+
+/* Fecha con flechas de un día: para capturar pedidos viejos sin abrir el
+   calendario cada vez. */
+.af-fecha-fila { display: flex; align-items: center; gap: 6px; }
+.af-fecha-fila .af-input { flex: 1; min-width: 0; }
+.af-fecha-paso {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  width: 38px; height: var(--alto-campo); border: 1px solid var(--line);
+  border-radius: var(--radio-campo); background: var(--card, #fff); color: var(--ink-soft);
+}
+.af-fecha-paso:active { background: var(--fondo, #eef2fb); }
+.af-fecha-aviso {
+  display: block; width: 100%; margin-top: 6px; padding: 6px 10px;
+  font-size: 12.5px; font-weight: 600; text-align: left;
+  color: #8a5a00; background: #FFF4DB; border: 1px solid #F5DFA6; border-radius: 10px;
+}.af-hora-preview strong { font-family: 'Space Grotesk', sans-serif; }
 
 .af-error { background: var(--wine-soft); color: var(--wine); border-radius: 10px; padding: 10px 13px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 
