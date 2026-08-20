@@ -8493,6 +8493,36 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                       <div className="min-w-0" style={{ flex: 1 }}>
                         <div className="af-item-nombre">{producto.nombre}</div>
                         <div className="af-ink-soft text-sm">{cantidad} {esPorKg(producto) ? "kg" : producto.unidad}</div>
+                        {producto.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
+                          <div className="af-extra-wrap">
+                            <button className="af-btn-ghost af-extra-btn"
+                              onClick={() => setExtrasAbiertoEn(extrasAbiertoEn === producto.id ? null : producto.id)}>
+                              <Plus size={13} className="inline mr-1" /> Extra
+                            </button>
+                            {extrasAbiertoEn === producto.id && (
+                              <>
+                                <div className="af-clickaway" onClick={() => setExtrasAbiertoEn(null)} />
+                                <div className="af-extra-menu af-combo-wrap">
+                                  {(config.extrasPaella || []).map((ex) => {
+                                    const puestos = (extras || []).find((e) => e.extraId === ex.id)?.cantidad || 0;
+                                    return (
+                                      <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
+                                        <span className="af-extra-menu-nombre">{ex.nombre}</span>
+                                        <span className="af-ink-soft">{money(ex.precio)}</span>
+                                        <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
+                                          onClick={() => cambiarExtraCarrito(producto.id, ex, -1)}><Minus size={12} /></button>
+                                        <span className="af-extra-menu-cuenta">{puestos}</span>
+                                        <button className="af-extra-mini-btn" title="Agregar uno"
+                                          onClick={() => cambiarExtraCarrito(producto.id, ex, 1)}><Plus size={12} /></button>
+                                      </div>
+                                    );
+                                  })}
+                                  <button className="af-extra-menu-listo" onClick={() => setExtrasAbiertoEn(null)}>Listo</button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                         {(extras || []).map((e) => (
                           <div key={e.id} className="af-extra-line">
                             <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
@@ -8506,28 +8536,6 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                             </button>
                           </div>
                         ))}
-                        {producto.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
-                          <div className="af-extra-wrap">
-                            <button className="af-btn-ghost af-extra-btn"
-                              onClick={() => setExtrasAbiertoEn(extrasAbiertoEn === producto.id ? null : producto.id)}>
-                              <Plus size={13} className="inline mr-1" /> Extra
-                            </button>
-                            {extrasAbiertoEn === producto.id && (
-                              <>
-                                <div className="af-clickaway" onClick={() => setExtrasAbiertoEn(null)} />
-                                <div className="af-extra-menu af-combo-wrap">
-                                  {(config.extrasPaella || []).map((ex) => (
-                                    <div key={ex.id} className="af-extra-menu-item"
-                                      onClick={() => { cambiarExtraCarrito(producto.id, ex, 1); setExtrasAbiertoEn(null); }}>
-                                      <span>{ex.nombre}</span>
-                                      <span className="af-ink-soft">{money(ex.precio)}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
                       </div>
                       <span className="af-total">{money(subtotalDe(producto, cantidad, extras))}</span>
                       <button className="af-icon-btn" onClick={() => quitarDelCarrito(producto.id)}><X size={14} /></button>
@@ -9106,6 +9114,16 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   // Extras de paella: se anclan a una paella específica del pedido.
   const conExtrasActualizados = (it, extras) => ({ ...it, extras, subtotal: calcPaellaSubtotal(it.kg, it.precioKg, extras) });
 
+  // Cuántos lleva puestos de ESE extra del catálogo, y cómo subirle o bajarle
+  // desde el propio menú. Antes había que cerrarlo, buscar el renglón del
+  // extra —que se había movido— y ahí darle al más.
+  const cantidadDeExtra = (it, exId) => ((it.extras || []).find((e) => e.extraId === exId)?.cantidad || 0);
+  const cambiarExtraDesdeMenu = (it, ex, paso) => {
+    const linea = (it.extras || []).find((e) => e.extraId === ex.id);
+    if (linea) cambiarCantidadExtra(it.id, linea.id, paso);
+    else if (paso > 0) addExtraAPaella(it.id, ex);
+  };
+
   const addExtraAPaella = (itemId, ex) => {
     setForm((prev) => ({
       ...prev,
@@ -9336,13 +9354,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   <div className="af-ink-soft text-sm">
                     {it.tipo === "paella" || esPorKg(it) ? money(it.tipo === "paella" ? it.precioKg : it.precio) + "/kg" : money(it.precio) + " c/u"}
                   </div>
-                  {it.tipo === "paella" && (it.extras || []).map((e) => (
-                    <div key={e.id} className="af-extra-line">
-                      <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
-                      <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><Minus size={12} /></button>
-                      <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><Plus size={12} /></button>
-                    </div>
-                  ))}
+                  {/* El botón va ARRIBA de los extras ya puestos: cada extra
+                      que se agrega mete un renglón, y con el botón abajo se
+                      recorría justo cuando se le iba a dar otra vez. */}
                   {it.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
                     <div className="af-extra-wrap">
                       <button className="af-btn-ghost af-extra-btn" onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
@@ -9351,18 +9365,37 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       {extrasAbierto === it.id && (
                         <>
                           <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
+                          {/* El menú NO se cierra al elegir: los más y menos se
+                              quedan en el mismo lugar, así se pueden poner tres
+                              chorizos con tres toques sin mover el dedo. */}
                           <div className="af-extra-menu af-combo-wrap">
-                            {(config.extrasPaella || []).map((ex) => (
-                              <div key={ex.id} className="af-extra-menu-item" onClick={() => { addExtraAPaella(it.id, ex); setExtrasAbierto(null); }}>
-                                <span>{ex.nombre}</span>
-                                <span className="af-ink-soft">{money(ex.precio)}</span>
-                              </div>
-                            ))}
+                            {(config.extrasPaella || []).map((ex) => {
+                              const puestos = cantidadDeExtra(it, ex.id);
+                              return (
+                                <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
+                                  <span className="af-extra-menu-nombre">{ex.nombre}</span>
+                                  <span className="af-ink-soft">{money(ex.precio)}</span>
+                                  <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
+                                    onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><Minus size={12} /></button>
+                                  <span className="af-extra-menu-cuenta">{puestos}</span>
+                                  <button className="af-extra-mini-btn" title="Agregar uno"
+                                    onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><Plus size={12} /></button>
+                                </div>
+                              );
+                            })}
+                            <button className="af-extra-menu-listo" onClick={() => setExtrasAbierto(null)}>Listo</button>
                           </div>
                         </>
                       )}
                     </div>
                   )}
+                  {it.tipo === "paella" && (it.extras || []).map((e) => (
+                    <div key={e.id} className="af-extra-line">
+                      <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
+                      <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><Minus size={12} /></button>
+                      <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><Plus size={12} /></button>
+                    </div>
+                  ))}
                   {it.tipo === "paella" && modo === "pedido" && (
                     <label className="af-check-row af-check-row-small">
                       <input type="checkbox" checked={it.enPaellera} onChange={(e) => updateEnPaellera(it.id, e.target.checked)} />
@@ -11945,6 +11978,17 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-extra-menu { position: absolute; left: 0; top: 100%; min-width: 210px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 24px -8px rgba(36,27,20,0.3); overflow: hidden; }
 .af-extra-menu-item { display: flex; justify-content: space-between; gap: 14px; padding: 9px 13px; font-size: 13.5px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--line); }
 .af-extra-menu-item:last-child { border-bottom: none; }
+/* El menú de extras se queda abierto mientras se ponen: cada renglón trae su
+   cuenta y sus más/menos, siempre en el mismo lugar. */
+.af-extra-menu-item { align-items: center; cursor: default; }
+.af-extra-menu-nombre { flex: 1; min-width: 0; }
+.af-extra-menu-item.puesto { background: var(--olive-soft); color: var(--olive); }
+.af-extra-menu-cuenta { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.af-extra-mini-btn:disabled { opacity: .35; }
+.af-extra-menu-listo {
+  width: 100%; padding: 9px; font-size: 13px; font-weight: 700;
+  color: var(--brand, #3b5bdb); background: var(--fondo, #eef2fb); border: none;
+}
 .af-item-nota { display: flex; align-items: flex-start; gap: 4px; font-size: 12.5px; color: var(--wine); font-style: italic; margin-top: 4px; cursor: pointer; line-height: 1.4; }
 
 /* Panel de usuarios */
