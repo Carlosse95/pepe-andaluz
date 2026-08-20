@@ -2518,14 +2518,22 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
             </PanelPlegable>
           )}
 
-          {pedidosHoy.length > 0 && (
+          {/* Lo que FALTA por hacer, no lo del día entero: los pedidos ya
+              entregados se descuentan solos. Enseñar el total completo a media
+              tarde, con la mitad ya salida, obliga a restar de cabeza para
+              saber qué queda en la estufa. Cuando ya no queda nada, el panel
+              desaparece.
+              Agenda no necesita esto: su pestaña de pendientes ya deja fuera
+              los entregados. */}
+          {activosHoy.length > 0 && (
             <PanelPlegable
               icono={<ChefHat size={15} />}
               titulo="Producción del día"
+              resumen={entregadosHoy.length > 0 ? "lo que falta" : undefined}
               abierto={verProduccion}
               onToggle={() => setVerProduccion((v) => !v)}
             >
-              <ProduccionDelDiaBox pedidosDelDia={pedidosHoy} config={config} soloContenido />
+              <ProduccionDelDiaBox pedidosDelDia={activosHoy} config={config} soloContenido />
             </PanelPlegable>
           )}
 
