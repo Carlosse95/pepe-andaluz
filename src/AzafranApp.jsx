@@ -8292,8 +8292,36 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   );
 
   const itemsCarrito = Object.values(carrito);
-  const subtotalDe = (p, cant) => (esPorKg(p) ? calcPaellaSubtotal(cant, p.precio) : calcExtraSubtotal(cant, p.precio));
-  const totalCarrito = itemsCarrito.reduce((a, { producto, cantidad }) => a + subtotalDe(producto, cantidad), 0);
+  const subtotalDe = (p, cant, extras) =>
+    esPorKg(p) ? calcPaellaSubtotal(cant, p.precio, extras) : calcExtraSubtotal(cant, p.precio);
+  const totalCarrito = itemsCarrito.reduce(
+    (a, { producto, cantidad, extras }) => a + subtotalDe(producto, cantidad, extras), 0);
+
+  // Los extras de paella (langosta, chorizo...) se podían poner SOLO después,
+  // ya cerrado el catálogo, desde el renglón del pedido. Armando un pedido de
+  // varias paellas eso son varias idas y vueltas. Ahora se ponen aquí mismo,
+  // en el resumen, mientras se arma.
+  const [extrasAbiertoEn, setExtrasAbiertoEn] = useState(null);
+  const cambiarExtraCarrito = (productoId, ex, paso) => {
+    setCarrito((prev) => {
+      const fila = prev[productoId];
+      if (!fila) return prev;
+      const actuales = fila.extras || [];
+      const ya = actuales.find((e) => e.extraId === ex.id);
+      let extras;
+      if (ya) {
+        const cantidad = ya.cantidad + paso;
+        extras = cantidad <= 0
+          ? actuales.filter((e) => e.extraId !== ex.id)
+          : actuales.map((e) => (e.extraId === ex.id ? { ...e, cantidad } : e));
+      } else if (paso > 0) {
+        extras = [...actuales, { id: uid(), extraId: ex.id, nombre: ex.nombre, precio: ex.precio, cantidad: 1 }];
+      } else {
+        return prev;
+      }
+      return { ...prev, [productoId]: { ...fila, extras } };
+    });
+  };
   const mostrarDetalle = !!editando || verResumen;
 
   const setCantidadCarrito = (p, cantidad) => {
@@ -8302,7 +8330,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
         const { [p.id]: _quitado, ...resto } = prev;
         return resto;
       }
-      return { ...prev, [p.id]: { producto: p, cantidad } };
+      return { ...prev, [p.id]: { producto: p, cantidad, extras: prev[p.id]?.extras || [] } };
     });
   };
   const agregarAlCarrito = (p) => setCantidadCarrito(p, (carrito[p.id]?.cantidad || 0) + 1);
@@ -8348,7 +8376,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   };
 
   const confirmarTodo = () => {
-    itemsCarrito.forEach(({ producto, cantidad }) => onAdd(producto, cantidad));
+    itemsCarrito.forEach(({ producto, cantidad, extras }) => onAdd(producto, cantidad, extras));
     onClose();
   };
 
@@ -8460,13 +8488,48 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
               <div className="af-picker-form">
                 <div className="af-section-title">Resumen</div>
                 <div className="af-carrito-lista">
-                  {itemsCarrito.map(({ producto, cantidad }) => (
+                  {itemsCarrito.map(({ producto, cantidad, extras }) => (
                     <div key={producto.id} className="af-carrito-row">
                       <div className="min-w-0" style={{ flex: 1 }}>
                         <div className="af-item-nombre">{producto.nombre}</div>
                         <div className="af-ink-soft text-sm">{cantidad} {esPorKg(producto) ? "kg" : producto.unidad}</div>
+                        {(extras || []).map((e) => (
+                          <div key={e.id} className="af-extra-line">
+                            <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
+                            <button className="af-extra-mini-btn" title="Quitar uno"
+                              onClick={() => cambiarExtraCarrito(producto.id, { id: e.extraId, nombre: e.nombre, precio: e.precio }, -1)}>
+                              <Minus size={12} />
+                            </button>
+                            <button className="af-extra-mini-btn" title="Agregar uno"
+                              onClick={() => cambiarExtraCarrito(producto.id, { id: e.extraId, nombre: e.nombre, precio: e.precio }, 1)}>
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                        ))}
+                        {producto.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
+                          <div className="af-extra-wrap">
+                            <button className="af-btn-ghost af-extra-btn"
+                              onClick={() => setExtrasAbiertoEn(extrasAbiertoEn === producto.id ? null : producto.id)}>
+                              <Plus size={13} className="inline mr-1" /> Extra
+                            </button>
+                            {extrasAbiertoEn === producto.id && (
+                              <>
+                                <div className="af-clickaway" onClick={() => setExtrasAbiertoEn(null)} />
+                                <div className="af-extra-menu af-combo-wrap">
+                                  {(config.extrasPaella || []).map((ex) => (
+                                    <div key={ex.id} className="af-extra-menu-item"
+                                      onClick={() => { cambiarExtraCarrito(producto.id, ex, 1); setExtrasAbiertoEn(null); }}>
+                                      <span>{ex.nombre}</span>
+                                      <span className="af-ink-soft">{money(ex.precio)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <span className="af-total">{money(subtotalDe(producto, cantidad))}</span>
+                      <span className="af-total">{money(subtotalDe(producto, cantidad, extras))}</span>
                       <button className="af-icon-btn" onClick={() => quitarDelCarrito(producto.id)}><X size={14} /></button>
                     </div>
                   ))}
@@ -8948,10 +9011,15 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     }));
   };
 
-  const addItemFromPicker = (producto, cantidad) => {
+  const addItemFromPicker = (producto, cantidad, extras) => {
     if (producto.tipo === "paella") {
       addPaella({ id: producto.id, nombre: producto.nombre, precioKg: producto.precio });
-      if (cantidad !== 1) updateKgDespuesDeAgregar(cantidad);
+      // Los kilos y los extras se acomodan sobre la paella recién insertada,
+      // en una sola pasada: si se hicieran por separado, la segunda partiría
+      // de una copia vieja y borraría lo de la primera.
+      if (cantidad !== 1 || (extras && extras.length)) {
+        ajustarPaellaRecienAgregada(cantidad, extras);
+      }
     } else {
       addExtra({ id: producto.id, nombre: producto.nombre, precio: producto.precio, unidad: producto.unidad, piezasPorUnidad: producto.piezasPorUnidad });
       if (cantidad !== 1) updateCantidadDespuesDeAgregar(cantidad);
@@ -8960,11 +9028,17 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
   // Como addPaella/addExtra agregan con cantidad 1, si el picker trae otra
   // cantidad la ajustamos sobre el último ítem recién insertado.
-  const updateKgDespuesDeAgregar = (kg) => {
+  const ajustarPaellaRecienAgregada = (kg, extras) => {
     setForm((prev) => {
       const items = [...prev.items];
       const last = items[items.length - 1];
-      items[items.length - 1] = { ...last, kg, subtotal: calcPaellaSubtotal(kg, last.precioKg, last.extras) };
+      const conExtras = extras && extras.length ? extras : last.extras;
+      items[items.length - 1] = {
+        ...last,
+        kg,
+        extras: conExtras,
+        subtotal: calcPaellaSubtotal(kg, last.precioKg, conExtras),
+      };
       return { ...prev, items };
     });
   };
