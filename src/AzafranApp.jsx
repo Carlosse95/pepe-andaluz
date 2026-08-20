@@ -1057,6 +1057,11 @@ const calcularConsumo = (items, desechables, extrasCatalogo) => {
 // ayer justo a media tarde.
 const tocaElAlmacen = (fecha) => !fecha || fecha >= todayISO();
 
+// Un pedido con fecha de antes de hoy. Se usa para lo que solo tiene sentido
+// con un pedido vivo: marcarlo entregado a mano, o mandarle mensajes al
+// cliente. Capturando meses pasados, las dos cosas estorban.
+const esPedidoViejo = (fecha) => !!fecha && fecha < todayISO();
+
 const ajustarStock = (desechables, consumo, direccion) =>
   (desechables || []).map((d) => {
     const cantidad = consumo[d.id] || 0;
@@ -10740,7 +10745,10 @@ export default function App() {
       pagado,
       saldo,
       estadoPago: estadoPagoDe(pagado, total),
-      estado: form.estado || "pendiente",
+      // Un pedido que se captura con fecha de antes ya se entregó: no tiene
+      // sentido nacer "pendiente" y tener que marcarlo a mano uno por uno.
+      // Solo al CREARLO: editando uno viejo se respeta lo que diga su estado.
+      estado: esNuevo && esPedidoViejo(form.fecha) ? "entregado" : (form.estado || "pendiente"),
       notas: form.notas,
       terminos: form.terminos,
       createdAt: form.createdAt || Date.now(),
@@ -10794,9 +10802,19 @@ export default function App() {
     // El orden importa: el cambio de estado gana sobre el aviso de pago para
     // no encimar dos mensajes (marcar Entregado también deja el pedido pagado,
     // así que los dos casos se cumplen a la vez).
+    //
+    // Y de un pedido VIEJO no se ofrece nada de esto: mandarle a alguien el
+    // resumen de un pedido de febrero, o avisarle que "ya está listo", no
+    // tiene sentido y solo estorba capturando meses pasados. El del pago sí
+    // se conserva: cobrar un pedido viejo sí pasa.
     const abonoNuevo = anteriorPedido ? pagado - (anteriorPedido.pagado || 0) : 0;
+    const viejo = esPedidoViejo(pedidoObj.fecha);
     if (pedidoObj.clienteTelefono) {
-      if (esNuevo) {
+      if (viejo && abonoNuevo > 0) {
+        setAvisoModal({ pedido: pedidoObj, tipo: "pago", abono: abonoNuevo });
+      } else if (viejo) {
+        /* nada: es historia, no hay a quién avisarle */
+      } else if (esNuevo) {
         setAvisoModal({ pedido: pedidoObj, tipo: "nuevo" });
       } else if (anteriorPedido && anteriorPedido.estado !== "avisado" && pedidoObj.estado === "avisado") {
         setAvisoModal({ pedido: pedidoObj, tipo: "avisado" });
