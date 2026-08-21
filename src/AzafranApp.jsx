@@ -775,10 +775,14 @@ const MISMO_SIEMPRE = () => true;
 const MISMA_CATEGORIA = (a, b) => (a.categoria || "platillo") === (b.categoria || "platillo");
 
 // Categorías de productos que se pueden agregar a un pedido/presupuesto.
+// El orden manda en tres lados a la vez: los filtros y los grupos del catálogo
+// al hacer un pedido, y las secciones del menú en Ajustes. Las entradas van
+// pegadas a las paellas porque es como se levanta un pedido de verdad: primero
+// la paella, luego lo que se pica antes, y ya después el resto.
 const CATEGORIAS_ITEM = [
   { id: "paella", label: "Paellas" },
-  { id: "platillo", label: "Platillos" },
   { id: "entrada", label: "Entradas" },
+  { id: "platillo", label: "Platillos" },
   { id: "postre", label: "Postres" },
 ];
 const CATEGORIA_LABEL = Object.fromEntries(CATEGORIAS_ITEM.map((c) => [c.id, c.label]));
@@ -12055,10 +12059,18 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 @media (min-width: 760px) {
   .af-modal-overlay { align-items: center; padding: 24px; }
-  .af-modal { width: 720px; max-width: 100%; border-radius: 18px; height: 82vh; max-height: 82vh; }
+  /* En computadora hay espacio de sobra: la ventana era de 720px y dejaba las
+     dos columnas apretadas —los filtros de categoría se cortaban y en el
+     resumen el nombre del platillo chocaba con su precio—. */
+  .af-modal { width: min(1180px, 94vw); max-width: 100%; border-radius: 18px; height: 86vh; max-height: 86vh; }
   .af-modal-panes { }
   .af-modal-list-pane { border-right: 1px solid var(--line); }
-  .af-pane-hide-mobile { display: flex; }
+  /* En fila (el valor por omisión de flex) los hijos se encogen a lo que mide
+     su texto: el resumen quedaba de 214px dentro de un panel de 590 y se veía
+     como una columna chiquita pegada a la izquierda, con un hueco enorme al
+     lado. En columna, el hijo se estira a todo el ancho, que es lo que se
+     espera: el precio y la equis se van hasta la orilla derecha. */
+  .af-pane-hide-mobile { display: flex; flex-direction: column; }
   .af-picker-back-btn { display: none; }
   .af-carrito-bar { display: none; }
 }
