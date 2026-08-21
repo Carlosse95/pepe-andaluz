@@ -51,7 +51,7 @@ su cuenta queda activa al instante y tú puedes desactivarla cuando quieras.
    así que usa **Public** — no pasa nada: los datos NO están en el código, viven en Supabase).
 3. Sube el proyecto. En la Terminal de tu Mac:
    ```bash
-   cd ~/Downloads/pepe-andaluz-app
+   cd ~/Library/Mobile Documents/com~apple~CloudDocs/Pepe-Andaluz/pepe-andaluz-app
    git init
    git add .
    git commit -m "Pepe Andaluz v1"
