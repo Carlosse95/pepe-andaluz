@@ -215,6 +215,46 @@ const leerContactosVCF = (texto) => {
     .map((c) => ({ nombre: c.nombre, telefono: c.telefonos[0] }));
 };
 
+// Busca un cliente por pedazos sueltos del nombre, en cualquier orden, o por
+// teléfono.
+//
+// Antes se exigía que lo tecleado apareciera TAL CUAL y seguido: buscando
+// "carlos segura" no salía "Carlos Manuel Segura Flores", porque en medio va
+// "Manuel". Uno no se acuerda de cómo quedó capturado el nombre completo —se
+// acuerda de dos pedazos— y peor con los clientes viejos, que se están
+// completando a mano ahora.
+//
+// Ahora cada palabra que se teclea tiene que aparecer en el nombre, sin
+// importar el orden ni lo que haya en medio. Encuentran al mismo cliente:
+// "carlos segura", "segura carlos", "flores carlos", "car seg" y "gura".
+//
+// Con números se comparan solo los dígitos, así que da igual cómo esté
+// escrito el teléfono (con +52, con espacios, con guiones).
+const clienteCoincide = (cliente, consulta) => {
+  const q = normNombre(consulta);
+  if (!q) return true;
+
+  // Por teléfono: bastan 3 dígitos para empezar a filtrar.
+  const digitos = (consulta || "").replace(/\D/g, "");
+  if (digitos.length >= 3) {
+    const tel = (cliente.telefono || "").replace(/\D/g, "");
+    if (tel) {
+      if (tel.includes(digitos)) return true;
+      // Con el número completo da igual si uno de los dos trae el 52 de
+      // México y el otro no: se comparan los últimos 10 dígitos. Pegando
+      // "+52 993 160 4768" encuentra al que está guardado como "9931604768".
+      if (digitos.length >= 10 && tel.slice(-10) === digitos.slice(-10)) return true;
+    }
+  }
+
+  const nombre = normNombre(cliente.nombre);
+  const palabras = nombre.split(" ").filter(Boolean);
+  return q
+    .split(" ")
+    .filter(Boolean)
+    .every((parte) => palabras.some((w) => w.startsWith(parte)) || nombre.includes(parte));
+};
+
 const clientesParecidos = (nombre, clientes) => {
   const n = normNombre(nombre);
   if (n.length < 3) return [];
@@ -3276,7 +3316,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
     .sort((a, b) => b.dias - a.dias);
 
   const lista = clientes
-    .filter((c) => term.length === 0 || normNombre(c.nombre).includes(term) || (c.telefono || "").includes(term))
+    .filter((c) => clienteCoincide(c, q))
     .filter((c) => (soloAusentes ? clientesQueNoVuelven.some((x) => x.cliente.id === c.id) : true))
     .sort((a, b) => {
       // Al ver los ausentes, primero los que llevan más tiempo sin pedir.
@@ -9124,7 +9164,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const sugeridos = (
     term.length === 0
       ? clientes.slice(0, 8)
-      : clientes.filter((c) => normNombre(c.nombre).includes(term) || (c.telefono || "").includes(term))
+      : clientes.filter((c) => clienteCoincide(c, busqueda))
   ).slice(0, 8);
 
   const seleccionarCliente = (c) => {
