@@ -869,13 +869,36 @@ const familiaDeIngrediente = (ing) => {
 };
 
 // Une paellas + extras del catálogo en una sola lista homogénea para el selector de ítems.
-const productosDeConfig = (config) => [
+// Qué precio tenía este producto en una fecha dada.
+//
+// Al subirle el precio a algo, los pedidos YA GUARDADOS no se mueven: cada
+// pedido se queda con el precio que tenía cuando se capturó. Pero capturando
+// pedidos de meses pasados el catálogo ofrecía el precio de HOY, y quedaban
+// cobrados de más. Aquí se guarda lo que costaba antes, con la fecha en que
+// dejó de valer, y se usa el que corresponda al día del pedido.
+//
+// `preciosAnteriores` es una lista de { precio, hasta }: "este precio valió
+// hasta ese día (sin incluirlo)". Si un pedido es de antes de esa fecha, se
+// usa ese precio; si no, el actual.
+const precioVigente = (producto, fecha, campo = "precio") => {
+  const actual = producto[campo];
+  const historia = producto.preciosAnteriores;
+  if (!fecha || !historia || !historia.length) return actual;
+  const aplicable = historia
+    .filter((h) => h && h.hasta && fecha < h.hasta && h[campo] !== undefined)
+    .sort((a, b) => String(a.hasta).localeCompare(String(b.hasta)))[0];
+  return aplicable ? aplicable[campo] : actual;
+};
+
+// `fecha` es la del pedido que se está armando: con ella el catálogo enseña y
+// cobra el precio que corría ese día. Sin fecha, los precios de hoy.
+const productosDeConfig = (config, fecha) => [
   ...(config.paellas || []).map((p) => ({
     id: p.id,
     tipo: "paella",
     categoria: "paella",
     nombre: p.nombre,
-    precio: p.precioKg,
+    precio: precioVigente(p, fecha, "precioKg"),
     unidad: "kg",
   })),
   ...(config.extras || []).map((e) => ({
@@ -883,7 +906,7 @@ const productosDeConfig = (config) => [
     tipo: "extra",
     categoria: e.categoria || "platillo",
     nombre: e.nombre,
-    precio: e.precio,
+    precio: precioVigente(e, fecha),
     unidad: e.unidad || "pieza",
     piezasPorUnidad: e.piezasPorUnidad || 0,
   })),
@@ -7246,11 +7269,27 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     // ya se generaron los gastos). Si esto armara el objeto desde cero, al
     // guardar en Ajustes se borrarían: los gastos fijos desaparecían y, sin
     // las marcas de "ya generado", se volvían a crear duplicados.
+    // Antes de guardar, se apunta el precio que TENÍA cada producto que acaba
+    // de cambiar, con la fecha de hoy. Así, capturando un pedido de un día
+    // anterior, el catálogo cobra lo que costaba entonces y no lo de ahora.
+    // Los pedidos ya guardados nunca se tocan: cada uno lleva su precio
+    // adentro desde que se capturó.
+    const conHistoria = (lista, previa, campo) =>
+      (lista || []).map((it) => {
+        const antes = (previa || []).find((x) => x.id === it.id);
+        if (!antes || antes[campo] === it[campo] || antes[campo] === undefined) return it;
+        const historia = it.preciosAnteriores || [];
+        // Si ya se le cambió el precio hoy, se respeta el apunte original del
+        // día: lo que vale es cuánto costaba ANTES de los cambios de hoy.
+        if (historia.some((h) => h.hasta === todayISO())) return it;
+        return { ...it, preciosAnteriores: [...historia, { [campo]: antes[campo], hasta: todayISO() }] };
+      });
+
     const limpio = {
       ...draft,
-      paellas: draft.paellas.filter((p) => p.nombre.trim().length > 0),
-      extras: draft.extras.filter((e) => e.nombre.trim().length > 0),
-      extrasPaella: (draft.extrasPaella || []).filter((e) => e.nombre.trim().length > 0),
+      paellas: conHistoria(draft.paellas, config.paellas, "precioKg").filter((p) => p.nombre.trim().length > 0),
+      extras: conHistoria(draft.extras, config.extras, "precio").filter((e) => e.nombre.trim().length > 0),
+      extrasPaella: conHistoria(draft.extrasPaella, config.extrasPaella, "precio").filter((e) => e.nombre.trim().length > 0),
       desechables: (draft.desechables || []).filter((d) => d.nombre.trim().length > 0).map(normalizarDesechable),
       ingredientes: (draft.ingredientes || []).filter((i) => i.nombre.trim().length > 0),
       paelleras: draft.paelleras || [],
@@ -8394,7 +8433,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 /*  Modal: Agregar ítem (catálogo con categorías, buscador y alta      */
 /*  rápida de productos nuevos)                                       */
 /* ------------------------------------------------------------------ */
-function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
+function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedido }) {
   const [query, setQuery] = useState("");
   const [categoria, setCategoria] = useState("todos");
   const [carrito, setCarrito] = useState({}); // productoId -> { producto, cantidad }
@@ -8402,7 +8441,13 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
   const [editando, setEditando] = useState(null); // null | "nuevo" | id del producto
   const [draftProducto, setDraftProducto] = useState({ nombre: "", categoria: "platillo", precio: 0, unidad: "pieza" });
 
-  const productos = productosDeConfig(config);
+  // Con la fecha del pedido, el catálogo enseña los precios que corrían ese
+  // día. Capturando febrero se ve lo que costaba en febrero, no lo de hoy.
+  const productos = productosDeConfig(config, fechaDelPedido);
+  const preciosDeOtroDia = productos.some((pr) => {
+    const hoyMismo = productosDeConfig(config).find((x) => x.id === pr.id);
+    return hoyMismo && hoyMismo.precio !== pr.precio;
+  });
   const term = normNombre(query);
   const filtrados = productos.filter((p) => {
     if (categoria !== "todos" && p.categoria !== categoria) return false;
@@ -8509,6 +8554,12 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
           <span>Agregar ítem</span>
           <button className="af-icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
+        {preciosDeOtroDia && (
+          <div className="af-precio-de-otro-dia">
+            Estás capturando un pedido del <strong>{fmtDateHuman(fechaDelPedido)}</strong>, así que
+            los precios que ves son los que costaban ese día, no los de hoy.
+          </div>
+        )}
 
         <div className="af-modal-panes">
           <div className={"af-modal-list-pane" + (mostrarDetalle ? " af-pane-hide-mobile" : "")}>
@@ -8625,7 +8676,8 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose }) {
                               <>
                                 <div className="af-clickaway" onClick={() => setExtrasAbiertoEn(null)} />
                                 <div className="af-extra-menu af-combo-wrap">
-                                  {(config.extrasPaella || []).map((ex) => {
+                                  {(config.extrasPaella || []).map((exCat) => {
+                                    const ex = { ...exCat, precio: precioVigente(exCat, fechaDelPedido) };
                                     const puestos = (extras || []).find((e) => e.extraId === ex.id)?.cantidad || 0;
                                     return (
                                       <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
@@ -9602,6 +9654,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           onGuardarConfig={onGuardarConfig}
           onAdd={addItemFromPicker}
           onClose={() => setMostrarPicker(false)}
+          fechaDelPedido={form.fecha}
         />
       )}
 
@@ -12117,6 +12170,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-picker-item.active { background: var(--wine-soft); }
 .af-picker-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ink-soft); padding: 50px 20px; text-align: center; font-size: 13.5px; height: 100%; }
 .af-picker-form { padding: 2px; }
+.af-precio-de-otro-dia { padding: 9px 16px; font-size: 12.5px; font-weight: 600; color: #8a5a00; background: #FFF4DB; border-bottom: 1px solid #F5DFA6; }
 .af-picker-back-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; color: var(--wine); font-weight: 600; font-size: 13px; padding: 0 0 14px; cursor: pointer; }
 .af-add-card-row { flex-direction: row; min-height: unset; padding: 12px; margin-top: 8px; }
 .af-picker-add-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--wine); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; transition: transform 0.15s ease, background 0.15s ease; }
