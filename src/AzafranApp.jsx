@@ -43,6 +43,11 @@ const MENSAJES_DEFAULT = {
   // entrega no siempre tiene el número guardado en su teléfono, así que el
   // botón abre el chat directo sin tener que buscar el contacto.
   llegue: "¡Hola {nombre}! Ya llegué con su pedido {folio}, estoy afuera 🚚",
+  // Cuando el pedido cambia DESPUÉS de habérselo confirmado al cliente: se le
+  // reenvía el resumen completo, ya actualizado, con este saludo en vez del de
+  // pedido nuevo.
+  // Sin {folio}: el renglón "Folio:" va justo debajo y salía repetido.
+  cambioPedido: "¡Hola {nombre}! Hicimos un cambio en su pedido, así quedó 📝",
   entregado: "¡Hola {nombre}! Su pedido {folio} fue entregado. ¡Gracias por su preferencia, esperamos disfrute su comida! 🥘",
   pagoAbono:
     "¡Hola {nombre}! Recibimos su pago de {abono} 🙏\n\n" +
@@ -217,6 +222,41 @@ const clientesParecidos = (nombre, clientes) => {
     const cn = normNombre(c.nombre);
     return cn === n || cn.includes(n) || n.includes(cn);
   });
+};
+
+// Revisa el teléfono de un cliente antes de guardarlo. Devuelve null si se ve
+// bien, o el motivo en palabras si algo no cuadra.
+//
+// Nace de una limpieza real: había tres clientes con teléfonos de 9 dígitos
+// (les faltaba uno) y a esos el botón de WhatsApp les abría un chat que no
+// existe — sin avisar de nada. Se detecta al capturar, que es cuando se puede
+// arreglar preguntándole al cliente, y no meses después.
+//
+// No bloquea: los números de otro país son legítimos y se ven "raros" (+1 de
+// Estados Unidos, +34 de España). Solo avisa.
+const problemaDelTelefono = (tel, clientes, idQueSeEdita) => {
+  const crudo = (tel || "").trim();
+  if (!crudo) return null; // el teléfono es opcional
+  const d = crudo.replace(/\D/g, "");
+  if (!d) return "no tiene ningún número. Sin un número correcto no le va a llegar ningún mensaje de WhatsApp.";
+  if (d.length < 10) {
+    const faltan = 10 - d.length;
+    return `tiene ${d.length} ${d.length === 1 ? "dígito" : "dígitos"} y le ${faltan === 1 ? "falta 1" : `faltan ${faltan}`}. Un número de México lleva 10 (lada incluida). Sin un número correcto no le va a llegar ningún mensaje de WhatsApp.`;
+  }
+  // Con lada de país de México (52) tienen que ser 52 + 10 dígitos.
+  if (d.startsWith("52") && d.length === 11) {
+    return "empieza con 52 (México) pero solo trae 9 dígitos después. Deberían ser 10. Sin un número correcto no le va a llegar ningún mensaje de WhatsApp.";
+  }
+  if (d.length > 13) return `tiene ${d.length} dígitos, son demasiados. Revisa que no se haya pegado dos veces.`;
+
+  // ¿Ya lo tiene otro cliente? Justo lo que causó los duplicados que juntamos.
+  const diez = d.slice(-10);
+  const yaEs = (clientes || []).find(
+    (c) => c.id !== idQueSeEdita && (c.telefono || "").replace(/\D/g, "").slice(-10) === diez
+  );
+  if (yaEs) return `ese mismo número ya lo tiene ${yaEs.nombre}. Puede que sea el mismo cliente y lo estés duplicando.`;
+
+  return null;
 };
 
 const todayISO = () => {
@@ -440,7 +480,13 @@ const aplicarPlantillaMensaje = (texto, datos, extra) => {
 const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   const lineas = [];
   const nombre = (datos.clienteNombre || "").split(/\s+/)[0];
-  if (modo === "pedido") {
+  // "cambio" es un pedido igualito, solo cambia el saludo: en vez de
+  // presentarlo como nuevo, avisa que se actualizó. Todo lo demás —los
+  // platillos, el total, el saldo, dónde recoger— se arma igual.
+  const esPedido = modo === "pedido" || modo === "cambio";
+  if (modo === "cambio") {
+    lineas.push(aplicarPlantillaMensaje(mensajes?.cambioPedido || MENSAJES_DEFAULT.cambioPedido, datos));
+  } else if (modo === "pedido") {
     lineas.push(aplicarPlantillaMensaje(mensajes?.saludoPedido || MENSAJES_DEFAULT.saludoPedido, datos));
   } else {
     lineas.push(`¡Hola${nombre ? " " + nombre : ""}! Le compartimos el resumen de su presupuesto en Pepe Andaluz 🥘`);
@@ -467,7 +513,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   if (iva > 0) lineas.push(`IVA (16%): ${money(iva)}`);
   const total = computeTotal(datos.items) + envio + iva;
   lineas.push(`Total: ${money(total)}`);
-  if (modo === "pedido") {
+  if (esPedido) {
     const pagado = sumaAbonos(datos.abonos);
     if (pagado > 0) {
       lineas.push(`Anticipo recibido: ${money(pagado)}`);
@@ -493,7 +539,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   // Dónde recoger, desde que se aparta el pedido: así el cliente ya sabe a
   // dónde ir y no tiene que esperar al aviso de "ya está listo" para buscarlo.
   // Solo en pedidos para recoger; a domicilio la dirección la pone él.
-  if (modo === "pedido" && !datos.entrega) {
+  if (esPedido && !datos.entrega) {
     const donde = bloqueDondeRecoger(local);
     if (donde) {
       lineas.push("");
@@ -503,7 +549,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   }
   lineas.push("");
   lineas.push(
-    modo === "pedido"
+    esPedido
       ? aplicarPlantillaMensaje(mensajes?.cierrePedido || MENSAJES_DEFAULT.cierrePedido, datos)
       : "¡Gracias por su preferencia!"
   );
@@ -1064,6 +1110,38 @@ const tocaElAlmacen = (fecha) => !fecha || fecha >= todayISO();
 // Un pedido con fecha de antes de hoy. Se usa para lo que solo tiene sentido
 // con un pedido vivo: marcarlo entregado a mano, o mandarle mensajes al
 // cliente. Capturando meses pasados, las dos cosas estorban.
+// ¿Cambió algo que el cliente tendría que saber?
+//
+// Sale de un caso real: un pedido ya estaba avisado ("venga por él"), la
+// clienta pidió dos aliolis de último momento, se guardó... y la app no ofreció
+// nada. Hubo que escribirle a mano el nuevo total. Con esto, guardar un pedido
+// que cambió ofrece reenviarle el resumen ya actualizado.
+//
+// Solo cuenta lo que el cliente ve o paga: los platillos, el total, el día, la
+// hora y si es a domicilio o para recoger. Cambiar una nota interna, marcar
+// "va en paellera" o corregir la referencia de la dirección NO ofrece nada —
+// la idea es no darle a Pepe un botón de mandar mensaje cada vez que toca algo.
+const resumenParaElCliente = (p) =>
+  (p.items || [])
+    .map((it) =>
+      it.tipo === "paella"
+        ? `p:${it.paellaId}:${it.kg}:${(it.extras || []).map((e) => e.extraId + "x" + e.cantidad).sort().join(",")}`
+        : `e:${it.extraId}:${it.cantidad}`
+    )
+    .sort()
+    .join("|");
+
+const cambioQueLeImporta = (antes, ahora) => {
+  if (!antes || !ahora) return false;
+  if (Math.abs((antes.total || 0) - (ahora.total || 0)) > 0.5) return true;
+  if ((antes.fecha || "") !== (ahora.fecha || "")) return true;
+  if ((antes.hora || "") !== (ahora.hora || "")) return true;
+  if (!!antes.entrega !== !!ahora.entrega) return true;
+  // Puede cambiar un platillo por otro del mismo precio: el total no se mueve
+  // pero al cliente le llega otra cosa.
+  return resumenParaElCliente(antes) !== resumenParaElCliente(ahora);
+};
+
 const esPedidoViejo = (fecha) => !!fecha && fecha < todayISO();
 
 const ajustarStock = (desechables, consumo, direccion) =>
@@ -1906,6 +1984,7 @@ const TITULO_AVISO = {
   avisado: "Pedido avisado",
   pago: "Pago registrado",
   nuevo: "Pedido guardado",
+  cambio: "El pedido cambió",
 };
 
 // Al entregar un pedido que todavía debe algo, se pregunta cómo se cerró en
@@ -1956,7 +2035,9 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
   // entrado un peso más; si entró, el aviso vuelve a ser el botón principal.
   const dineroNuevo =
     tipo === "pago" && Math.abs(sumaAbonos(pedido.abonos) - (pedido.avisoPagoMonto ?? -1)) > 0.5;
-  const yaSeMando = dineroNuevo ? null : (pedido.avisosEnviados || {})[tipo];
+  // Un "cambio" nunca es repetido: solo se ofrece cuando el pedido de verdad
+  // cambió desde el guardado anterior, así que siempre es noticia nueva.
+  const yaSeMando = dineroNuevo || tipo === "cambio" ? null : (pedido.avisosEnviados || {})[tipo];
   return (
     <div className="af-modal-overlay af-modal-overlay-center" onClick={subiendo ? undefined : onCerrar}>
       <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
@@ -1965,7 +2046,9 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
         <p className="af-alerta-texto">
           {tipo === "pago"
             ? <>¿Le mandamos su saldo al día a <strong>{pedido.clienteNombre}</strong>?</>
-            : <>¿Enviamos el mensaje de WhatsApp a <strong>{pedido.clienteNombre}</strong>?</>}
+            : tipo === "cambio"
+              ? <>Ya le habías avisado de este pedido y cambió. ¿Le mandamos a <strong>{pedido.clienteNombre}</strong> cómo quedó?</>
+              : <>¿Enviamos el mensaje de WhatsApp a <strong>{pedido.clienteNombre}</strong>?</>}
         </p>
         {yaSeMando && (
           <div className="af-ya-enviado">
@@ -3020,6 +3103,11 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         </div>
         {(() => {
           const parecidos = clientesParecidos(form.nombre, clientes);
+          const malTel = problemaDelTelefono(form.telefono, clientes);
+          // Cualquiera de los dos avisos pide una segunda confirmación: se
+          // avisa, no se bloquea (hay números de otro país perfectamente
+          // válidos, y a veces sí son dos clientes con nombre parecido).
+          const hayAviso = parecidos.length > 0 || !!malTel;
           return (
             <>
               {parecidos.length > 0 && (
@@ -3028,11 +3116,14 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                   Revisa que no lo estés duplicando — puedes buscarlo en la lista.
                 </div>
               )}
+              {malTel && (
+                <div className="af-error">⚠ Revisa el teléfono: {malTel}</div>
+              )}
               <button
                 className="af-btn-primary w-full mt-2"
                 onClick={() => {
                   if (!form.nombre.trim()) return;
-                  if (parecidos.length > 0 && !confirmDup) { setConfirmDup(true); return; }
+                  if (hayAviso && !confirmDup) { setConfirmDup(true); return; }
                   const c = onAddCliente(form);
                   setNuevo(false);
                   setConfirmDup(false);
@@ -3040,7 +3131,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                   setDetalleId(c.id);
                 }}
               >
-                {parecidos.length > 0 && confirmDup ? "¿Seguro? Crear de todos modos" : "Guardar cliente"}
+                {hayAviso && confirmDup ? "¿Seguro? Guardar de todos modos" : "Guardar cliente"}
               </button>
             </>
           );
@@ -7407,6 +7498,20 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
+              <label>Cuando el pedido cambia después de avisarle</label>
+              <textarea
+                className="af-input"
+                rows={2}
+                value={(draft.mensajes || MENSAJES_DEFAULT).cambioPedido || MENSAJES_DEFAULT.cambioPedido}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), cambioPedido: e.target.value } })}
+              />
+              <p className="af-ink-soft text-xs mt-1">
+                Se ofrece al guardar un pedido al que ya le habías avisado al cliente y que
+                cambió de platillos, total, día, hora o forma de entrega. Abajo va el resumen
+                completo ya actualizado.
+              </p>
+            </div>
+            <div className="af-field">
               <label>Al llegar a la puerta — botón "Ya llegué"</label>
               <textarea
                 className="af-input"
@@ -8987,10 +9092,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
   const [confirmDupPedido, setConfirmDupPedido] = useState(false);
   const parecidosNuevo = clientesParecidos(nuevoCliente.nombre, clientes);
+  const malTelNuevo = problemaDelTelefono(nuevoCliente.telefono, clientes);
 
   const crearCliente = () => {
     if (!nuevoCliente.nombre.trim()) return;
-    if (parecidosNuevo.length > 0 && !confirmDupPedido) { setConfirmDupPedido(true); return; }
+    if ((parecidosNuevo.length > 0 || malTelNuevo) && !confirmDupPedido) { setConfirmDupPedido(true); return; }
     const c = onAddCliente(nuevoCliente);
     seleccionarCliente(c);
     setMostrarNuevo(false);
@@ -9330,10 +9436,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     </div>
                   </div>
                 )}
+                {malTelNuevo && (
+                  <div className="af-error">⚠ Revisa el teléfono: {malTelNuevo}</div>
+                )}
                 <div className="flex gap-2">
                   <button className="af-btn-ghost flex-1" onClick={() => setMostrarNuevo(false)}>Cancelar</button>
                   <button className="af-btn-primary flex-1" onClick={crearCliente}>
-                    {parecidosNuevo.length > 0 && confirmDupPedido ? "¿Seguro? Crear igual" : "Guardar"}
+                    {(parecidosNuevo.length > 0 || malTelNuevo) && confirmDupPedido ? "¿Seguro? Crear igual" : "Guardar"}
                   </button>
                 </div>
               </div>
@@ -10465,6 +10574,7 @@ export default function App() {
       let mensaje;
       if (clase === "pago") mensaje = mensajePago(pedido, extra?.abono || 0, config.mensajes, config.pago);
       else if (clase === "nuevo") mensaje = mensajeWhatsApp(pedido, "pedido", config.pago, config.mensajes, config.local);
+      else if (clase === "cambio") mensaje = mensajeWhatsApp(pedido, "cambio", config.pago, config.mensajes, config.local);
       else if (clase === "entregado") mensaje = mensajeEntregado(pedido, config.mensajes);
       else mensaje = mensajeAvisado(pedido, config.mensajes, config.local, config.pago);
       abrirWhatsApp(pedido.clienteTelefono, mensaje);
@@ -10764,6 +10874,11 @@ export default function App() {
       notas: form.notas,
       terminos: form.terminos,
       createdAt: form.createdAt || Date.now(),
+      // Lo que ya se le mandó al cliente de ESTE pedido. Se conserva al editar:
+      // antes se perdía en cada guardado, así que el aviso de "este mensaje ya
+      // se le mandó" se reiniciaba solo y dejaba de frenar los repetidos.
+      ...(anteriorPedido && anteriorPedido.avisosEnviados ? { avisosEnviados: anteriorPedido.avisosEnviados } : {}),
+      ...(anteriorPedido && anteriorPedido.avisoPagoMonto !== undefined ? { avisoPagoMonto: anteriorPedido.avisoPagoMonto } : {}),
       // Si este pedido movió el almacén. Los de días pasados no, porque esa
       // comida ya se compró y se cocinó en su momento.
       descontoAlmacen: tocaElAlmacen(form.fecha),
@@ -10832,6 +10947,17 @@ export default function App() {
         setAvisoModal({ pedido: pedidoObj, tipo: "avisado" });
       } else if (anteriorPedido && anteriorPedido.estado !== "entregado" && pedidoObj.estado === "entregado") {
         setAvisoModal({ pedido: pedidoObj, tipo: "entregado" });
+      } else if (cambioQueLeImporta(anteriorPedido, pedidoObj)) {
+        // Va ANTES que el pago: si en el mismo guardado cambió el pedido y
+        // entró dinero, el resumen completo dice las dos cosas (los platillos
+        // nuevos, el total, lo pagado y lo que falta). El de pago solo diría
+        // el saldo, sin explicar por qué cambió.
+        //
+        // Si al cliente nunca se le mandó nada de este pedido, no tiene
+        // sentido decirle que "se actualizó" algo que no conoce: se le ofrece
+        // el resumen normal, como si fuera nuevo.
+        const yaSabeDelPedido = Object.keys(pedidoObj.avisosEnviados || {}).length > 0;
+        setAvisoModal({ pedido: pedidoObj, tipo: yaSabeDelPedido ? "cambio" : "nuevo" });
       } else if (abonoNuevo > 0) {
         setAvisoModal({ pedido: pedidoObj, tipo: "pago", abono: abonoNuevo });
       }
