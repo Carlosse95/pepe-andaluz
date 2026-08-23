@@ -1354,13 +1354,26 @@ const produccionDelDia = (pedidosDelDia, config) => {
   const paellasKg = {}; // paellaId -> kg total
   const platillos = {}; // extraId -> cantidad total (piezas si aplica, si no unidades)
   const ingredientesUso = {}; // ingredienteId -> cantidad en su usoUnidad
-  const sueltasPorPaella = {}; // paellaId -> kg de PAELLA_SUELTA_MAX_KG o menos: no cabe en ninguna paellera
+  // Los kilos se llevan SEPARADOS según cómo se cocinan: una paella de más de
+  // PAELLA_SUELTA_MAX_KG va en paellera, y una de ese peso o menos va suelta
+  // porque no cabe en ninguna.
+  //
+  // Antes se enseñaba el total y, debajo, otro renglón con las sueltas — que
+  // ya estaban DENTRO de ese total. Leyendo "Carnes 10 kg" y luego "Carnes
+  // suelta 3 kg" parecían 13. Ahora cada modalidad va por su lado y no hay
+  // ningún número que contenga al otro.
+  const enPaelleraPorPaella = {}; // paellaId -> kg que van en paellera
+  const sueltasPorPaella = {};    // paellaId -> kg que van sueltos
 
   pedidosDelDia.forEach((p) => {
     (p.items || []).forEach((it) => {
       if (it.tipo === "paella") {
         paellasKg[it.paellaId] = (paellasKg[it.paellaId] || 0) + it.kg;
-        if (it.kg <= PAELLA_SUELTA_MAX_KG) sueltasPorPaella[it.paellaId] = (sueltasPorPaella[it.paellaId] || 0) + it.kg;
+        if (it.kg <= PAELLA_SUELTA_MAX_KG) {
+          sueltasPorPaella[it.paellaId] = (sueltasPorPaella[it.paellaId] || 0) + it.kg;
+        } else {
+          enPaelleraPorPaella[it.paellaId] = (enPaelleraPorPaella[it.paellaId] || 0) + it.kg;
+        }
       } else if (it.tipo === "extra") {
         // Cantidad convertida a piezas cuando aplica (ej. 4 órdenes de
         // "ración de 6" = 24 piezas): es lo que hay que sacar del
@@ -1389,7 +1402,9 @@ const produccionDelDia = (pedidosDelDia, config) => {
     if (total > 0) ingredientesUso[ing.id] = total;
   });
 
-  return { paellasKg, platillos, ingredientesUso, sueltasPorPaella };
+  // paellasKg sigue siendo el TOTAL: los ingredientes (camarón, arroz) se
+  // calculan sobre todos los kilos, sin importar cómo se cocinen.
+  return { paellasKg, platillos, ingredientesUso, sueltasPorPaella, enPaelleraPorPaella };
 };
 
 // Paelleras (los recipientes grandes que se prestan al cliente) necesarias
@@ -2339,7 +2354,7 @@ function SaludoInicio({ nombre, saliendo }) {
 // soloContenido: dibuja nada más el desglose, sin su propio botón de plegar,
 // para poder meterlo dentro de un PanelPlegable y que todos se vean igual.
 function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloContenido }) {
-  const { paellasKg, platillos, ingredientesUso, sueltasPorPaella } = produccionDelDia(pedidosDelDia, config);
+  const { paellasKg, platillos, ingredientesUso, sueltasPorPaella, enPaelleraPorPaella } = produccionDelDia(pedidosDelDia, config);
   const conteoPaelleras = paellerasDelDia(pedidosDelDia, config.paelleras);
   const hayProduccion =
     Object.keys(paellasKg).length > 0 ||
@@ -2364,20 +2379,40 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
       )}
       {(soloContenido || abierto) && (
         <div className="af-produccion-box">
-          {Object.entries(paellasKg).map(([paellaId, kg]) => (
-            <div key={paellaId} className="af-produccion-row">
-              <span className="af-produccion-nombre">{nombrePaella(paellaId)}</span>
-              <span className="af-produccion-puntos" />
-              <span className="af-produccion-valor">{fmtKg(kg)}</span>
+          {/* Cada paella se parte en cómo se cocina, y ninguna cifra incluye a
+              la otra: se pueden leer de corrido sin sumar ni restar nada.
+              Cuando todo el día de esa paella va de un solo modo, se enseña un
+              renglón pelón, sin etiqueta, que es lo normal. */}
+          {Object.keys(paellasKg).map((paellaId) => {
+            const enPaellera = enPaelleraPorPaella[paellaId] || 0;
+            const suelta = sueltasPorPaella[paellaId] || 0;
+            const deLosDos = enPaellera > 0 && suelta > 0;
+            return (
+              <React.Fragment key={paellaId}>
+                {enPaellera > 0 && (
+                  <div className="af-produccion-row">
+                    <span className="af-produccion-nombre">
+                      {nombrePaella(paellaId)}{deLosDos ? " · en paellera" : ""}
+                    </span>
+                    <span className="af-produccion-puntos" />
+                    <span className="af-produccion-valor">{fmtKg(enPaellera)}</span>
+                  </div>
+                )}
+                {suelta > 0 && (
+                  <div className="af-produccion-row">
+                    <span className="af-produccion-nombre">{nombrePaella(paellaId)} · suelta</span>
+                    <span className="af-produccion-puntos" />
+                    <span className="af-produccion-valor">{fmtKg(suelta)}</span>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+          {Object.keys(sueltasPorPaella).length > 0 && (
+            <div className="af-produccion-nota">
+              «Suelta» es la que va de {PAELLA_SUELTA_MAX_KG} kg o menos: no cabe en ninguna paellera.
             </div>
-          ))}
-          {Object.entries(sueltasPorPaella).map(([paellaId, kg]) => (
-            <div key={"suelta-" + paellaId} className="af-produccion-row">
-              <span className="af-produccion-nombre">{nombrePaella(paellaId)} suelta ({PAELLA_SUELTA_MAX_KG} kg o menos)</span>
-              <span className="af-produccion-puntos" />
-              <span className="af-produccion-valor">{fmtKg(kg)}</span>
-            </div>
-          ))}
+          )}
           {Object.entries(platillos).map(([extraId, cant]) => (
             <div key={extraId} className="af-produccion-row">
               <span className="af-produccion-nombre">{nombreExtra(extraId)}</span>
@@ -11741,6 +11776,7 @@ const AZAFRAN_CSS = `
 
 .af-produccion-box { background: var(--olive-soft); border-radius: 12px; padding: 10px 14px; margin-top: 6px; }
 .af-produccion-row { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; font-size: 13.5px; color: var(--ink); }
+.af-produccion-nota { font-size: 11.5px; color: var(--ink-soft); font-style: italic; padding: 4px 0 2px; }
 .af-produccion-nombre { flex-shrink: 0; }
 .af-produccion-puntos { flex: 1 1 auto; min-width: 12px; border-bottom: 1.5px dotted var(--ink-soft); opacity: 0.45; margin-bottom: 3px; }
 .af-produccion-valor { flex-shrink: 0; font-weight: 700; font-family: 'Space Grotesk', sans-serif; color: var(--olive); }
