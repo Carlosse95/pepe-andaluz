@@ -18,6 +18,15 @@ import {
   subirTicket, verTicket, leerTicket, subirRecibo,
 } from "./nube.js";
 
+// Las claves del almacén que la app mantiene sincronizadas con la nube. Es la
+// lista que se revisa cada pocos segundos para ver cuál cambió. No están todas
+// las de la tabla a propósito: `respaldo-config-antes-de-restaurar` es una
+// copia de seguridad que nadie lee en caliente.
+const CLAVES_NUBE = [
+  "pedidos", "clientes", "config-productos",
+  "historico-mensual", "presupuestos", "avatares", "gastos",
+];
+
 /* ---------------------------------------------------------------------- */
 /*  Logo (procesado a partir del logo real, en máscara para recolorear)   */
 /* ---------------------------------------------------------------------- */
@@ -10217,6 +10226,11 @@ export default function App() {
     if (!puedeUsarDatos) return;
     let cancelado = false;
 
+    // La hora del último cambio de cada clave, tal como se conocía la última
+    // vez que se miró. Es contra esto que se compara para saber qué bajar.
+    // null = todavía no se ha establecido la referencia.
+    let horasVistas = null;
+
     // mostrarPantalla=true solo la primera vez (pantalla completa "Cargando
     // pedidos..."); en las siguientes llamadas (al volver a la app) se
     // actualiza en silencio para no interrumpir lo que se esté viendo.
@@ -10230,6 +10244,11 @@ export default function App() {
       // mientras tanto se guardó algo, esta respuesta trae la foto de antes y
       // no se usa: pisaría lo que el usuario acaba de hacer.
       const emitidaEn = Date.now();
+      // Las horas se piden ANTES que los datos, a propósito. Así, si alguien
+      // guarda algo mientras esta carga va en camino, su hora quedará más
+      // nueva que la que se anota aquí y la siguiente revisión lo va a
+      // detectar. Al revés (anotar horas de después) ese cambio se perdería.
+      const horasAlSalir = await almacen.horas().catch(() => null);
       try {
         const [rp, rc, rcfg, rh, rpr, rav, rg] = await Promise.allSettled([
           almacen.get("pedidos"),
@@ -10275,6 +10294,10 @@ export default function App() {
         if (rpr.status === "fulfilled" && rpr.value) aplicar("presupuestos", rpr.value.value);
         if (rav.status === "fulfilled" && rav.value) aplicar("avatares", rav.value.value);
         if (rg.status === "fulfilled" && rg.value) aplicar("gastos", rg.value.value);
+        // Ya se tiene todo: estas son las horas contra las que se comparará de
+        // aquí en adelante. Si no se pudieron leer, se deja como estaba y la
+        // revisión siguiente vuelve a intentarlo.
+        if (horasAlSalir) horasVistas = horasAlSalir;
         // A partir de aquí ya hay algo en pantalla: las siguientes lecturas
         // se hacen en silencio.
         hayDatosEnPantalla.current = true;
@@ -10363,10 +10386,20 @@ export default function App() {
     // la app pasa a segundo plano o se bloquea la pantalla, y no se reconecta
     // sola con los cambios perdidos mientras tanto — por eso antes hacía
     // falta cerrar y volver a abrir la app para ver lo nuevo. Al regresar a
-    // la pestaña/app se vuelve a pedir todo (en silencio) para ponerse al día.
+    // la pestaña/app hay que ponerse al día.
+    //
+    // Antes eso significaba volver a bajar TODO en cada regreso. En el
+    // celular se entra y se sale de la app decenas de veces al día (se va a
+    // WhatsApp a contestarle a un cliente y se vuelve), y cada regreso
+    // costaba más de un mega. Ahora se mira primero qué cambió y solo se
+    // baja eso; casi siempre no cambió nada y no se baja nada.
     const alVolverVisible = () => {
       if (document.visibilityState !== "visible") return;
-      cargarTodo(false);
+      // Si todavía no hay horas con qué comparar (la carga inicial no
+      // alcanzó a leerlas) sí se baja todo: es la única forma de ponerse al
+      // día sin referencia.
+      if (horasVistas) revisarCambios();
+      else cargarTodo(false);
       incorporarPedidosWhatsApp();
     };
     document.addEventListener("visibilitychange", alVolverVisible);
@@ -10374,12 +10407,62 @@ export default function App() {
     // Respaldo además del tiempo real: en celular el canal de Supabase se
     // puede quedar "colgado" sin avisar (red débil, cambio de wifi a datos,
     // el sistema operativo lo pausa un rato) y ahí ya no llegan cambios
-    // aunque la app siga abierta y visible. Este ping cada 3s en silencio
-    // asegura que lo que hacen los demás aparezca casi al instante de todas
-    // formas — es el intervalo más corto razonable sin saturar Supabase.
-    const intervalo = setInterval(() => {
-      if (document.visibilityState === "visible") cargarTodo(false);
-    }, 3000);
+    // aunque la app siga abierta y visible.
+    //
+    // Antes esta revisión volvía a descargar TODO cada 3 segundos: más de un
+    // mega por ronda, veinte rondas por minuto, con solo tener la app
+    // abierta. Cuando la lista de clientes creció a miles eso se comió el
+    // internet mensual de Supabase (5 GB del plan gratis) en unas horas de
+    // uso: 19,000 descargas completas en un día.
+    //
+    // Ahora se pregunta nada más la HORA del último cambio de cada clave
+    // —unos cientos de bytes— y solo se baja la que de verdad cambió. Se
+    // sigue revisando cada 3 segundos, así que se siente igual de rápida.
+    let revisando = false;
+    const revisarCambios = async () => {
+      if (cancelado || revisando || document.visibilityState !== "visible") return;
+      revisando = true;
+      try {
+        let horas;
+        try {
+          horas = await almacen.horas();
+        } catch {
+          return; // sin conexión: se reintenta en la ronda siguiente
+        }
+        if (cancelado || !horas) return;
+        // Sin referencia todavía (la carga inicial no alcanzó a leer las
+        // horas): se toma nota ahora y se compara desde la ronda siguiente.
+        if (!horasVistas) { horasVistas = horas; return; }
+
+        const nuevasHoras = { ...horasVistas };
+        const cambiadas = [];
+        for (const clave of CLAVES_NUBE) {
+          if (!horas[clave] || horas[clave] === horasVistas[clave]) continue;
+          // Mientras un guardado nuestro va en camino esta clave no se toca:
+          // la respuesta traería la foto de antes y pisaría lo recién hecho
+          // (el mismo candado que en el aviso de tiempo real). Su hora se
+          // deja sin anotar para volver a mirarla en la ronda siguiente.
+          if (escriturasEnVuelo.current[clave]) continue;
+          cambiadas.push(clave);
+          nuevasHoras[clave] = horas[clave];
+        }
+        horasVistas = nuevasHoras;
+        if (!cambiadas.length) return;
+
+        const emitidaEn = Date.now();
+        await Promise.allSettled(
+          cambiadas.map(async (clave) => {
+            const r = await almacen.get(clave);
+            if (cancelado || !r) return;
+            leidasDeLaNube.current.add(clave);
+            if (lecturaVigente(clave, emitidaEn)) aplicarClave(clave, r.value);
+          })
+        );
+      } finally {
+        revisando = false;
+      }
+    };
+    const intervalo = setInterval(revisarCambios, 3000);
 
     // Respaldo del tiempo real para el buzón de WhatsApp: se revisa cada
     // minuto por si el aviso instantáneo no llegó (misma razón que arriba).

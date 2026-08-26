@@ -41,6 +41,26 @@ export const almacen = {
     if (error) throw error;
     return { key, value };
   },
+
+  // Solo la HORA del último cambio de cada clave, sin los datos. Devuelve
+  // { clave: hora }.
+  //
+  // Es lo que la app consulta cada pocos segundos para saber si hace falta
+  // bajar algo. Antes preguntaba trayéndose las listas completas —más de un
+  // mega por ronda, veinte rondas por minuto— y eso se comió el internet
+  // mensual de Supabase en unas horas cuando la lista de clientes creció.
+  // Esta respuesta son unos cientos de bytes.
+  //
+  // La hora la pone sola la base de datos (disparador `almacen_set_updated_at`),
+  // así que también se entera de los cambios hechos fuera de la app.
+  async horas() {
+    if (!nubeActiva) return null;
+    const { data, error } = await supabase.from("almacen").select("clave,updated_at");
+    if (error) throw error;
+    const mapa = {};
+    (data || []).forEach((fila) => { mapa[fila.clave] = fila.updated_at; });
+    return mapa;
+  },
 };
 
 // Escucha cambios hechos desde OTROS dispositivos (tiempo real).

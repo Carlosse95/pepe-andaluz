@@ -32,6 +32,36 @@ create table if not exists public.almacen (
   updated_at timestamptz not null default now()
 );
 
+-- ---------- Trigger: la hora de cambio la pone la base, no la app ----------
+-- La app pregunta cada pocos segundos "¿cambió algo?" leyendo solo
+-- `clave, updated_at` (unos cientos de bytes) y nada más baja la clave que de
+-- verdad cambió. Antes se traía las listas completas en cada ronda —más de un
+-- mega, veinte veces por minuto— y eso agotó el internet mensual del plan
+-- gratis en cuestión de horas cuando la lista de clientes creció a miles.
+--
+-- Para que esa pregunta sea de fiar la hora tiene que ponerse SOLA en cada
+-- guardado, venga de donde venga: la app, un script, la consola de Supabase.
+-- Antes la mandaba la app y un cambio hecho por fuera pasaba desapercibido.
+-- Además así manda el reloj del servidor y no el del celular, que puede estar
+-- descuadrado.
+
+create or replace function public.almacen_marcar_actualizado()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists almacen_set_updated_at on public.almacen;
+
+create trigger almacen_set_updated_at
+  before insert or update on public.almacen
+  for each row
+  execute function public.almacen_marcar_actualizado();
+
 -- ---------- Trigger: alta automática de perfil al registrarse ----------
 -- El primer usuario registrado = admin activo (ese serás tú).
 -- Los siguientes quedan desactivados: el admin los activa desde la app.
