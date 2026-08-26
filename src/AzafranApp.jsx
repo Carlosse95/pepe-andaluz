@@ -3161,12 +3161,15 @@ function BuscarView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 /*  Vista: Clientes                                                       */
 /* ---------------------------------------------------------------------- */
 
-function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClientes, onUpdateCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
+function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClientes, onUpdateCliente, onEliminarCliente, onNuevoPedidoPara, onAbrirPedido, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
   const [q, setQ] = useState("");
   const [detalleId, setDetalleId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
   const [form, setForm] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
   const [confirmDup, setConfirmDup] = useState(false);
+  // El cliente que se está por borrar, con el resumen de lo que tiene abierto.
+  // Se calcula al abrir el aviso, no al pintar la ficha: solo hace falta ahí.
+  const [confirmBorrar, setConfirmBorrar] = useState(null);
   const [soloAusentes, setSoloAusentes] = useState(false);
   const [importando, setImportando] = useState(null); // { lista, elegidos } o null
 
@@ -3325,6 +3328,80 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         ) : (
           <div className="af-card-grid">
             {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />)}
+          </div>
+        )}
+
+        {/* Borrar va hasta abajo y en discreto, lejos de "+ Pedido" y
+            "Guardar cambios": es lo que menos se usa y lo único que no se
+            deshace, así que no debe quedar al alcance del pulgar por error. */}
+        <button
+          className="af-btn-ghost w-full mt-4 mb-2"
+          style={{ color: "#b91c1c" }}
+          onClick={() => {
+            const pendientes = historial.filter((p) => (p.estado || "pendiente") !== "entregado");
+            const debe = historial.reduce(
+              (a, p) => a + Math.max(0, Math.round(((p.total || 0) - (p.pagado || 0)) * 100) / 100),
+              0
+            );
+            setConfirmBorrar({
+              cliente: detalle,
+              pedidos: historial.length,
+              pendientes: pendientes.length,
+              debe,
+              paelleras: pendientesCliente.length,
+            });
+          }}
+        >
+          <Trash2 size={14} className="inline mr-1" /> Borrar cliente
+        </button>
+
+        {confirmBorrar && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmBorrar(null)}>
+            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-icon"><Trash2 size={26} /></div>
+              <div className="af-alerta-titulo">¿Borrar a {confirmBorrar.cliente.nombre}?</div>
+
+              {/* Lo que más tranquiliza al borrar es saber qué NO se va. */}
+              {confirmBorrar.pedidos === 0 ? (
+                <p className="af-alerta-texto">Nunca ha hecho un pedido. Solo se quita de la lista.</p>
+              ) : (
+                <p className="af-alerta-texto">
+                  Sus <strong>{confirmBorrar.pedidos} pedido{confirmBorrar.pedidos === 1 ? "" : "s"} no se borran</strong>:
+                  siguen en el historial y en las cuentas del mes, con su nombre. Lo que se pierde es su ficha
+                  —teléfono, dirección y notas— y ya no vas a poder abrirla desde sus pedidos.
+                </p>
+              )}
+
+              {/* Lo que está abierto se enseña aparte y en rojo: si debe dinero
+                  o trae una paellera, casi siempre es que NO había que borrarlo. */}
+              {(confirmBorrar.paelleras > 0 || confirmBorrar.debe > 0 || confirmBorrar.pendientes > 0) && (
+                <div className="af-borrar-pendiente">
+                  <strong>Ojo, tiene cosas abiertas:</strong>
+                  <ul>
+                    {confirmBorrar.paelleras > 0 && (
+                      <li>{confirmBorrar.paelleras} paellera{confirmBorrar.paelleras === 1 ? "" : "s"} sin devolver</li>
+                    )}
+                    {confirmBorrar.debe > 0 && <li>Debe {money(confirmBorrar.debe)}</li>}
+                    {confirmBorrar.pendientes > 0 && (
+                      <li>{confirmBorrar.pendientes} pedido{confirmBorrar.pendientes === 1 ? "" : "s"} sin entregar</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              <p className="af-ink-soft text-sm mb-3">No se puede deshacer.</p>
+              <button
+                className="af-btn-primary w-full"
+                onClick={() => {
+                  onEliminarCliente(confirmBorrar.cliente.id);
+                  setConfirmBorrar(null);
+                  setDetalleId(null);
+                }}
+              >
+                Sí, bórralo
+              </button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmBorrar(null)}>Mejor no</button>
+            </div>
           </div>
         )}
       </div>
@@ -10635,6 +10712,20 @@ export default function App() {
     showToast("Cliente actualizado en todos sus pedidos");
   };
 
+  // Saca al cliente de la libreta. Sus PEDIDOS NO SE TOCAN: cada pedido
+  // guarda por su cuenta el nombre y el teléfono con los que se hizo, así que
+  // el historial de ventas y las cuentas del mes siguen completos aunque el
+  // cliente ya no esté en la lista. Lo único que se pierde es el enlace, o
+  // sea que desde ese pedido ya no se puede saltar a su ficha.
+  //
+  // Se separó de `updateCliente` a propósito: borrar no debe arrastrar los
+  // pedidos, que es justo lo que asustaría de un botón así.
+  const eliminarCliente = (id) => {
+    const c = clientes.find((x) => x.id === id);
+    guardarClientes(clientes.filter((x) => x.id !== id));
+    showToast(`${c ? c.nombre : "Cliente"} se quitó de la lista`);
+  };
+
   const marcarPaelleraDevuelta = (pedidoId, itemId) => {
     guardarPedidos(
       pedidos.map((p) =>
@@ -11548,6 +11639,7 @@ export default function App() {
               onAddCliente={addCliente}
               onImportarClientes={importarClientes}
               onUpdateCliente={updateCliente}
+              onEliminarCliente={eliminarCliente}
               onNuevoPedidoPara={goToNuevoPedido}
               onAbrirPedido={irAEditar}
               onMarcarDevuelta={marcarPaelleraDevuelta}
@@ -11775,6 +11867,11 @@ const AZAFRAN_CSS = `
 .af-alerta-titulo { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; margin-bottom: 8px; }
 .af-ya-enviado { display: flex; align-items: center; gap: 7px; justify-content: center; font-size: 12.5px; font-weight: 600; color: #b7791f; background: color-mix(in srgb, #b7791f 10%, transparent); border: 1px solid color-mix(in srgb, #b7791f 32%, transparent); border-radius: 10px; padding: 8px 10px; margin-bottom: 12px; }
 .af-alerta-texto { color: var(--ink-soft); font-size: 14px; line-height: 1.5; margin-bottom: 18px; }
+
+/* Lo que el cliente deja abierto al borrarlo (dinero, paelleras, pedidos sin
+   entregar). Va en rojo porque casi siempre significa que no hay que borrarlo. */
+.af-borrar-pendiente { text-align: left; font-size: 13px; line-height: 1.5; color: #b91c1c; background: color-mix(in srgb, #dc2626 10%, transparent); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+.af-borrar-pendiente ul { margin: 4px 0 0; padding-left: 18px; }
 
 .af-content { flex: 1; padding: 16px 16px 100px; overflow-y: auto; }
 
