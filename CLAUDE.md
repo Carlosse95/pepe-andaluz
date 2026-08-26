@@ -60,6 +60,26 @@ lo volvería pesadísimo, por la razón del punto 3.
 **5. `grep` a secas no sirve en esta máquina** — termina sin salida y sin
 error, aunque el archivo sí tenga lo buscado. Usar siempre `/usr/bin/grep`.
 
+**6. Cuidado con lo que se descarga en bucle: el plan gratis da 5 GB de
+egress al mes.** El 25 de agosto de 2026 la organización entró en periodo de
+gracia por pasarse (6.5 GB, 131%). La causa: la revisión de respaldo del
+tiempo real volvía a bajar las SIETE claves completas cada 3 segundos con
+solo tener la app abierta — 1.4 MB por ronda, ~908 MB/hora, 19,000 descargas
+completas en un día. Empeoró seis veces al importar 2,930 contactos (clientes
+pasó de ~90 KB a 532 KB).
+
+Arreglado: ahora se pregunta solo `select clave, updated_at` (~600 bytes) y
+se baja únicamente la clave que cambió; lo mismo al volver de segundo plano.
+Quedó en ~0.69 MB/hora. La hora la pone sola la base con el disparador
+`almacen_set_updated_at`, no la app: así también detecta cambios hechos por
+fuera (scripts, consola de Supabase) y no depende del reloj del celular.
+
+**Antes de agregar cualquier consulta que corra en bucle, calcular cuánto
+pesa × cuántas veces por minuto.** La base de datos y el Storage están al 6%;
+lo que se agota es el ancho de banda. Para medirlo de verdad: envolver
+`window.fetch` en el navegador y sumar bytes, o revisar `edge_logs` agrupando
+por `request.path` y `request.search`.
+
 ## Cómo es Carlos (para calibrar el tono y el nivel de detalle)
 
 Español, no programador, nuevo en GitHub/Supabase/terminal. Prefiere que
