@@ -10383,11 +10383,6 @@ export default function App() {
     if (!puedeUsarDatos) return;
     let cancelado = false;
 
-    // La hora del último cambio de cada clave, tal como se conocía la última
-    // vez que se miró. Es contra esto que se compara para saber qué bajar.
-    // null = todavía no se ha establecido la referencia.
-    let horasVistas = null;
-
     // mostrarPantalla=true solo la primera vez (pantalla completa "Cargando
     // pedidos..."); en las siguientes llamadas (al volver a la app) se
     // actualiza en silencio para no interrumpir lo que se esté viendo.
@@ -10454,7 +10449,7 @@ export default function App() {
         // Ya se tiene todo: estas son las horas contra las que se comparará de
         // aquí en adelante. Si no se pudieron leer, se deja como estaba y la
         // revisión siguiente vuelve a intentarlo.
-        if (horasAlSalir) horasVistas = horasAlSalir;
+        if (horasAlSalir) horasVistas.current = horasAlSalir;
         // A partir de aquí ya hay algo en pantalla: las siguientes lecturas
         // se hacen en silencio.
         hayDatosEnPantalla.current = true;
@@ -10555,7 +10550,7 @@ export default function App() {
       // Si todavía no hay horas con qué comparar (la carga inicial no
       // alcanzó a leerlas) sí se baja todo: es la única forma de ponerse al
       // día sin referencia.
-      if (horasVistas) revisarCambios();
+      if (horasVistas.current) revisarCambios();
       else cargarTodo(false);
       incorporarPedidosWhatsApp();
     };
@@ -10589,12 +10584,12 @@ export default function App() {
         if (cancelado || !horas) return;
         // Sin referencia todavía (la carga inicial no alcanzó a leer las
         // horas): se toma nota ahora y se compara desde la ronda siguiente.
-        if (!horasVistas) { horasVistas = horas; return; }
+        if (!horasVistas.current) { horasVistas.current = horas; return; }
 
-        const nuevasHoras = { ...horasVistas };
+        const nuevasHoras = { ...horasVistas.current };
         const cambiadas = [];
         for (const clave of CLAVES_NUBE) {
-          if (!horas[clave] || horas[clave] === horasVistas[clave]) continue;
+          if (!horas[clave] || horas[clave] === horasVistas.current[clave]) continue;
           // Mientras un guardado nuestro va en camino esta clave no se toca:
           // la respuesta traería la foto de antes y pisaría lo recién hecho
           // (el mismo candado que en el aviso de tiempo real). Su hora se
@@ -10603,7 +10598,7 @@ export default function App() {
           cambiadas.push(clave);
           nuevasHoras[clave] = horas[clave];
         }
-        horasVistas = nuevasHoras;
+        horasVistas.current = nuevasHoras;
         if (!cambiadas.length) return;
 
         const emitidaEn = Date.now();
@@ -10673,6 +10668,14 @@ export default function App() {
   const escriturasEnVuelo = useRef({}); // clave -> cuántos guardados van en camino
   const guardadoEn = useRef({});        // clave -> cuándo terminó el último
 
+  // La hora del último cambio de cada clave, como la conoce este aparato. Es
+  // contra esto que la revisión de cada 3s decide si hay que bajar algo.
+  // null = todavía sin referencia.
+  //
+  // Es un ref y no una variable del efecto porque `persist` —que vive fuera—
+  // tiene que poder anotarla al guardar. Ver el porqué en `persist`.
+  const horasVistas = useRef(null);
+
   // ¿Sirve lo que acaba de llegar de la nube para esta clave?
   const lecturaVigente = (clave, emitidaEn) =>
     !escriturasEnVuelo.current[clave] && emitidaEn > (guardadoEn.current[clave] || 0);
@@ -10685,8 +10688,26 @@ export default function App() {
     }
     escriturasEnVuelo.current[key] = (escriturasEnVuelo.current[key] || 0) + 1;
     try {
-      await almacen.set(key, JSON.stringify(value));
+      const guardado = await almacen.set(key, JSON.stringify(value));
       guardadoEn.current[key] = Date.now();
+      // Se anota la hora que dejó ESTE guardado, para no volver a bajarse lo
+      // que uno mismo acaba de escribir.
+      //
+      // Sin esto, la revisión de los 3 segundos veía una hora distinta a la
+      // apuntada, creía que otro aparato había cambiado algo, y se bajaba el
+      // archivo completo. Con `pedidos` pesando más de un mega eso era un
+      // mega tirado por cada pedido guardado: capturando un mes viejo se
+      // iban cientos de megas en volver a bajar lo propio (382 guardados y
+      // 462 descargas completas en un solo día, medido en los registros).
+      //
+      // Se usa la hora que devuelve el propio guardado, NO una consulta
+      // aparte: entre una cosa y otra puede colarse el guardado de otro
+      // aparato, y entonces se anotaría la hora del otro y su cambio no se
+      // bajaría nunca. Así, si alguien más escribió después, su hora sigue
+      // siendo distinta y se baja en la vuelta siguiente, como debe ser.
+      if (horasVistas.current && guardado && guardado.updatedAt) {
+        horasVistas.current[key] = guardado.updatedAt;
+      }
     } catch (e) {
       console.error("Error guardando " + key, e);
       showToast("No se pudo guardar en la nube, revisa tu conexión", "error");

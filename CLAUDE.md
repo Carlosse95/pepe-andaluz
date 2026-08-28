@@ -74,11 +74,32 @@ Quedó en ~0.69 MB/hora. La hora la pone sola la base con el disparador
 `almacen_set_updated_at`, no la app: así también detecta cambios hechos por
 fuera (scripts, consola de Supabase) y no depende del reloj del celular.
 
+Segunda vuelta (28 de agosto de 2026): con eso ya arreglado, un día de
+captura seguía gastando 293 MB — 8.6 GB/mes al ritmo de ese día. La causa era
+otra: **quien guardaba se volvía a bajar su propio cambio.** Al guardar, la
+hora de esa clave cambiaba, la revisión la veía distinta a la apuntada, creía
+que había sido otro aparato y bajaba el archivo entero. Medido: 382 guardados
+y 462 descargas completas el mismo día, casi uno a uno; `pedidos` pesa 1.1 MB,
+así que eran ~263 MB solo en eso.
+
+Arreglado haciendo que `almacen.set` devuelva el `updated_at` que dejó esa
+escritura (`.select("updated_at")` en el mismo upsert) y que `persist` lo
+anote en `horasVistas`. **Importante: la hora se pide de regreso en la misma
+operación, NO con una consulta aparte** — entre una cosa y otra puede colarse
+el guardado de otro aparato y entonces se anotaría la hora del otro y su
+cambio no se bajaría nunca.
+
 **Antes de agregar cualquier consulta que corra en bucle, calcular cuánto
 pesa × cuántas veces por minuto.** La base de datos y el Storage están al 6%;
 lo que se agota es el ancho de banda. Para medirlo de verdad: envolver
 `window.fetch` en el navegador y sumar bytes, o revisar `edge_logs` agrupando
-por `request.path` y `request.search`.
+por `request.path` y `request.search`. Ojo con los `OPTIONS`: aparecen en los
+registros pero son preflight, no traen datos — contar solo los `GET`.
+
+Para probar cambios de permisos o de forma de consulta sin arriesgar a que la
+app deje de guardar, se puede simular la sesión de un usuario en SQL:
+`begin; set local role authenticated; set local request.jwt.claims =
+'{"sub":"<user_id>","role":"authenticated"}'; ... ; rollback;`
 
 ## Cómo es Carlos (para calibrar el tono y el nivel de detalle)
 

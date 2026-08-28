@@ -33,13 +33,23 @@ export const almacen = {
     return { key, value: JSON.stringify(data.valor) };
   },
 
+  // Devuelve `updatedAt`: la hora que quedó grabada en ESTA escritura.
+  //
+  // Quien guarda la necesita para anotarla como "ya la conozco" y no volver a
+  // bajarse el archivo completo que él mismo acaba de escribir. Se pide de
+  // regreso en vez de consultarla aparte a propósito: entre la escritura y
+  // una segunda consulta puede colarse el guardado de otro aparato, y
+  // entonces se anotaría la hora del otro y su cambio nunca se bajaría.
+  // Pidiéndola en la misma operación, la hora es siempre la de uno.
   async set(key, value) {
     if (!nubeActiva) return window.storage.set(key, value);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("almacen")
-      .upsert({ clave: key, valor: JSON.parse(value), updated_at: new Date().toISOString() });
+      .upsert({ clave: key, valor: JSON.parse(value), updated_at: new Date().toISOString() })
+      .select("updated_at")
+      .maybeSingle();
     if (error) throw error;
-    return { key, value };
+    return { key, value, updatedAt: data ? data.updated_at : null };
   },
 
   // Solo la HORA del último cambio de cada clave, sin los datos. Devuelve
