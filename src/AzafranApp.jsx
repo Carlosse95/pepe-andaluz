@@ -646,12 +646,14 @@ const AVISO_CONCEPTO_PDF = `${CONCEPTO_PIDE} ${CONCEPTO_QUE}`;
 // explicación del anticipo iba arriba y el cliente tenía que leerse un
 // párrafo para llegar a la CLABE; lo que viene a copiar es la cuenta.
 const bloqueDatosBancarios = (pago) => {
-  const l = ["💳 Datos para transferencia:"];
+  // El aviso va ANTES de la cuenta. Puesto después casi nadie lo leía: el
+  // cliente ve la CLABE, la copia y se va al banco sin bajar el resto del
+  // mensaje. Arriba lo lee mientras busca los datos.
+  const l = [AVISO_CONCEPTO, ""];
+  l.push("💳 Datos para transferencia:");
   if (pago.banco) l.push(`Banco: ${pago.banco}`);
   if (pago.titular) l.push(`A nombre de: ${pago.titular}`);
   l.push(`CLABE / Tarjeta: ${pago.clabe}`);
-  l.push("");
-  l.push(AVISO_CONCEPTO);
   return l;
 };
 
@@ -9303,11 +9305,12 @@ const construirPDF = async (form, tipoDoc, config) => {
   if (!esRecibo && config.pago && (config.pago.clabe || "").trim()) {
     cabe(34);
     relleno(FONDO);
+    // Mismo orden que en WhatsApp: primero lo del concepto, luego la cuenta.
     const lineasPago = [
+      AVISO_CONCEPTO_PDF,
       config.pago.banco ? `Banco: ${config.pago.banco}` : null,
       config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
       `CLABE / Tarjeta: ${config.pago.clabe}`,
-      AVISO_CONCEPTO_PDF,
     ].filter(Boolean);
     const alto = 14 + lineasPago.length * 5;
     doc.rect(margin, y, anchoUtil, alto, "F");
