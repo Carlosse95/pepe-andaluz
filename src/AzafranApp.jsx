@@ -584,17 +584,14 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   const pagadoYa = sumaAbonos(datos.abonos);
   if (pago && (pago.clabe || "").trim() && pagadoYa < total) {
     lineas.push("");
-    // El texto viejo exigía el 50% de anticipo como si fuera la única forma de
-    // apartar, y no lo es: hay clientes que pagan TODO en efectivo al llegar.
-    // Primero va esa opción, que es la que más usan, y el anticipo queda como
-    // lo otro que se puede hacer.
+    lineas.push(...bloqueDatosBancarios(pago));
+    lineas.push("");
+    // Las otras formas de pagar van hasta abajo. El texto viejo exigía el 50%
+    // de anticipo como si fuera la única manera de apartar, y no lo es: hay
+    // clientes que pagan TODO en efectivo al llegar.
     lineas.push(
-      `💳 Puede pagar todo ${enEfectivo(datos.entrega)}, o apartarlo con el 50% de anticipo por transferencia y liquidar el resto ${datos.entrega ? "al recibirlo" : "al recogerlo"}:`
+      `También puede pagar todo ${enEfectivo(datos.entrega)}, o apartarlo con el 50% de anticipo y liquidar el resto ${datos.entrega ? "al recibirlo" : "al recogerlo"}.`
     );
-    if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
-    if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
-    lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
-    lineas.push("Por favor, en el concepto de la transferencia ponga únicamente su nombre.");
   }
   // Dónde recoger, desde que se aparta el pedido: así el cliente ya sabe a
   // dónde ir y no tiene que esperar al aviso de "ya está listo" para buscarlo.
@@ -627,6 +624,34 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
 const enEfectivo = (esEntrega) =>
   esEntrega ? "en efectivo al momento de la entrega" : "en efectivo cuando pase por su pedido";
 
+// El concepto de la transferencia tiene que traer SOLO el nombre de quien
+// paga. Cuando ahí aparece "paella" o cualquier cosa del negocio, el banco lo
+// reporta como ingreso por actividad empresarial y a Pepe le cobran impuestos
+// por un dinero que ya declaró de otra forma. Por eso el aviso va destacado y
+// en los TRES mensajes que enseñan la CLABE, no solo en el primero: hay
+// clientes que sacan la cuenta del aviso de "ya está listo" y con el texto
+// viejo nunca veían la nota.
+//
+// Los asteriscos son las negritas de WhatsApp, que es a donde va este texto.
+const AVISO_CONCEPTO = [
+  "⚠️ *IMPORTANTE:* en el concepto ponga *ÚNICAMENTE SU NOMBRE.*",
+  'Por favor no escriba "paella", "pedido" ni nada del negocio.',
+];
+
+// Los datos bancarios van SIEMPRE en este orden: primero la cuenta, luego el
+// aviso del concepto, y hasta el final las otras formas de pagar. Antes la
+// explicación del anticipo iba arriba y el cliente tenía que leerse un
+// párrafo para llegar a la CLABE; lo que viene a copiar es la cuenta.
+const bloqueDatosBancarios = (pago) => {
+  const l = ["💳 Datos para transferencia:"];
+  if (pago.banco) l.push(`Banco: ${pago.banco}`);
+  if (pago.titular) l.push(`A nombre de: ${pago.titular}`);
+  l.push(`CLABE / Tarjeta: ${pago.clabe}`);
+  l.push("");
+  l.push(...AVISO_CONCEPTO);
+  return l;
+};
+
 // Lo que el cliente debe, para pegarlo al final de un mensaje.
 //
 // Pepe volvía a mandar el resumen completo del pedido cada vez que había un
@@ -648,10 +673,9 @@ const bloqueSaldo = (pedido, pago) => {
   // Cómo pagarlo, para que no tenga que preguntarlo aparte.
   if (pago && (pago.clabe || "").trim()) {
     lineas.push("");
-    lineas.push(`Lo puede pagar ${enEfectivo(pedido?.entrega)}, o por transferencia:`);
-    if (pago.banco) lineas.push(`Banco: ${pago.banco}`);
-    if (pago.titular) lineas.push(`A nombre de: ${pago.titular}`);
-    lineas.push(`CLABE / Tarjeta: ${pago.clabe}`);
+    lineas.push(...bloqueDatosBancarios(pago));
+    lineas.push("");
+    lineas.push(`También lo puede pagar ${enEfectivo(pedido?.entrega)}.`);
   }
   return lineas.join("\n");
 };
@@ -702,10 +726,9 @@ const mensajePago = (pedido, abono, mensajes, pago) => {
   // Si todavía debe algo, van los datos para transferir el resto. Sin esto Pepe
   // tenía que mandarle el resumen completo aparte nada más por la CLABE.
   if (saldo > 0 && pago && (pago.clabe || "").trim()) {
-    const banco = [`Lo que falta lo puede pagar ${enEfectivo(pedido?.entrega)}, o por transferencia:`];
-    if (pago.banco) banco.push(`Banco: ${pago.banco}`);
-    if (pago.titular) banco.push(`A nombre de: ${pago.titular}`);
-    banco.push(`CLABE / Tarjeta: ${pago.clabe}`);
+    const banco = bloqueDatosBancarios(pago);
+    banco.push("");
+    banco.push(`Lo que falta también lo puede pagar ${enEfectivo(pedido?.entrega)}.`);
     return texto + "\n\n" + banco.join("\n");
   }
   return texto;
