@@ -633,10 +633,7 @@ const enEfectivo = (esEntrega) =>
 // viejo nunca veían la nota.
 //
 // Los asteriscos son las negritas de WhatsApp, que es a donde va este texto.
-const AVISO_CONCEPTO = [
-  "⚠️ *IMPORTANTE:* en el concepto ponga *ÚNICAMENTE SU NOMBRE.*",
-  'Por favor no escriba "paella", "pedido" ni nada del negocio.',
-];
+const AVISO_CONCEPTO = "⚠️ *IMPORTANTE:* en el concepto ponga *ÚNICAMENTE SU NOMBRE.*";
 
 // Los datos bancarios van SIEMPRE en este orden: primero la cuenta, luego el
 // aviso del concepto, y hasta el final las otras formas de pagar. Antes la
@@ -648,7 +645,7 @@ const bloqueDatosBancarios = (pago) => {
   if (pago.titular) l.push(`A nombre de: ${pago.titular}`);
   l.push(`CLABE / Tarjeta: ${pago.clabe}`);
   l.push("");
-  l.push(...AVISO_CONCEPTO);
+  l.push(AVISO_CONCEPTO);
   return l;
 };
 
