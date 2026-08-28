@@ -4067,6 +4067,10 @@ const COLOR_GOLD = "#7C6FF0";
 const COLOR_AZUL = "#14B8A6";
 const COLOR_OLIVE = "#1FA971";
 const COLOR_GASTO = "#E0524A";
+// Lo de la casa. Morado a propósito: antes era un terracota (#c2703d) que
+// junto al rojo del gasto del negocio se distinguía mal, y encima chocaba con
+// el color de la categoría "Renta". Contra el rojo, el morado se separa solo.
+const COLOR_CASA = "#7C6FF0";
 const COLOR_LINE_CHART = "#D7E3F5";
 const COLOR_INK_SOFT = "#64758F";
 const chartTooltipStyle = { borderRadius: 10, border: `1px solid ${COLOR_LINE_CHART}`, fontSize: 12, boxShadow: "0 4px 14px rgba(43,32,21,0.12)" };
@@ -4322,10 +4326,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     if (esDelNegocio(g)) gastoPorMes[m] += parseFloat(g.monto) || 0;
     else familiaPorMes[m] += parseFloat(g.monto) || 0;
   });
+  // La barra de gastos va partida en dos —negocio y casa— apiladas, no en
+  // barras separadas: lo que se quiere ver de un golpe es cuánto de lo que
+  // entró se fue, y qué tanto de eso fue del negocio y qué tanto de la casa.
+  // Con barras aparte hay que sumarlas de cabeza para saber si sobró algo.
   const datosFinanzasMensual = MESES.map((nombre, i) => ({
     mes: nombre.slice(0, 3),
     ingreso: valorMes(anio, i).valor,
     gasto: gastoPorMes[i],
+    casa: familiaPorMes[i],
   }));
 
   // Un cliente es nuevo en el mes de su PRIMER pedido, no el día que alguien lo
@@ -5902,20 +5911,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             sola barra que enseña a dónde se fue cada peso que entró. */}
         <div className="af-resumen-anio mb-5">
           <div className="af-resumen-cifras">
+            {/* Entró, salió, quedó. Antes el tercer número era "Le quedó al
+                negocio", que NO restaba la casa: enseñaba una utilidad que en
+                la vida real ya se había gastado, y por eso no se usaba. Lo que
+                importa es lo que sobra después de todo, que es lo mismo que
+                remata la barra de abajo y la gráfica del año. */}
             <div className="af-resumen-cifra">
-              <span className="af-resumen-label">Entró por ventas</span>
+              <span className="af-resumen-label">Entró</span>
               <span className="af-resumen-valor">{money(totalAnio)}</span>
-              <span className="af-resumen-pie">lo que ya se cobró</span>
+              <span className="af-resumen-pie">ventas cobradas</span>
             </div>
             <div className="af-resumen-cifra">
-              <span className="af-resumen-label">Gastos del negocio</span>
-              <span className="af-resumen-valor negativo">{money(totalGastosAnio)}</span>
+              <span className="af-resumen-label">Salió</span>
+              <span className="af-resumen-valor negativo">{money(totalGastosAnio + totalFamiliaAnio)}</span>
+              <span className="af-resumen-pie">negocio y casa</span>
             </div>
             <div className="af-resumen-cifra">
-              <span className="af-resumen-label">Le quedó al negocio</span>
-              <span className={"af-resumen-valor " + (utilidadAnio >= 0 ? "positivo" : "negativo")}>
-                {money(utilidadAnio)}
+              <span className="af-resumen-label">Quedó</span>
+              <span className={"af-resumen-valor " + (sobranteAnio >= 0 ? "positivo" : "negativo")}>
+                {money(sobranteAnio)}
               </span>
+              <span className="af-resumen-pie">después de todo</span>
             </div>
           </div>
 
@@ -6667,17 +6683,24 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 labelFormatter={(mes) => {
                   const d = datosFinanzasMensual.find((x) => x.mes === mes);
                   if (!d) return mes;
-                  const queda = (d.ingreso || 0) - (d.gasto || 0);
+                  // Lo que queda es después de TODO, negocio y casa: es el
+                  // dinero que de verdad sobró ese mes.
+                  const queda = (d.ingreso || 0) - (d.gasto || 0) - (d.casa || 0);
                   return `${mes} · quedan ${money(queda)}`;
                 }}
               />
               <Bar dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
-              <Bar dataKey="gasto" name="Gastos" fill={COLOR_GASTO} radius={[6, 6, 0, 0]} />
+              {/* Mismo stackId: las dos se apilan en una sola barra de gastos,
+                  junto a la de ingresos. El redondeo va solo en la de arriba,
+                  que es la que remata la barra. */}
+              <Bar stackId="gastos" dataKey="gasto" name="Gastos del negocio" fill={COLOR_GASTO} />
+              <Bar stackId="gastos" dataKey="casa" name="Gastos de la casa" fill={COLOR_CASA} radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
           <div className="af-chart-legend">
             <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Ingresos</span>
-            <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos</span>
+            <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos del negocio</span>
+            <span><span className="af-legend-dot" style={{ background: COLOR_CASA }} /> Gastos de la casa</span>
           </div>
 
         </div>
@@ -12842,10 +12865,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-reparto-barra { display: flex; height: 12px; border-radius: 999px; overflow: hidden; margin-top: 18px; background: color-mix(in srgb, var(--ink-soft) 12%, transparent); }
 .af-reparto-parte { height: 100%; }
 .af-reparto-parte.negocio { background: #E0524A; }
-.af-reparto-parte.casa { background: #c2703d; }
+.af-reparto-parte.casa { background: #7C6FF0; }
 .af-reparto-parte.sobra { background: #2f9e6d; }
 .af-punto-negocio { background: #E0524A; }
-.af-punto-casa { background: #c2703d; }
+.af-punto-casa { background: #7C6FF0; }
 .af-punto-sobra { background: #2f9e6d; }
 .af-reparto-leyenda { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 12px; font-size: 12.5px; color: var(--ink-soft); }
 .af-reparto-item { display: inline-flex; align-items: center; gap: 6px; }
@@ -12972,7 +12995,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   background-repeat: no-repeat;
 }
 .af-select-bolsa.negocio { color: #2f5fe0; border-color: color-mix(in srgb, #2f5fe0 35%, transparent); background-color: color-mix(in srgb, #2f5fe0 9%, transparent); }
-.af-select-bolsa.casa { color: #c2703d; border-color: color-mix(in srgb, #c2703d 38%, transparent); background-color: color-mix(in srgb, #c2703d 10%, transparent); }
+.af-select-bolsa.casa { color: #5B4FD0; border-color: color-mix(in srgb, #7C6FF0 38%, transparent); background-color: color-mix(in srgb, #7C6FF0 10%, transparent); }
 .af-select-fijo.si { color: #7b5cd6; border-color: color-mix(in srgb, #7b5cd6 38%, transparent); background-color: color-mix(in srgb, #7b5cd6 10%, transparent); }
 .af-select-bolsa:disabled, .af-select-fijo:disabled { cursor: default; opacity: 0.85; }
 
