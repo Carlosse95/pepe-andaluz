@@ -404,6 +404,17 @@ const haceCuanto = (cuando) => {
 
 const esHoy = (iso) => iso === todayISO();
 
+// Correr una fecha unos días para adelante o para atrás, sin salirse del mes
+// ni del año (el 31 de enero + 1 da 1 de febrero). Se arma con números y no
+// con `new Date(iso)` a secas, porque eso lo lee como UTC y en México puede
+// devolver el día anterior.
+const correrDias = (iso, dias) => {
+  if (!iso) return iso;
+  const [a, m, d] = iso.split("-").map(Number);
+  const f = new Date(a, m - 1, d + dias);
+  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}-${String(f.getDate()).padStart(2, "0")}`;
+};
+
 // El subtotal de una paella = kilos × precio/kg + sus extras (langosta, chorizo...).
 // Los extras no tocan el precio por kg: se suman aparte.
 const sumaExtras = (extras) => (extras || []).reduce((a, e) => a + e.cantidad * e.precio, 0);
@@ -2791,12 +2802,14 @@ function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, childr
 /*  Vista: Agenda                                                         */
 /* ---------------------------------------------------------------------- */
 
-function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes }) {
-  const [tab, setTab] = useState("pendientes");
+// `tab` y `diaEntregados` llegan de fuera a propósito: al salir a capturar un
+// pedido esta vista se desmonta, y si el estado viviera aquí se perdería justo
+// lo que se estaba mirando. Capturando meses viejos eso obligaba a volver a
+// elegir el día en cada pedido, que es lo que más estorbaba.
+function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, tab, onTab, diaEntregados, onDiaEntregados, onNuevoPedidoEseDia }) {
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
-  const [diaEntregados, setDiaEntregados] = useState(""); // "" = ver todos (por mes)
   // Días que el usuario abrió o cerró a mano. Lo que no esté aquí usa el
   // criterio de abajo: se abre solo lo que urge y el resto queda recogido,
   // para no tener que bajar por toda la lista.
@@ -2860,10 +2873,10 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   return (
     <div>
       <div className="af-subtabs mb-4">
-        <button className={"af-subtab" + (tab === "pendientes" ? " active" : "")} onClick={() => setTab("pendientes")}>
+        <button className={"af-subtab" + (tab === "pendientes" ? " active" : "")} onClick={() => onTab("pendientes")}>
           Por entregar {pendientes.length > 0 && <span className="af-dot">{pendientes.length}</span>}
         </button>
-        <button className={"af-subtab" + (tab === "entregados" ? " active" : "")} onClick={() => setTab("entregados")}>
+        <button className={"af-subtab" + (tab === "entregados" ? " active" : "")} onClick={() => onTab("entregados")}>
           Entregados
         </button>
       </div>
@@ -2881,18 +2894,50 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
       {tab === "entregados" && (
         <div className="mb-3">
           <div className="flex items-center gap-2 mb-2">
+            {/* Las flechas van pegadas al calendario para poder recorrer día
+                por día sin abrirlo. Capturando un mes viejo se acaba un día y
+                se pasa al siguiente decenas de veces: abrir el calendario en
+                cada salto era lo más lento de todo. */}
+            {diaEntregados && (
+              <button
+                className="af-icon-btn"
+                style={{ flexShrink: 0 }}
+                title="Día anterior"
+                onClick={() => onDiaEntregados(correrDias(diaEntregados, -1))}
+              >
+                <ChevronLeft size={20} />
+              </button>
+            )}
             <input
               type="date"
               className="af-input"
               value={diaEntregados}
-              onChange={(e) => setDiaEntregados(e.target.value)}
+              onChange={(e) => onDiaEntregados(e.target.value)}
             />
             {diaEntregados && (
-              <button className="af-btn-ghost" style={{ flexShrink: 0 }} onClick={() => setDiaEntregados("")}>
+              <button
+                className="af-icon-btn"
+                style={{ flexShrink: 0 }}
+                title="Día siguiente"
+                onClick={() => onDiaEntregados(correrDias(diaEntregados, 1))}
+              >
+                <ChevronRight size={20} />
+              </button>
+            )}
+            {diaEntregados && (
+              <button className="af-btn-ghost" style={{ flexShrink: 0 }} onClick={() => onDiaEntregados("")}>
                 Ver todos
               </button>
             )}
           </div>
+
+          {/* Agregar sin salir del día: al guardar se regresa aquí mismo, con
+              este día puesto, para seguir comparando contra la libreta. */}
+          {diaEntregados && (
+            <button className="af-btn-secondary w-full mb-2" onClick={() => onNuevoPedidoEseDia(diaEntregados)}>
+              + Pedido del {fmtDateHuman(diaEntregados)}
+            </button>
+          )}
           {!diaEntregados && (
             <div className="af-year-switch" style={{ marginBottom: 0 }}>
               <button className="af-icon-btn" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></button>
@@ -10105,6 +10150,12 @@ export default function App() {
   // regresa a hoy, para que un pedido de verdad no salga con fecha de enero
   // por un descuido.
   const [fechaPegajosa, setFechaPegajosa] = useState(null);
+  // La pestaña y el día que se están viendo en Agenda. Viven aquí y no dentro
+  // de AgendaView porque al salir a capturar un pedido esa vista se desmonta:
+  // si el estado viviera allá, al volver se perdería el día que se estaba
+  // revisando y habría que elegirlo otra vez en cada pedido.
+  const [agendaTab, setAgendaTab] = useState("pendientes");
+  const [agendaDia, setAgendaDia] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const hayNuevaVersion = useNuevaVersion();
@@ -11015,9 +11066,13 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
 
-  const goToNuevoPedido = (clientePre) => {
+  // `fechaPre` la manda quien ya sabe de qué día es el pedido (hoy solo la
+  // Agenda, al agregar desde un día concreto). Gana sobre la fecha pegajosa
+  // porque es una elección explícita, no un arrastre de la captura anterior.
+  const goToNuevoPedido = (clientePre, fechaPre) => {
     const base = emptyForm();
     if (fechaPegajosa) base.fecha = fechaPegajosa;
+    if (fechaPre) base.fecha = fechaPre;
     if (clientePre) {
       base.clienteId = clientePre.id;
       base.clienteNombre = clientePre.nombre;
@@ -11618,7 +11673,7 @@ export default function App() {
 
         <div className="af-content">
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
-          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
+          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} onNuevoPedidoEseDia={(fecha) => goToNuevoPedido(null, fecha)} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
             <MensajesView
