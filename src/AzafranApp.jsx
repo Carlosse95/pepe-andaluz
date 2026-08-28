@@ -6610,7 +6610,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         <div className="af-card p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Ingresos vs. gastos por mes — {anio}</div>
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
+            {/* Barras delgadas y muy juntas (`barSize` + `barGap`), con harto
+                aire entre un mes y otro (`barCategoryGap`): así el par de
+                barras se lee como un solo bloque encima de su mes. Con las
+                barras anchas de antes, un mes sin gastos capturados dejaba la
+                de ingresos cargada a la izquierda y parecía de otro mes. */}
+            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }} barGap={2} barCategoryGap="42%">
               <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
@@ -6629,12 +6634,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   return `${mes} · quedan ${money(queda)}`;
                 }}
               />
-              <Bar dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
+              {/* `stackId` aunque va sola: sin él, Recharts pone las barras
+                  apiladas antes que las sueltas y los gastos salían a la
+                  izquierda de los ingresos, al revés de como se leen. Con las
+                  dos declaradas como pila, respeta este orden. */}
+              <Bar stackId="ingresos" dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[4, 4, 0, 0]} barSize={11} />
               {/* Mismo stackId: las dos se apilan en una sola barra de gastos,
                   junto a la de ingresos. El redondeo va solo en la de arriba,
                   que es la que remata la barra. */}
-              <Bar stackId="gastos" dataKey="gasto" name="Gastos del negocio" fill={COLOR_GASTO} />
-              <Bar stackId="gastos" dataKey="casa" name="Gastos de la casa" fill={COLOR_CASA} radius={[6, 6, 0, 0]} />
+              <Bar stackId="gastos" dataKey="gasto" name="Gastos del negocio" fill={COLOR_GASTO} barSize={11} />
+              <Bar stackId="gastos" dataKey="casa" name="Gastos de la casa" fill={COLOR_CASA} radius={[4, 4, 0, 0]} barSize={11} />
             </BarChart>
           </ResponsiveContainer>
           <div className="af-chart-legend">
