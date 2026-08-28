@@ -625,15 +625,21 @@ const enEfectivo = (esEntrega) =>
   esEntrega ? "en efectivo al momento de la entrega" : "en efectivo cuando pase por su pedido";
 
 // El concepto de la transferencia tiene que traer SOLO el nombre de quien
-// paga. Cuando ahí aparece "paella" o cualquier cosa del negocio, el banco lo
-// reporta como ingreso por actividad empresarial y a Pepe le cobran impuestos
-// por un dinero que ya declaró de otra forma. Por eso el aviso va destacado y
-// en los TRES mensajes que enseñan la CLABE, no solo en el primero: hay
-// clientes que sacan la cuenta del aviso de "ya está listo" y con el texto
-// viejo nunca veían la nota.
+// paga. Va en TODOS lados donde se enseña la CLABE —los tres mensajes de
+// WhatsApp y el PDF del presupuesto—, porque el cliente puede transferir
+// desde cualquiera de ellos.
 //
-// Los asteriscos son las negritas de WhatsApp, que es a donde va este texto.
-const AVISO_CONCEPTO = "⚠️ *IMPORTANTE:* en el concepto ponga *ÚNICAMENTE SU NOMBRE.*";
+// La razón que se le da es la de verdad y la más natural: sin el nombre en el
+// concepto no se sabe quién pagó. A propósito NO se le explica el lado fiscal
+// ni se le pone cara de advertencia: eso es asunto del negocio, no del
+// cliente, y un "⚠️ IMPORTANTE" para pedir algo tan simple suena a que se
+// está escondiendo algo.
+const CONCEPTO_PIDE = "Para identificar su pago, en el concepto ponga";
+const CONCEPTO_QUE = "ÚNICAMENTE SU NOMBRE.";
+// En WhatsApp lo que va entre asteriscos sale en negritas; en el PDF saldrían
+// pintados tal cual, así que allá se usa la versión sin ellos.
+const AVISO_CONCEPTO = `📝 ${CONCEPTO_PIDE} *${CONCEPTO_QUE}*`;
+const AVISO_CONCEPTO_PDF = `${CONCEPTO_PIDE} ${CONCEPTO_QUE}`;
 
 // Los datos bancarios van SIEMPRE en este orden: primero la cuenta, luego el
 // aviso del concepto, y hasta el final las otras formas de pagar. Antes la
@@ -9301,7 +9307,7 @@ const construirPDF = async (form, tipoDoc, config) => {
       config.pago.banco ? `Banco: ${config.pago.banco}` : null,
       config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
       `CLABE / Tarjeta: ${config.pago.clabe}`,
-      "En el concepto de la transferencia ponga únicamente su nombre, por favor.",
+      AVISO_CONCEPTO_PDF,
     ].filter(Boolean);
     const alto = 14 + lineasPago.length * 5;
     doc.rect(margin, y, anchoUtil, alto, "F");
