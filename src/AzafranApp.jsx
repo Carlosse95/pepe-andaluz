@@ -4310,13 +4310,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Lo del negocio y lo de la casa se cuentan aparte: si se suman, lo que
   // gasta la familia se come la utilidad y el negocio parece estar perdiendo.
   const gastosAnio = gastosAnioTodos.filter(esDelNegocio);
-  const gastosFamiliaAnio = gastosAnioTodos.filter((g) => !esDelNegocio(g));
   const sumar = (lista) => lista.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
   const totalGastosAnio = sumar(gastosAnio);
-  const totalFamiliaAnio = sumar(gastosFamiliaAnio);
-  const utilidadAnio = totalAnio - totalGastosAnio;
-  // Lo que de verdad queda en la bolsa después de mantener también la casa.
-  const sobranteAnio = utilidadAnio - totalFamiliaAnio;
+  // Los totales del año de "cuánto quedó" se quitaron con el resumen: no se
+  // podían calcular de verdad sin los gastos de los meses que no se
+  // capturaron. Lo que quedó vive en la gráfica, mes por mes.
 
   const gastoPorMes = Array(12).fill(0);
   const familiaPorMes = Array(12).fill(0);
@@ -4492,15 +4490,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     setDesdeGasto(fmt(desde));
     setHastaGasto(fmt(hoy));
   };
-
-  // A dónde se fue cada peso que entró: al gasto del negocio, a la casa, y lo
-  // que sobró. Es una sola barra en vez de dos escaleras de renglones, que se
-  // leían como una libreta a mano y no dejaban ver la proporción.
-  const repartoPeso = [
-    { id: "negocio", label: "Gastos del negocio", valor: totalGastosAnio },
-    { id: "casa", label: "Gastos de la casa", valor: totalFamiliaAnio },
-    { id: "sobra", label: "Sobró", valor: Math.max(0, sobranteAnio) },
-  ].map((r) => ({ ...r, pct: totalAnio > 0 ? (r.valor / totalAnio) * 100 : 0 }));
 
   // Gastos que parecen capturados dos veces. Se miran los que caen cerca en
   // el tiempo y se parecen en monto y en nombre: así se pesca tanto el
@@ -5904,64 +5893,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
         </div>
 
-        {/* Cómo va el año, de un vistazo.
-            Antes eran dos escaleras de renglones —"Cómo va el negocio" y
-            "Y después de la casa"— que se leían como una libreta a mano y
-            repetían el mismo número tres veces. Ahora son cuatro cifras y una
-            sola barra que enseña a dónde se fue cada peso que entró. */}
-        <div className="af-resumen-anio mb-5">
-          <div className="af-resumen-cifras">
-            {/* Entró, salió, quedó. Antes el tercer número era "Le quedó al
-                negocio", que NO restaba la casa: enseñaba una utilidad que en
-                la vida real ya se había gastado, y por eso no se usaba. Lo que
-                importa es lo que sobra después de todo, que es lo mismo que
-                remata la barra de abajo y la gráfica del año. */}
-            <div className="af-resumen-cifra">
-              <span className="af-resumen-label">Entró</span>
-              <span className="af-resumen-valor">{money(totalAnio)}</span>
-              <span className="af-resumen-pie">ventas cobradas</span>
-            </div>
-            <div className="af-resumen-cifra">
-              <span className="af-resumen-label">Salió</span>
-              <span className="af-resumen-valor negativo">{money(totalGastosAnio + totalFamiliaAnio)}</span>
-              <span className="af-resumen-pie">negocio y casa</span>
-            </div>
-            <div className="af-resumen-cifra">
-              <span className="af-resumen-label">Quedó</span>
-              <span className={"af-resumen-valor " + (sobranteAnio >= 0 ? "positivo" : "negativo")}>
-                {money(sobranteAnio)}
-              </span>
-              <span className="af-resumen-pie">después de todo</span>
-            </div>
-          </div>
+        {/* Aquí iba un resumen del año —Entró / Salió / Quedó, con una barra
+            de a dónde se fue cada peso—. Se quitó porque mentía: las ventas
+            están capturadas de todo el año, pero los gastos solo desde julio,
+            y de los meses anteriores no hay manera de saberlos. Con eso, el
+            "quedó" salía en 88% del ingreso, un número que nadie podía usar.
 
-          {totalAnio > 0 && (
-            <>
-              <div className="af-reparto-barra">
-                {repartoPeso.map((r) => (
-                  r.pct > 0 && (
-                    <div
-                      key={r.id}
-                      className={"af-reparto-parte " + r.id}
-                      style={{ width: `${r.pct}%` }}
-                      title={`${r.label}: ${money(r.valor)}`}
-                    />
-                  )
-                ))}
-              </div>
-              <div className="af-reparto-leyenda">
-                {repartoPeso.map((r) => (
-                  <span key={r.id} className="af-reparto-item">
-                    <span className={"af-legend-dot af-punto-" + r.id} />
-                    {r.label}
-                    <strong>{money(r.valor)}</strong>
-                    <em>{Math.round(r.pct)}%</em>
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+            La gráfica de más abajo sí sirve porque es MES POR MES: un mes sin
+            gastos capturados se ve vacío, en vez de esconderse dentro de un
+            total del año que parece completo. */}
 
         {/* Agregar un gasto lo puede hacer cualquiera del negocio, no solo el
             administrador: Pepe es quien va a la tienda y quien tiene el ticket
