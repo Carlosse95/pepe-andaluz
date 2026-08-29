@@ -3776,8 +3776,6 @@ const conMayusculaInicial = (texto) => {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 };
 
-// Cuántos gastos se enseñan antes de pedir "ver más".
-const PASO_GASTOS = 25;
 
 // Un color por categoría. Con treinta renglones iguales hay que leer palabra
 // por palabra para ubicar los gastos de ingredientes; con color se ven de
@@ -4166,7 +4164,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [filtroFactura, setFiltroFactura] = useState("todos");
   // Cuántos gastos se enseñan de golpe. El resto se pide con un botón, para
   // que la página no se haga interminable con un año entero de compras.
-  const [cuantosGastos, setCuantosGastos] = useState(PASO_GASTOS);
   const [buscaGasto, setBuscaGasto] = useState("");
   // El día concreto que se quiere ver. Manda sobre el mes.
   const [diaGasto, setDiaGasto] = useState("");
@@ -4479,13 +4476,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     totalPorTienda[clave] = (totalPorTienda[clave] || 0) + (parseFloat(g.monto) || 0);
   });
 
-  const gastosVisibles = gastosFiltrados.slice(0, cuantosGastos);
-
-  // Al cambiar de filtro se vuelve a empezar por arriba: si no, uno filtra
-  // "falta facturar" y sigue viendo el "ver más" de la búsqueda anterior.
-  useEffect(() => {
-    setCuantosGastos(PASO_GASTOS);
-  }, [filtroAmbito, filtroCategoria, filtroFactura, mesGasto, buscaGasto, diaGasto, desdeGasto, hastaGasto, anio]);
 
   const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
@@ -4805,6 +4795,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   const guardarGastoNuevo = (g) => {
     onGuardarGastos([g, ...gastos]);
+    // Avisar SIEMPRE que quedó guardado. Sin esto no había forma de saberlo:
+    // el formulario se cerraba igual que si no hubiera pasado nada, y con dos
+    // tickets seguidos uno se queda con la duda de cuál sí entró. (Si el
+    // guardado en la nube falla, `persist` avisa aparte con su error.)
+    showToast(`Gasto guardado · ${money(g.monto)}`);
     setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0, tienda: "", ticket: null, folio: null, folio2: null, ambito: "negocio" });
     setTiendaOtra(false);
     setAbrirGasto(false);
@@ -6354,11 +6349,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <span />
             </div>
 
-            {/* La lista se corta y se alarga con un botón, NO con un marco que
-                se desplaza por dentro. En el iPad y en el celular, un marco
-                así se traga el dedo: uno intenta bajar por la página y la
-                página no se mueve, porque el dedo está sobre la lista. */}
-            {gastosVisibles.map((g) => (
+            {/* Todos los gastos, dentro de un marco que se desplaza por su
+                cuenta y con el encabezado fijo arriba.
+                Antes la lista se alargaba con un botón "Ver más". Se cambió
+                porque revisando las cuentas se pasa el rato subiendo y
+                bajando, y había que picarle cada 25 gastos.
+                El marco se llevaba el dedo en el celular —uno quería bajar la
+                página y bajaba la lista—, así que se le dejó alto de sobra:
+                el dedo casi siempre cae fuera, y adentro solo cuando de
+                verdad se está revisando la tabla. */}
+            <div className="af-tabla-cuerpo">
+            {gastosFiltrados.map((g) => (
                 <div key={g.id} className="af-gasto-fila">
                   <span className="af-gasto-fecha">{fmtDiaCorto(g.fecha)}</span>
 
@@ -6438,14 +6439,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               ))}
 
-            {gastosFiltrados.length > gastosVisibles.length && (
-              <button className="af-ver-mas" onClick={() => setCuantosGastos((n) => n + PASO_GASTOS)}>
-                Ver {Math.min(PASO_GASTOS, gastosFiltrados.length - gastosVisibles.length)} más
-                <span className="af-ver-mas-nota">
-                  {gastosVisibles.length} de {gastosFiltrados.length}
-                </span>
-              </button>
-            )}
+            </div>
           </div>
           </div>
           </>
@@ -13013,6 +13007,14 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    página, así que el dedo nunca se queda atrapado. */
 .af-tabla-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .af-tabla-scroll .af-tabla-gastos { min-width: 940px; margin-bottom: 0; }
+/* La lista de gastos se recorre DENTRO de su marco, con el encabezado fijo.
+   Alto de sobra a propósito: un marco chico en el celular se lleva el dedo
+   —uno quiere bajar la página y baja la lista—; alto, el dedo casi siempre
+   cae fuera y adentro solo cuando de verdad se está revisando la tabla.
+   No se le pone overscroll-behavior contain: cuando la lista llega a su fin,
+   se quiere justamente que el desplazamiento siga con la página. */
+.af-tabla-cuerpo { max-height: min(62vh, 620px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.af-gasto-encabezado { position: sticky; top: 0; z-index: 2; }
 /* Un aviso discreto de que hay más a la derecha, solo donde no cabe todo. */
 .af-tabla-pista { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); margin: 0 0 8px 2px; }
 @media (max-width: 1000px) {
