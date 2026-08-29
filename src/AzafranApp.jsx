@@ -239,8 +239,34 @@ const leerContactosVCF = (texto) => {
 //
 // Con números se comparan solo los dígitos, así que da igual cómo esté
 // escrito el teléfono (con +52, con espacios, con guiones).
+// Clave para BUSCAR, nunca para mostrar ni para guardar: el nombre de cada
+// quien se respeta tal como está escrito.
+//
+// Sirve para que un mismo nombre se encuentre escrito de sus dos formas. El
+// caso que lo pidió: capturando pedidos se buscaba "Marta", no salía, y había
+// que acordarse de probar "Martha" — y al revés. Renombrarlas a todas no era
+// la salida: "Marta" sin h es lo normal en España y varias clientas son de
+// allá, así que se les estaría escribiendo mal el nombre en el WhatsApp.
+//
+// Las reglas son de cómo suena el español, no de ortografía:
+//   la h suelta es muda      Martha→marta, Esther→ester, Helena→elena
+//   la CH se respeta         aquí Chan y Can son dos apellidos distintos
+//   k y qu suenan como c     Karla→carla, Marquez→marces
+//   la z suena como s        Zulema→sulema
+//   la v suena como b        Vanesa→banesa
+//   la y final suena i       Mary→mari
+//   las letras dobles, una   Vanessa→vanesa, Anna→ana, Carrillo→carilo
+const claveBusqueda = (s) => {
+  let t = normNombre(s);
+  t = t.replace(/ch/g, "\u0001").replace(/h/g, "").replace(/\u0001/g, "ch");
+  t = t.replace(/qu/g, "k").replace(/k/g, "c");
+  t = t.replace(/z/g, "s").replace(/v/g, "b");
+  t = t.replace(/y\b/g, "i");
+  return t.replace(/(.)\1+/g, "$1");
+};
+
 const clienteCoincide = (cliente, consulta) => {
-  const q = normNombre(consulta);
+  const q = claveBusqueda(consulta);
   if (!q) return true;
 
   // Por teléfono: bastan 3 dígitos para empezar a filtrar.
@@ -256,7 +282,7 @@ const clienteCoincide = (cliente, consulta) => {
     }
   }
 
-  const nombre = normNombre(cliente.nombre);
+  const nombre = claveBusqueda(cliente.nombre);
   const palabras = nombre.split(" ").filter(Boolean);
   return q
     .split(" ")
@@ -265,10 +291,12 @@ const clienteCoincide = (cliente, consulta) => {
 };
 
 const clientesParecidos = (nombre, clientes) => {
-  const n = normNombre(nombre);
+  // Con la misma clave que la búsqueda: dando de alta a "Martha Lopez" avisa
+  // de la "Marta Lopez" que ya existe, en vez de dejar crear la repetida.
+  const n = claveBusqueda(nombre);
   if (n.length < 3) return [];
   return (clientes || []).filter((c) => {
-    const cn = normNombre(c.nombre);
+    const cn = claveBusqueda(c.nombre);
     return cn === n || cn.includes(n) || n.includes(cn);
   });
 };
