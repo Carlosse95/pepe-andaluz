@@ -3898,6 +3898,14 @@ const infoDeTienda = (tienda) => {
   );
 };
 
+// El folio del ticket va TODO junto, sin espacios.
+//
+// La lectura automática de la foto los mete cuando el número viene partido en
+// el papel ("2608201309007810 0107"), y los portales de facturación lo
+// rechazan así. Pasa por aquí lo leído y lo tecleado a mano, porque copiando
+// de la pantalla también se arrastran espacios.
+const limpiarFolio = (folio) => (folio == null ? folio : String(folio).replace(/\s+/g, ""));
+
 // Hasta qué día se puede facturar esa compra.
 const ultimoDiaParaFacturar = (gasto) => {
   const info = infoDeTienda(gasto?.tienda);
@@ -4789,8 +4797,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       ticket: nuevoGasto.ticket || null,
       // El número con el que el portal de la tienda identifica la compra, ya
       // leído del ticket: es el dato que había que teclear a mano.
-      folio: nuevoGasto.folio || null,
-      folio2: nuevoGasto.folio2 || null,
+      folio: limpiarFolio(nuevoGasto.folio) || null,
+      folio2: limpiarFolio(nuevoGasto.folio2) || null,
       facturado: false,
     };
     // Antes de guardar se avisa si ya hay uno igual o muy parecido: es fácil
@@ -4870,27 +4878,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
   // Deja en el portapapeles todo lo que piden los portales, para pegarlo en
   // vez de andar buscándolo en la Constancia cada vez.
-  const copiarDatosFiscales = (gasto) => {
-    const f = config?.fiscal || {};
-    if (!f.rfc) {
-      showToast("Primero captura tus datos en Ajustes → Datos", "aviso");
-      return;
-    }
-    const lineas = [
-      `RFC: ${f.rfc}`,
-      f.razonSocial ? `Nombre: ${f.razonSocial}` : null,
-      f.codigoPostal ? `Código postal: ${f.codigoPostal}` : null,
-      f.regimen ? `Régimen: ${f.regimen}` : null,
-      f.usoCFDI ? `Uso: ${f.usoCFDI}` : null,
-      f.correo ? `Correo: ${f.correo}` : null,
-      "",
-      `Compra: ${fmtDateHuman(gasto.fecha)} · ${money(gasto.monto)}`,
-    ].filter((x) => x !== null);
-    const texto = lineas.join("\n");
-    // Safari viejo y algunas vistas dentro de apps no dejan usar el
-    // portapapeles moderno. El respaldo de toda la vida (un campo escondido y
-    // "copiar") sí funciona ahí, y si tampoco, al menos se muestra el texto
-    // para copiarlo a mano en vez de dejar a la persona sin nada.
+  // Copiar al portapapeles, con los respaldos que hacen falta: Safari viejo y
+  // algunas vistas dentro de apps no dejan usar el portapapeles moderno. El
+  // truco de toda la vida (un campo escondido y "copiar") sí funciona ahí, y
+  // si tampoco, al menos se enseña el texto para copiarlo a mano en vez de
+  // dejar a la persona sin nada.
+  const copiarTexto = (texto, aviso) => {
     const porLasMalas = () => {
       try {
         const area = document.createElement("textarea");
@@ -4900,15 +4893,34 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         area.select();
         const ok = document.execCommand("copy");
         document.body.removeChild(area);
-        if (ok) { showToast("Copiado. Pégalo en el portal."); return; }
+        if (ok) { showToast(aviso || "Copiado"); return; }
       } catch (e) { /* sigue al último recurso */ }
       setDatosParaCopiar(texto);
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(texto).then(() => showToast("Copiado. Pégalo en el portal.")).catch(porLasMalas);
+      navigator.clipboard.writeText(texto).then(() => showToast(aviso || "Copiado")).catch(porLasMalas);
     } else {
       porLasMalas();
     }
+  };
+
+  // Los datos fiscales, cada uno por su lado.
+  //
+  // Antes era un solo botón que copiaba todo junto y con etiquetas ("RFC:
+  // SAFJ651201ID7", "Nombre: ...", "CP: ..."). Eso no sirve para pegar: el
+  // portal pide el RFC solo, en su casillita, y pegarle el bloque entero —o
+  // aunque fuera un renglón con su "RFC:" delante— lo rechaza. Ahora se toca
+  // el dato que el portal esté pidiendo y se copia pelón.
+  const datosFiscales = () => {
+    const f = config?.fiscal || {};
+    return [
+      { etiqueta: "RFC", valor: f.rfc },
+      { etiqueta: "Nombre", valor: f.razonSocial },
+      { etiqueta: "CP", valor: f.codigoPostal },
+      { etiqueta: "Régimen", valor: f.regimen },
+      { etiqueta: "Uso CFDI", valor: f.usoCFDI },
+      { etiqueta: "Correo", valor: f.correo },
+    ].filter((d) => (d.valor || "").toString().trim());
   };
 
   // El almacén es privado, así que se pide una liga temporal para ver la foto.
@@ -6055,8 +6067,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                           fecha: leido.fecha || prev.fecha,
                           monto: leido.total > 0 ? leido.total : prev.monto,
                           categoria: categoriaDeTienda(leido.tienda) || prev.categoria,
-                          folio: leido.folio || prev.folio,
-                          folio2: leido.folio2 || prev.folio2,
+                          folio: limpiarFolio(leido.folio) || prev.folio,
+                          folio2: limpiarFolio(leido.folio2) || prev.folio2,
                         }));
                         const partes = [
                           leido.tienda,
@@ -6781,9 +6793,24 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       Abrir portal
                     </a>
                   )}
-                  <button className="af-chip af-chip-neutral" onClick={() => copiarDatosFiscales(viendoTicket.gasto)}>
-                    <ClipboardPaste size={12} /> Copiar mis datos
-                  </button>
+                  {/* Un chip por dato: se toca el que el portal esté pidiendo
+                      y se copia solo ese, sin su etiqueta. */}
+                  {datosFiscales().length > 0 ? (
+                    datosFiscales().map((d) => (
+                      <button
+                        key={d.etiqueta}
+                        className="af-chip af-chip-neutral af-chip-fiscal"
+                        title={`Copiar ${d.valor}`}
+                        onClick={() => copiarTexto(d.valor, `${d.etiqueta} copiado`)}
+                      >
+                        <ClipboardPaste size={12} />
+                        <span className="af-chip-fiscal-et">{d.etiqueta}</span>
+                        <span className="af-chip-fiscal-val">{d.valor}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <span className="af-ink-soft text-xs">Captura tus datos en Ajustes → Datos.</span>
+                  )}
                 </div>
               )}
 
@@ -12971,6 +12998,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-ticket-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
 .af-ticket-datos { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 .af-ticket-datos code { font-family: 'Space Grotesk', monospace; font-size: 13px; font-weight: 700; color: var(--ink); background: color-mix(in srgb, var(--ink-soft) 10%, transparent); padding: 3px 8px; border-radius: 7px; word-break: break-all; }
+/* Un chip por dato fiscal: la etiqueta chiquita y el valor en monoespaciada,
+   para reconocer de un vistazo cuál pide el portal. */
+.af-chip-fiscal { gap: 5px; }
+.af-chip-fiscal-et { color: var(--ink-soft); font-size: 11px; }
+.af-chip-fiscal-val { font-family: 'Space Grotesk', monospace; font-weight: 700; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-ticket-foto { flex: 1; min-height: 0; overflow: auto; padding: 14px; display: flex; align-items: flex-start; justify-content: center; background: color-mix(in srgb, var(--ink-soft) 6%, transparent); }
 .af-ticket-foto img { max-width: 100%; border-radius: 12px; }
 
