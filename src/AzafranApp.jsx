@@ -13023,28 +13023,59 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    aprietan los anchos. Con las ocho columnas la tabla pedía 1,026px y en el
    iPad de pie (810px) no había manera.
    En el celular sí se sigue deslizando de lado: ahí no cabe ni apretando. */
-@media (min-width: 701px) {
-  .af-tabla-scroll .af-tabla-gastos { min-width: 608px; }
+/* La tabla de gastos se adapta en tres tamaños. La letra y el aire de los
+   selectores NO cambian en ninguno: si una columna no cabe con su tamaño de
+   siempre, se quita la columna, no se encoge la letra.
+
+   Celular y ventanas angostas (hasta 729px): las ocho columnas con su ancho
+   fijo; ahí no cabe de ninguna manera, así que la tabla se desliza de lado y
+   sale el aviso. El corte va en 730 y no en 700 porque las siete columnas
+   piden 642px y el marco mide el ancho de la ventana menos 80: por debajo de
+   730 se quedaba 20px corto y volvía a deslizarse.
+
+   Tablet (730-1023px): se esconde "Cada mes" —es la que menos se toca, y esos
+   gastos se manejan igual desde Gastos fijos— y las siete que quedan se
+   reparten TODO el ancho disponible. Nada de deslizar de lado.
+
+   Laptop (1024px para arriba): caben las ocho enteras y también se estiran
+   para llenar el ancho, que en una pantalla normal sobra espacio de sobra. */
+@media (min-width: 730px) and (max-width: 1023px) {
+  .af-tabla-scroll .af-tabla-gastos { min-width: 642px; }
   .af-gasto-encabezado > :nth-child(5),
   .af-gasto-fila > :nth-child(5) { display: none; }
   .af-gasto-encabezado,
   .af-gasto-fila {
-    grid-template-columns: 46px minmax(64px, 1.4fr) 96px 72px 84px 108px 66px;
+    grid-template-columns:
+      48px
+      minmax(58px, 2.2fr)
+      minmax(112px, 1fr)
+      minmax(90px, 0.7fr)
+      minmax(74px, 0.6fr)
+      minmax(120px, 1fr)
+      68px;
     gap: 8px;
     padding: 10px 12px;
   }
-  /* Las etiquetas más largas —"Ingredientes", "Falta facturar"— no caben en
-     columnas apretadas con la letra y el aire de siempre. Un select recorta
-     en seco, no pone puntos suspensivos, así que aquí se le baja un punto a
-     la letra y se le quita relleno para que se lean completas. */
-  .af-gasto-fila .af-select-color,
-  .af-gasto-fila .af-select-bolsa,
-  .af-gasto-fila .af-select-estado {
-    font-size: 11px;
-    padding: 0 18px 0 8px;
-    background-position: right 7px center, right 3px center;
+}
+
+@media (min-width: 1024px) {
+  .af-tabla-scroll .af-tabla-gastos { min-width: 884px; }
+  .af-gasto-encabezado,
+  .af-gasto-fila {
+    grid-template-columns:
+      58px
+      minmax(130px, 2.4fr)
+      minmax(116px, 1fr)
+      minmax(90px, 0.72fr)
+      minmax(100px, 0.8fr)
+      minmax(88px, 0.66fr)
+      minmax(124px, 1fr)
+      76px;
+    gap: 10px;
+    padding: 10px 16px;
   }
 }
+
 /* La lista de gastos se recorre DENTRO de su marco, con el encabezado fijo.
    Alto de sobra a propósito: un marco chico en el celular se lleva el dedo
    —uno quiere bajar la página y baja la lista—; alto, el dedo casi siempre
@@ -13056,7 +13087,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Un aviso discreto de que hay más a la derecha. Solo en el celular: de 701px
    para arriba la tabla ya cabe entera y no hay nada que deslizar. */
 .af-tabla-pista { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); margin: 0 0 8px 2px; }
-@media (max-width: 700px) {
+@media (max-width: 729px) {
   .af-tabla-pista { display: flex; }
 }
 
