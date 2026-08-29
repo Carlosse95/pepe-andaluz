@@ -3975,20 +3975,6 @@ const diasParaFacturar = (gasto) => {
   limite.setHours(0, 0, 0, 0);
   return Math.round((limite - hoy) / 86400000);
 };
-// Se compara sin acentos ni mayúsculas y por pedazos, para que "sams",
-// "SAM'S CLUB" o "chedraui montejo" también cuenten: el nombre lo escribe
-// una persona con prisa y nunca sale igual dos veces.
-const esTiendaFacturable = (tienda) => {
-  const t = normalizarNombreGasto(tienda || "").replace(/[^a-z0-9 ]/g, "");
-  if (!t) return false;
-  return TIENDAS_FACTURABLES.some((f) => {
-    const n = normalizarNombreGasto(f).replace(/[^a-z0-9 ]/g, "");
-    return t.includes(n) || n.includes(t);
-  });
-};
-// Falta facturar cuando es de una de esas tiendas y todavía no se marca hecho.
-const faltaFacturar = (g) => esTiendaFacturable(g?.tienda) && !g?.facturado && !g?.sinFactura;
-
 // Cuántos cambios de letra hay entre dos palabras. Sirve para caer en la
 // cuenta de que "chedragui" y "chedraui" son el mismo lugar escrito de dos
 // formas (una sola letra de diferencia).
@@ -4471,10 +4457,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // sigue pendiente en enero y ahí es cuando corre prisa.
   // Se ordenan por lo que está por vencer, no por fecha de compra: lo urgente
   // es lo que pierde el plazo, y un ticket vencido ya no se puede deducir.
-  const porFacturar = gastos
-    .filter(faltaFacturar)
-    .map((g) => ({ ...g, quedan: diasParaFacturar(g) }))
-    .sort((a, b) => (a.quedan ?? 999) - (b.quedan ?? 999));
 
   // Lo que el aviso del encabezado cuenta tiene que ser EXACTAMENTE lo mismo
   // que sale al picarle, o el número de arriba y la lista de abajo se
@@ -4482,17 +4464,23 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // negocio, de este año, que nadie ha marcado ni como facturadas ni como
   // "no se factura". El plazo que corre sale aparte, de las tiendas que sí
   // tienen portal.
-  const pendientesFactura = gastosAnio.filter((g) => estadoFacturaDe(g) === "pendiente");
+  // Se cuentan las DOS bolsas, no solo la del negocio. Que un gasto salga del
+  // dinero de la casa no quiere decir que no haya que pedir su factura: si
+  // quedó en "Falta facturar" es porque alguien la quiere. Contando solo los
+  // del negocio, uno de $8,544.50 marcado como de casa no aparecía por ningún
+  // lado y el aviso decía que faltaba uno cuando faltaban cuatro. Para decir
+  // que algo NO se factura ya está su propia opción, que es la que lo saca de
+  // esta cuenta.
+  const pendientesFactura = gastosAnioTodos.filter((g) => estadoFacturaDe(g) === "pendiente");
   const totalPorFacturar = sumar(pendientesFactura);
-
-  // Cuánto se lleva gastado en cada tienda, para verlo en el filtro sin
-  // tener que elegirla primero.
-  const totalPorTienda = {};
-  gastosDelAmbito.forEach((g) => {
-    const clave = normalizarNombreGasto(g.tienda || "");
-    if (!clave) return;
-    totalPorTienda[clave] = (totalPorTienda[clave] || 0) + (parseFloat(g.monto) || 0);
-  });
+  // El plazo que se avisa tiene que salir de ESTOS mismos gastos. Antes venía
+  // de otra lista —todos los años, y solo las tiendas con portal— así que el
+  // aviso podía decir "una ya se venció" de un gasto que ni siquiera estaba
+  // contado en el número de al lado.
+  const pendienteMasUrgente = pendientesFactura
+    .map((g) => ({ ...g, quedan: diasParaFacturar(g) }))
+    .filter((g) => g.quedan != null)
+    .sort((a, b) => a.quedan - b.quedan)[0];
 
 
   // Las tiendas que de verdad tienen gastos, para poder filtrar por una sin
@@ -4502,7 +4490,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     gastosDelAmbito
       .filter((g) => (g.tienda || "").trim())
       .map((g) => [normalizarNombreGasto(g.tienda), g.tienda.trim()])
-  ).entries()].map(([clave, nombre]) => ({ clave, nombre, total: totalPorTienda[clave] || 0 }));
+  ).entries()].map(([clave, nombre]) => ({ clave, nombre }));
 
   // Si la tienda elegida se queda fuera al cambiar de bolsa o de tipo, se
   // sigue mostrando: si no, la lista saldría vacía y el filtro en blanco, sin
@@ -4510,7 +4498,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const claveElegida = normalizarNombreGasto(filtroTienda);
   const opcionesTienda = (
     filtroTienda !== "todas" && !tiendasEnUso.some((t) => t.clave === claveElegida)
-      ? [...tiendasEnUso, { clave: claveElegida, nombre: filtroTienda, total: 0 }]
+      ? [...tiendasEnUso, { clave: claveElegida, nombre: filtroTienda }]
       : tiendasEnUso
   ).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
 
@@ -5992,17 +5980,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {pendientesFactura.length > 0 && (
             <button
               className="af-aviso-facturar"
-              onClick={() => { setFiltroFactura("pendiente"); setFiltroAmbito("negocio"); setMesGasto("todos"); }}
+              onClick={() => { setFiltroFactura("pendiente"); setFiltroAmbito("todos"); setMesGasto("todos"); }}
             >
               <Receipt size={14} />
               {pendientesFactura.length} por facturar · {money(totalPorFacturar)}
-              {porFacturar[0]?.quedan != null && porFacturar[0].quedan <= 7 && (
+              {pendienteMasUrgente && pendienteMasUrgente.quedan <= 7 && (
                 <span className="af-aviso-urgente">
-                  {porFacturar[0].quedan < 0
+                  {pendienteMasUrgente.quedan < 0
                     ? "una ya se venció"
-                    : porFacturar[0].quedan === 0
+                    : pendienteMasUrgente.quedan === 0
                     ? "una vence hoy"
-                    : `una vence en ${porFacturar[0].quedan} días`}
+                    : `una vence en ${pendienteMasUrgente.quedan} días`}
                 </span>
               )}
             </button>
@@ -6286,10 +6274,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 {opcionesTienda.map((t) => (
                   // El nombre se recorta: un select se estira hasta su opción
                   // más larga, y "Integradora de carnes especializadas del
-                  // sureste" empujaba los filtros de al lado fuera de la
-                  // pantalla. El valor que se guarda sigue siendo el completo.
+                  // sureste" descuadraba la fila entera. El valor que se
+                  // guarda sigue siendo el nombre completo.
                   <option key={t.clave} value={t.nombre}>
-                    {(t.nombre.length > 18 ? t.nombre.slice(0, 18).trimEnd() + "…" : t.nombre) + " · " + money(t.total)}
+                    {t.nombre.length > 16 ? t.nombre.slice(0, 16).trimEnd() + "…" : t.nombre}
                   </option>
                 ))}
               </select>
@@ -6431,7 +6419,20 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <span className="af-gasto-fecha">{fmtDiaCorto(g.fecha)}</span>
 
                   <span className="af-gasto-que">
-                    <span className="af-gasto-titulo">{g.tienda || g.descripcion || g.categoria}</span>
+                    <span className="af-gasto-que-linea">
+                      <span className="af-gasto-titulo">{g.tienda || g.descripcion || g.categoria}</span>
+                      {/* La foto se abre desde aquí, pegada al nombre. Estaba
+                          con el lápiz y el bote, pero solo aparecía cuando el
+                          gasto traía foto: los otros dos se recorrían de un
+                          renglón a otro y la columna entera bailaba. Aquí no
+                          mueve nada, y de paso el par de botones cabe con
+                          aire, que en el iPad los tres no cabían. */}
+                      {g.ticket && (
+                        <button className="af-icon-btn af-gasto-ticket" title="Ver el ticket" onClick={() => abrirTicket(g)}>
+                          <Receipt size={15} />
+                        </button>
+                      )}
+                    </span>
                     {g.tienda && g.descripcion && <span className="af-gasto-sub">{g.descripcion}</span>}
                   </span>
 
@@ -6491,11 +6492,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   </span>
 
                   <span className="af-gasto-acciones">
-                    {g.ticket && (
-                      <button className="af-icon-btn" title="Ver el ticket" onClick={() => abrirTicket(g)}>
-                        <Receipt size={16} />
-                      </button>
-                    )}
                     {esAdmin && (
                       <>
                         <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
@@ -12972,13 +12968,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-filtro .af-mini-label { margin-bottom: 0; padding-left: 4px; }
 .af-btn-quitar-filtros { display: inline-flex; align-items: center; gap: 6px; height: var(--alto-campo); padding: 0 14px; border-radius: 999px; border: 1px solid color-mix(in srgb, #c0392b 35%, transparent); background: color-mix(in srgb, #c0392b 8%, transparent); color: #c0392b; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .af-btn-quitar-filtros:hover { background: color-mix(in srgb, #c0392b 14%, transparent); }
-.af-filtros-fila .af-input { width: auto; min-width: 145px; font-size: 13px; padding: 9px 14px; border-radius: 999px; }
-.af-filtros-fila .af-filtro-busca .af-input { border-radius: 999px; }
-/* Tope de ancho para la lista de tiendas: sin él crece hasta el nombre más
-   largo que haya y se lleva por delante a los filtros de al lado. */
-.af-filtros-fila .af-filtro-tienda .af-input { max-width: 215px; }
+/* Los filtros son campos como cualquier otro de la app: mismo alto, mismo
+   redondeo y misma letra. Antes eran píldoras de 13px mientras todo lo demás
+   —los campos de capturar, los de Ajustes— eran rectángulos redondeados de
+   14.5px, y se notaba que no eran de la misma familia.
+   Todos miden lo mismo, además: con anchos distintos según lo que dijera cada
+   uno, la fila se veía descuadrada. */
+.af-filtros-fila .af-input { width: 172px; min-width: 172px; }
 .af-filtro-busca { min-width: 210px; }
-.af-filtro-busca .af-input { min-width: 0; }
+.af-filtro-busca .af-input { width: 100%; min-width: 0; }
+
 
 /* En el celular no caben en una línea: cada filtro se acomoda solo y el aviso
    de facturar se pone en su propio renglón en vez de exprimir el título. */
@@ -13036,7 +13035,15 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-gasto-celda { min-width: 0; }
 .af-col-monto { text-align: right; padding-right: 14px; }
 /* Botones grandes: se pican con el dedo en el iPad y con prisa. */
-.af-gasto-acciones { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.af-gasto-acciones { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+/* Los botones no se encogen: la columna se hace del tamaño que piden, y no al
+   revés. Antes medían 32px de dibujo en una columna de 76 donde hacían falta
+   108, así que el navegador los apretaba hasta deformarlos. */
+.af-gasto-acciones .af-icon-btn { flex: none; }
+/* El botón de la foto, junto al nombre: más chico, porque comparte renglón. */
+.af-gasto-que-linea { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.af-gasto-que-linea .af-gasto-titulo { min-width: 0; }
+.af-gasto-ticket { width: 22px; height: 22px; flex: none; color: var(--ink-soft); }
 .af-gasto-acciones .af-icon-btn { width: 32px; height: 32px; border-radius: 10px; }
 .af-gasto-acciones .af-icon-btn:hover { background: color-mix(in srgb, var(--ink-soft) 12%, transparent); }
 
@@ -13115,7 +13122,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    Laptop (1024px para arriba): caben las ocho enteras y también se estiran
    para llenar el ancho, que en una pantalla normal sobra espacio de sobra. */
 @media (min-width: 730px) and (max-width: 1023px) {
-  .af-tabla-scroll .af-tabla-gastos { min-width: 642px; }
+  .af-tabla-scroll .af-tabla-gastos { min-width: 658px; }
   .af-gasto-encabezado > :nth-child(5),
   .af-gasto-fila > :nth-child(5) { display: none; }
   .af-gasto-encabezado,
@@ -13127,14 +13134,14 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
       minmax(90px, 0.7fr)
       minmax(74px, 0.6fr)
       minmax(120px, 1fr)
-      68px;
+      84px;
     gap: 8px;
     padding: 10px 12px;
   }
 }
 
 @media (min-width: 1024px) {
-  .af-tabla-scroll .af-tabla-gastos { min-width: 884px; }
+  .af-tabla-scroll .af-tabla-gastos { min-width: 900px; }
   .af-gasto-encabezado,
   .af-gasto-fila {
     grid-template-columns:
@@ -13145,7 +13152,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
       minmax(100px, 0.8fr)
       minmax(88px, 0.66fr)
       minmax(124px, 1fr)
-      76px;
+      92px;
     gap: 10px;
     padding: 10px 16px;
   }
