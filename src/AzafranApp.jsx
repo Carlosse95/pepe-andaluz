@@ -7590,7 +7590,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
           )}
           {!esAdmin && (
-            <div className="af-hint mb-4">Solo el administrador puede modificar los ajustes. Tú puedes ver todo.</div>
+            <div className="af-hint mb-4">Solo el administrador puede modificar los ajustes. Lo que sí puedes cambiar es <strong>qué se ve en el menú</strong>, más abajo.</div>
           )}
           <fieldset disabled={!esAdmin} className="af-fieldset-reset">
           <div className="af-section-title">Datos de pago para clientes</div>
@@ -7663,6 +7663,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </button>
           </div>
 
+          </fieldset>
+
+          {/* Esta tarjeta queda FUERA del bloqueo de administrador a propósito.
+             Es lo único de Ajustes que no cambia el negocio, solo qué pestañas
+             ve cada quien; y dejarla bloqueada dejaba encerrado a quien no
+             fuera admin: con Presupuestos apagado no podía entrar a
+             Presupuestos ni volver a encenderlo. */}
           <div className="af-section-title">Qué se ve en el menú</div>
           <div className="af-card p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
@@ -7701,6 +7708,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar el menú"}
             </button>
           </div>
+
+          <fieldset disabled={!esAdmin} className="af-fieldset-reset">
 
           <div className="af-section-title">Dónde recoger</div>
           <div className="af-card p-4 mb-4">
@@ -13007,6 +13016,35 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    página, así que el dedo nunca se queda atrapado. */
 .af-tabla-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .af-tabla-scroll .af-tabla-gastos { min-width: 940px; margin-bottom: 0; }
+
+/* En la laptop y en el iPad la tabla CABE: solo se sube y se baja, nunca se
+   desliza de lado. Para lograrlo se recorta la columna "Cada mes" —la que
+   menos se toca, y que de todos modos se maneja desde Gastos fijos— y se
+   aprietan los anchos. Con las ocho columnas la tabla pedía 1,026px y en el
+   iPad de pie (810px) no había manera.
+   En el celular sí se sigue deslizando de lado: ahí no cabe ni apretando. */
+@media (min-width: 701px) {
+  .af-tabla-scroll .af-tabla-gastos { min-width: 608px; }
+  .af-gasto-encabezado > :nth-child(5),
+  .af-gasto-fila > :nth-child(5) { display: none; }
+  .af-gasto-encabezado,
+  .af-gasto-fila {
+    grid-template-columns: 46px minmax(64px, 1.4fr) 96px 72px 84px 108px 66px;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  /* Las etiquetas más largas —"Ingredientes", "Falta facturar"— no caben en
+     columnas apretadas con la letra y el aire de siempre. Un select recorta
+     en seco, no pone puntos suspensivos, así que aquí se le baja un punto a
+     la letra y se le quita relleno para que se lean completas. */
+  .af-gasto-fila .af-select-color,
+  .af-gasto-fila .af-select-bolsa,
+  .af-gasto-fila .af-select-estado {
+    font-size: 11px;
+    padding: 0 18px 0 8px;
+    background-position: right 7px center, right 3px center;
+  }
+}
 /* La lista de gastos se recorre DENTRO de su marco, con el encabezado fijo.
    Alto de sobra a propósito: un marco chico en el celular se lleva el dedo
    —uno quiere bajar la página y baja la lista—; alto, el dedo casi siempre
@@ -13015,9 +13053,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    se quiere justamente que el desplazamiento siga con la página. */
 .af-tabla-cuerpo { max-height: min(62vh, 620px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .af-gasto-encabezado { position: sticky; top: 0; z-index: 2; }
-/* Un aviso discreto de que hay más a la derecha, solo donde no cabe todo. */
+/* Un aviso discreto de que hay más a la derecha. Solo en el celular: de 701px
+   para arriba la tabla ya cabe entera y no hay nada que deslizar. */
 .af-tabla-pista { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); margin: 0 0 8px 2px; }
-@media (max-width: 1000px) {
+@media (max-width: 700px) {
   .af-tabla-pista { display: flex; }
 }
 
