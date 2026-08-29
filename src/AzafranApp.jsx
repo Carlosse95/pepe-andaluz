@@ -403,8 +403,26 @@ const fmtDateHuman = (iso) => {
   if (!iso) return "";
   const [y, m, d] = iso.split("-").map(Number);
   const date = new Date(y, m - 1, d);
-  const s = date.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
+  // El año se dice SOLO cuando no es el de hoy. Sin él, una fecha de otro año
+  // se lee como si fuera de éste: el aviso de gasto repetido decía "Jueves,
+  // 21 de agosto" de un gasto que estaba en 2025, y se buscó en vano en 2026.
+  const opciones = { weekday: "long", day: "numeric", month: "long" };
+  if (y !== new Date().getFullYear()) opciones.year = "numeric";
+  const s = date.toLocaleDateString("es-MX", opciones);
   return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+// Una fecha que se sale de lo razonable para un ticket que se está
+// capturando: en el futuro, o de hace más de dos meses. No se corrige sola
+// —puede ser un ticket viejo de verdad— pero sí se avisa.
+const fechaFueraDeLugar = (iso) => {
+  if (!iso) return false;
+  const [y, m, d] = iso.split("-").map(Number);
+  const leida = new Date(y, m - 1, d);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const dias = Math.round((hoy - leida) / 86400000);
+  return dias < 0 || dias > 60;
 };
 
 const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -4477,6 +4495,25 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   });
 
 
+  // Las tiendas que de verdad tienen gastos, para poder filtrar por una sin
+  // adivinar cómo se escribió. Llevan al lado lo que se lleva gastado en cada
+  // una: eso es lo que hace que valga la pena elegir aquí y no en el buscador.
+  const tiendasEnUso = [...new Map(
+    gastosDelAmbito
+      .filter((g) => (g.tienda || "").trim())
+      .map((g) => [normalizarNombreGasto(g.tienda), g.tienda.trim()])
+  ).entries()].map(([clave, nombre]) => ({ clave, nombre, total: totalPorTienda[clave] || 0 }));
+
+  // Si la tienda elegida se queda fuera al cambiar de bolsa o de tipo, se
+  // sigue mostrando: si no, la lista saldría vacía y el filtro en blanco, sin
+  // que se entienda por qué no hay nada.
+  const claveElegida = normalizarNombreGasto(filtroTienda);
+  const opcionesTienda = (
+    filtroTienda !== "todas" && !tiendasEnUso.some((t) => t.clave === claveElegida)
+      ? [...tiendasEnUso, { clave: claveElegida, nombre: filtroTienda, total: 0 }]
+      : tiendasEnUso
+  ).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+
   const totalDelAmbito = sumar(gastosDelAmbito);
   const totalFiltrado = gastosFiltrados.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
   // Cuántos filtros están puestos, para el número del botón.
@@ -6097,9 +6134,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                           leido.tienda,
                           leido.total > 0 ? money(leido.total) : null,
                         ].filter(Boolean);
+                        // La fecha es el dato que más se equivoca al leer una
+                        // foto, y el que más caro sale: con el año mal, el
+                        // gasto desaparece de la vista del año en curso y
+                        // parece que no se guardó. Pasó con un ticket de Aki
+                        // al que le leyó 2025. Si sale rara, eso es lo que se
+                        // avisa, por encima de la tienda y el monto.
+                        const fechaRara = fechaFueraDeLugar(leido.fecha);
                         showToast(
-                          partes.length ? `Leí: ${partes.join(" · ")}. Revísalo.` : "No pude sacar los datos; captúralos a mano.",
-                          leido.confianza === "baja" ? "error" : "ok"
+                          fechaRara
+                            ? `Ojo: le leí la fecha ${fmtDateHuman(leido.fecha)}. Revísala antes de guardar.`
+                            : partes.length ? `Leí: ${partes.join(" · ")}. Revísalo.` : "No pude sacar los datos; captúralos a mano.",
+                          fechaRara || leido.confianza === "baja" ? "error" : "ok"
                         );
                       }
                     } catch (err) {
@@ -6228,6 +6274,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
             </select>
           </label>
+
+          {/* Por tienda. El filtro ya existía por dentro —y hasta se contaba
+              en el número de filtros puestos— pero nunca se le puso su lista,
+              así que no había manera de usarlo. */}
+          {opcionesTienda.length > 1 && (
+            <label className="af-filtro af-filtro-tienda">
+              <span className="af-mini-label">Tienda</span>
+              <select className="af-input" value={filtroTienda} onChange={(e) => setFiltroTienda(e.target.value)}>
+                <option value="todas">Todas</option>
+                {opcionesTienda.map((t) => (
+                  // El nombre se recorta: un select se estira hasta su opción
+                  // más larga, y "Integradora de carnes especializadas del
+                  // sureste" empujaba los filtros de al lado fuera de la
+                  // pantalla. El valor que se guarda sigue siendo el completo.
+                  <option key={t.clave} value={t.nombre}>
+                    {(t.nombre.length > 18 ? t.nombre.slice(0, 18).trimEnd() + "…" : t.nombre) + " · " + money(t.total)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label className="af-filtro">
             <span className="af-mini-label">Factura</span>
@@ -12886,7 +12953,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
        igual que se elige un mes en cualquier tablero de cuentas. ---- */
 .af-barra-gastos { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; }
 .af-barra-gastos .af-mes-pills { margin-bottom: 0; flex: 1 1 auto; }
-.af-filtros-fila { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+/* Sin encoger, la fila de filtros se quedaba con su ancho natural y se salía
+   de la tarjeta en vez de envolverse: al agregar el quinto filtro (Tienda),
+   "Un día" quedaba fuera de la pantalla en el iPad. Ahora sí encoge, y al no
+   caber parte sus propios filtros en dos renglones. En pantalla ancha sigue
+   junto a los meses, igual que antes. */
+.af-filtros-fila { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .af-filtro { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 
 /* Capturar un gasto, en dos columnas cuando hay ancho: una sola columna de
@@ -12902,6 +12974,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-btn-quitar-filtros:hover { background: color-mix(in srgb, #c0392b 14%, transparent); }
 .af-filtros-fila .af-input { width: auto; min-width: 145px; font-size: 13px; padding: 9px 14px; border-radius: 999px; }
 .af-filtros-fila .af-filtro-busca .af-input { border-radius: 999px; }
+/* Tope de ancho para la lista de tiendas: sin él crece hasta el nombre más
+   largo que haya y se lleva por delante a los filtros de al lado. */
+.af-filtros-fila .af-filtro-tienda .af-input { max-width: 215px; }
 .af-filtro-busca { min-width: 210px; }
 .af-filtro-busca .af-input { min-width: 0; }
 
