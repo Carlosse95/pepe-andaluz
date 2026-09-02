@@ -2714,8 +2714,6 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   // hay que resolver antes de que sea tarde.
   const [verCompras, setVerCompras] = useState(false);
   const [verPorConfirmar, setVerPorConfirmar] = useState(true);
-  // Lo hecho se abre solo si algo está por acabarse; si alcanza, no estorba.
-  const [verLoHecho, setVerLoHecho] = useState(false);
   const [verSinPagar, setVerSinPagar] = useState(true);
 
   // Transferencias apuntadas que todavía no se han visto en el banco. Se
@@ -2786,18 +2784,6 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const hayPorComprar = bajoStock.length > 0 || bajoIngredientes.length > 0;
   // Lo ya hecho va aparte de "por comprar": eso se resuelve yendo a la tienda,
   // esto poniéndose a cocinar. Son dos recados distintos.
-  // Una línea por CUENTA, no por platillo: las croquetas de jamón y las de
-  // mayoreo salen de la misma olla y saldrían dos veces con el mismo número.
-  const loHecho = duenosDeCuenta(config.extras || []);
-  const porHacer = loHecho.filter((e) => (Number(e.stock) || 0) <= (Number(e.minimo) || 0));
-  // Si hay algo por hacer, el panel se abre solo la primera vez que se ve.
-  const avisoHechoDado = useRef(false);
-  useEffect(() => {
-    if (porHacer.length > 0 && !avisoHechoDado.current) {
-      avisoHechoDado.current = true;
-      setVerLoHecho(true);
-    }
-  }, [porHacer.length]);
 
   return (
     <div>
@@ -2870,51 +2856,13 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
       {/* Todo lo que no es "atender el pedido de ahorita" vive aquí abajo, con
           el mismo aspecto y plegado. Antes cada aviso tenía su propio estilo y
           estaban repartidos arriba y abajo: se sentía revuelto. */}
-      {(hayPorComprar || loHecho.length > 0 || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
+      {(hayPorComprar || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
         <div className="af-secundarios mt-5">
           <div className="af-section-title">Lo demás</div>
 
-          {/* Lo que hay preparado. Va arriba y se abre solo cuando algo está
-              por acabarse: es lo que decide si hoy hay que ponerse a cocinar
-              antes de que entren los pedidos. */}
-          {loHecho.length > 0 && (
-            <PanelPlegable
-              tono={porHacer.length > 0 ? "alerta" : undefined}
-              icono={<ChefHat size={15} />}
-              titulo="Lo que tenemos hecho"
-              resumen={porHacer.length > 0 ? `${porHacer.length} por hacer` : "Alcanza"}
-              abierto={verLoHecho}
-              onToggle={() => setVerLoHecho((v) => !v)}
-            >
-              {loHecho.map((e) => {
-                const paquete = Number(e.piezasPorUnidad) || 0;
-                const unidad = unidadDeLoHecho(e);
-                // Las raciones solo se dicen contando por pieza: si se cuenta
-                // por raciones, el número YA son raciones.
-                const enRaciones = unidad === "piezas" && paquete > 1;
-                const hay = Number(e.stock) || 0;
-                const bajo = hay <= (Number(e.minimo) || 0);
-                return (
-                  <div key={e.id} className="af-confirmar-row">
-                    <div className="flex-1 min-w-0">
-                      <div className="af-confirmar-nombre">
-                        {e.nombre}
-                        {compartenCuenta(e, config.extras || []).length > 0 && (
-                          <span className="af-ink-soft"> + {compartenCuenta(e, config.extras || []).map((o) => o.nombre).join(", ")}</span>
-                        )}
-                      </div>
-                      <div className="af-ink-soft text-sm">
-                        {hay < 0
-                          ? `Debes ${-hay} ${diUnidad(hay, unidad)}`
-                          : `${hay} ${diUnidad(hay, unidad)}${enRaciones ? ` · ${Math.floor(hay / paquete)} ${Math.floor(hay / paquete) === 1 ? "ración" : "raciones"}` : ""}`}
-                      </div>
-                    </div>
-                    {bajo && <span className="af-chip af-chip-hacer">Hay que hacer</span>}
-                  </div>
-                );
-              })}
-            </PanelPlegable>
-          )}
+          {/* Lo que hay preparado ya no vive aquí: teniendo existencia no
+              dice nada, y ocupaba el primer renglón de la pantalla. Ahora sale
+              en la campana de arriba, y solo cuando algo llega a su mínimo. */}
 
           {/* "Por comprar" ya no vive aquí: se movió a la campana de la barra
               de arriba, como en cualquier app. Abajo estorbaba más que avisar. */}
@@ -9332,7 +9280,11 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                     // pedido: enterarse al guardar es tarde, el cliente ya
                     // colgó. Se cuenta en piezas, que es como se hacen.
                     const cat = (config.extras || []).find((e) => e.id === p.id);
-                    const cuenta = llevaCuentaDeHechas(cat);
+                    // Capturando un día que ya pasó, el almacén NO se toca: esa
+                    // comida se hizo y se vendió en su momento. La etiqueta se
+                    // calla, porque restando en pantalla parecía que sí estaba
+                    // descontando y no era cierto.
+                    const cuenta = llevaCuentaDeHechas(cat) && tocaElAlmacen(fechaDelPedido);
                     const dueno = cuenta ? duenoDeLaCuenta(cat, config.extras) : null;
                     const hay = cuenta ? Number(dueno.stock) || 0 : 0;
                     // Se resta lo que el carrito lleva de TODOS los platillos de
@@ -10736,10 +10688,12 @@ export default function App() {
   // siempre: el topbar lleva desenfoque y eso encierra a los position:fixed
   // dentro de la barra, así que la capa solo tapaba la barra y tocar el resto
   // de la pantalla no cerraba nada.
-  const campanaRef = useRef(null);
   useEffect(() => {
     if (!verAvisos) return;
-    const fuera = (e) => { if (!campanaRef.current?.contains(e.target)) setVerAvisos(false); };
+    // Por clase y no por ref: la campana se dibuja en dos sitios —la barra de
+    // arriba en pantalla ancha y el encabezado en el celular— y un solo ref no
+    // puede apuntar a las dos.
+    const fuera = (e) => { if (!e.target.closest?.(".af-campana")) setVerAvisos(false); };
     const conEsc = (e) => { if (e.key === "Escape") setVerAvisos(false); };
     document.addEventListener("pointerdown", fuera);
     document.addEventListener("keydown", conEsc);
@@ -11610,6 +11564,24 @@ export default function App() {
       .map((d) => ({ id: "des-" + d.id, nombre: d.nombre, texto: String(d.stock), minimo: d.minimo })),
   ];
 
+  // Lo que hay que PONERSE A HACER. Va aparte de lo que hay que comprar: eso
+  // se resuelve yendo a la tienda, esto encendiendo la estufa. Antes vivía
+  // abierto en "Hoy", donde con existencia de sobra no decía nada; aquí solo
+  // aparece cuando de verdad llegó a su mínimo.
+  const porHacer = duenosDeCuenta(config.extras || [])
+    .filter((e) => (Number(e.stock) || 0) <= (Number(e.minimo) || 0))
+    .map((e) => {
+      const hay = Number(e.stock) || 0;
+      const unidad = unidadDeLoHecho(e);
+      const tambien = compartenCuenta(e, config.extras || []);
+      return {
+        id: "hecho-" + e.id,
+        nombre: e.nombre + (tambien.length ? ` + ${tambien.map((o) => o.nombre).join(", ")}` : ""),
+        texto: hay < 0 ? `debes ${-hay} ${diUnidad(hay, unidad)}` : `${hay} ${diUnidad(hay, unidad)}`,
+        minimo: Number(e.minimo) || 0,
+      };
+    });
+
   const navRef = useRef(null);
   const botonActivoRef = useRef(null);
   useEffect(() => {
@@ -12176,6 +12148,60 @@ export default function App() {
   // Ajustes nunca se esconden: sin ellas no habría por dónde volver.
   const navItems = navTodos.filter((n) => !(config?.navOcultas || []).includes(n.key));
 
+  // La campana de avisos. Va en una variable porque se dibuja en DOS sitios:
+  // la barra de arriba en pantalla ancha, y el encabezado del celular. Vivía
+  // solo en la primera, que no se muestra por debajo de 700px — o sea que en
+  // el celular, que es donde se trabaja, no existía y sus avisos no los veía
+  // nadie.
+  const campana = (
+    <div className="af-campana">
+      <button className="af-icon-btn" title="Avisos" onClick={() => setVerAvisos((v) => !v)}>
+        <Bell size={20} />
+        {(porComprar.length > 0 || porHacer.length > 0) && <span className="af-campana-punto" />}
+      </button>
+      {verAvisos && (
+        <div className="af-avisos-panel">
+          {porComprar.length === 0 && porHacer.length === 0 ? (
+            <>
+              <div className="af-avisos-titulo">Avisos</div>
+              <div className="af-avisos-vacio">Todo tiene existencia. Nada urgente.</div>
+            </>
+          ) : (
+            <>
+              {/* Lo que hay que hacer va primero: se resuelve hoy mismo en la
+                  cocina, y sin ello no se puede vender. Lo de comprar puede
+                  esperar a la siguiente vuelta al súper. */}
+              {porHacer.length > 0 && (
+                <>
+                  <div className="af-avisos-titulo">Por hacer</div>
+                  <div className="af-avisos-cuerpo">
+                    {porHacer.map((x) => (
+                      <div key={x.id} className="af-aviso-linea">
+                        {x.nombre}: <strong>{x.texto}</strong> (aviso en {x.minimo})
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {porComprar.length > 0 && (
+                <>
+                  <div className="af-avisos-titulo">Por comprar</div>
+                  <div className="af-avisos-cuerpo">
+                    {porComprar.map((x) => (
+                      <div key={x.id} className="af-aviso-linea">
+                        {x.nombre}: quedan <strong>{x.texto}</strong> (aviso en {x.minimo})
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="af-app">
       <style>{AZAFRAN_CSS}</style>
@@ -12201,37 +12227,7 @@ export default function App() {
               <Search size={18} />
             </button>
           )}
-          {/* Lo que hay que comprar: antes vivía al fondo de Hoy, donde solo
-              estorbaba. Aquí avisa con el punto rojo y solo se abre si
-              interesa, como en cualquier app. */}
-          <div className="af-campana" ref={campanaRef}>
-            <button
-              className="af-icon-btn"
-              title="Avisos"
-              onClick={() => setVerAvisos((v) => !v)}
-            >
-              <Bell size={18} />
-              {porComprar.length > 0 && <span className="af-campana-punto" />}
-            </button>
-            {verAvisos && (
-              <>
-                <div className="af-avisos-panel">
-                  <div className="af-avisos-titulo">Por comprar</div>
-                  {porComprar.length === 0 ? (
-                    <div className="af-avisos-vacio">Todo tiene existencia. Nada urgente.</div>
-                  ) : (
-                    <div className="af-avisos-cuerpo">
-                      {porComprar.map((x) => (
-                        <div key={x.id} className="af-aviso-linea">
-                          {x.nombre}: quedan <strong>{x.texto}</strong> (aviso en {x.minimo})
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          {campana}
           <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} />
         </div>
       </div>
@@ -12265,6 +12261,10 @@ export default function App() {
                     <Search size={20} />
                   </button>
                 )}
+                {/* La campana vivía SOLO en la barra de pantalla ancha, así que
+                    en el celular —que es donde se trabaja— no existía y sus
+                    avisos no los veía nadie. */}
+                {campana}
                 <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} size={30} />
               </div>
             </div>
