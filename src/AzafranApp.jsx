@@ -2856,7 +2856,13 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
       {/* Todo lo que no es "atender el pedido de ahorita" vive aquí abajo, con
           el mismo aspecto y plegado. Antes cada aviso tenía su propio estilo y
           estaban repartidos arriba y abajo: se sentía revuelto. */}
-      {(hayPorComprar || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
+      {/* Las transferencias por confirmar y lo entregado sin pagar viven aquí
+          dentro, así que también tienen que poder abrir la sección. Antes se
+          colaban porque la condición incluía lo que está hecho, que con la
+          cuenta encendida era siempre cierto; al quitarlo de aquí quedaban a
+          merced de que hubiera pedidos ese día. Es dinero pendiente: no puede
+          depender de eso. */}
+      {(hayPorComprar || porConfirmar.length > 0 || entregadosSinPagar.length > 0 || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
         <div className="af-secundarios mt-5">
           <div className="af-section-title">Lo demás</div>
 
