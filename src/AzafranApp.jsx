@@ -1321,10 +1321,53 @@ const ajustarStock = (desechables, consumo, direccion) =>
 // Las croquetas se venden por ración de 6 pero se hacen y se cuentan por
 // PIEZA ("hoy hicimos casi cien"). Los aliolis se venden por frasco y se
 // cuentan por frasco. Esto traduce de lo uno a lo otro.
-const piezasPorVenta = (extra) =>
-  Number(extra?.piezasPorUnidad) > 0 ? Number(extra.piezasPorUnidad) : 1;
+// En qué se cuenta lo que está hecho. Cada platillo elige la suya: las
+// croquetas se cuentan por pieza, el alioli por frasco y el bacalao por kilo.
+const UNIDADES_HECHAS = [
+  { id: "piezas", label: "Piezas" },
+  { id: "raciones", label: "Raciones" },
+  { id: "kilos", label: "Kilos" },
+  { id: "litros", label: "Litros" },
+  { id: "frascos", label: "Frascos" },
+  { id: "bolsas", label: "Bolsas" },
+  { id: "unidades", label: "Unidades" },
+];
 
-const unidadDeLoHecho = (extra) => (piezasPorVenta(extra) > 1 ? "piezas" : "unidades");
+// Lo que se supone antes de que nadie elija: lo que ya dice el platillo en el
+// menú. Así los que ya estaban contando siguen contando igual.
+const unidadPorDefecto = (extra) => {
+  if (Number(extra?.piezasPorUnidad) > 1) return "piezas";
+  const u = (extra?.unidad || "").toLowerCase();
+  if (/kg|kilo/.test(u)) return "kilos";
+  if (/^l$|litro/.test(u)) return "litros";
+  if (/frasco/.test(u)) return "frascos";
+  if (/bolsa/.test(u)) return "bolsas";
+  if (/pieza|pza/.test(u)) return "piezas";
+  return "unidades";
+};
+
+const unidadDeLoHecho = (extra) => extra?.unidadInventario || unidadPorDefecto(extra);
+
+// "faltan 1 frascos" se lee mal. Cuando es uno, la unidad va en singular.
+const UNIDAD_SINGULAR = {
+  piezas: "pieza", raciones: "ración", kilos: "kilo", litros: "litro",
+  frascos: "frasco", bolsas: "bolsa", unidades: "unidad",
+};
+const diUnidad = (n, unidad) => (Math.abs(Number(n)) === 1 ? UNIDAD_SINGULAR[unidad] || unidad : unidad);
+
+// Cuánto baja la cuenta al vender UNA unidad de este platillo.
+//
+// Solo hay conversión cuando el platillo se vende en paquete —una ración de
+// 6— Y la cuenta se lleva por pieza: ahí una ración se lleva 6. Contando por
+// raciones, por kilos o por frascos, lo que se vende es lo que se descuenta.
+//
+// La unidad se pasa aparte porque manda la del DUEÑO de la cuenta: el mayoreo
+// sale de las croquetas de jamón, así que se cuenta como se cuenten ellas.
+const piezasPorVenta = (extra, unidadDeLaCuenta) => {
+  const paquete = Number(extra?.piezasPorUnidad) || 0;
+  const unidad = unidadDeLaCuenta || unidadDeLoHecho(extra);
+  return paquete > 1 && unidad === "piezas" ? paquete : 1;
+};
 
 const llevaCuentaDeHechas = (extra) => !!extra?.llevaInventario;
 
@@ -1383,7 +1426,8 @@ const calcularConsumoHechas = (items, extras) => {
     const extra = (extras || []).find((e) => e.id === it.extraId);
     if (!llevaCuentaDeHechas(extra)) return;
     const dueno = duenoDeLaCuenta(extra, extras);
-    consumo[dueno.id] = (consumo[dueno.id] || 0) + (Number(it.cantidad) || 0) * piezasPorVenta(extra);
+    const factor = piezasPorVenta(extra, unidadDeLoHecho(dueno));
+    consumo[dueno.id] = (consumo[dueno.id] || 0) + (Number(it.cantidad) || 0) * factor;
   });
   return consumo;
 };
@@ -2843,7 +2887,11 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               onToggle={() => setVerLoHecho((v) => !v)}
             >
               {loHecho.map((e) => {
-                const porVenta = Number(e.piezasPorUnidad) > 0 ? Number(e.piezasPorUnidad) : 1;
+                const paquete = Number(e.piezasPorUnidad) || 0;
+                const unidad = unidadDeLoHecho(e);
+                // Las raciones solo se dicen contando por pieza: si se cuenta
+                // por raciones, el número YA son raciones.
+                const enRaciones = unidad === "piezas" && paquete > 1;
                 const hay = Number(e.stock) || 0;
                 const bajo = hay <= (Number(e.minimo) || 0);
                 return (
@@ -2857,8 +2905,8 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                       </div>
                       <div className="af-ink-soft text-sm">
                         {hay < 0
-                          ? `Debes ${-hay} ${porVenta > 1 ? "piezas" : "unidades"}`
-                          : `${hay} ${porVenta > 1 ? "piezas" : "unidades"}${porVenta > 1 ? ` · ${Math.floor(hay / porVenta)} ${Math.floor(hay / porVenta) === 1 ? "ración" : "raciones"}` : ""}`}
+                          ? `Debes ${-hay} ${diUnidad(hay, unidad)}`
+                          : `${hay} ${diUnidad(hay, unidad)}${enRaciones ? ` · ${Math.floor(hay / paquete)} ${Math.floor(hay / paquete) === 1 ? "ración" : "raciones"}` : ""}`}
                       </div>
                     </div>
                     {bajo && <span className="af-chip af-chip-hacer">Hay que hacer</span>}
@@ -8263,19 +8311,22 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               revisan de vez en cuando; esto, cada día. */}
           <div className="af-section-title">Lo que ya está hecho</div>
           <div className="af-hint mb-3">
-            Enciende aquí los platillos que preparas <strong>por adelantado</strong> —croquetas,
-            aliolis, tortillas— y apunta cuántos te salieron. Cada pedido los va descontando
-            solo, en "Hoy" te avisa cuando queden pocos, y al guardar un pedido que pide más
-            de los que hay, la app te lo dice antes.
+            Aquí van solo los platillos que preparas <strong>por adelantado</strong>. Apunta
+            cuántos te salieron y cada pedido los va descontando solo: en "Hoy" te avisa cuando
+            queden pocos, y al guardar un pedido que pide más de los que hay, te lo dice antes.
             <br />
-            Las croquetas se cuentan <strong>por pieza</strong> aunque se vendan por ración de 6:
-            una ración descuenta 6.
+            Cada uno se cuenta <strong>como tú lo cuentas</strong>: las croquetas por pieza, el
+            alioli por frasco, el bacalao por kilo. Lo eliges en cada tarjeta.
           </div>
           <div className="af-menu-grid mb-4">
-            {(draft.extras || []).map((ex, i) => {
-              const lleva = !!ex.llevaInventario;
-              const porVenta = Number(ex.piezasPorUnidad) > 0 ? Number(ex.piezasPorUnidad) : 1;
-              const unidad = porVenta > 1 ? "piezas" : "unidades";
+            {/* Solo los que de verdad llevan cuenta. La lista entera del menú
+                no sirve de nada: son quince platillos y se cuentan cuatro.
+                Abajo hay un botón para sumar otro el día que haga falta. */}
+            {(draft.extras || []).map((ex, i) => ({ ex, i })).filter(({ ex }) => ex.llevaInventario).map(({ ex, i }) => {
+              const lleva = true;
+              const paquete = Number(ex.piezasPorUnidad) || 0;
+              const unidad = unidadDeLoHecho(ex);
+              const porVenta = piezasPorVenta(ex, unidad);
               const dueno = duenoDeLaCuenta(ex, draft.extras);
               const comparte = lleva && dueno !== ex;
               const hay = Number((comparte ? dueno : ex).stock) || 0;
@@ -8299,7 +8350,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   >
                     <span className="af-toggle-nombre">{ex.nombre}</span>
                     <span className="af-toggle-estado">
-                      {!lleva ? "Sin cuenta" : hay < 0 ? `debes ${-hay} ${unidad}` : `${hay} ${unidad}`}
+                      {hay < 0 ? `debes ${-hay} ${diUnidad(hay, unidad)}` : `${hay} ${diUnidad(hay, unidad)}`}
                     </span>
                     <span className="af-toggle-switch" />
                   </button>
@@ -8335,9 +8386,29 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                           </select>
                         </label>
                       )}
+                      {!comparte && (
+                        <label className="af-field">
+                          <span className="af-mini-label">¿En qué lo cuentas?</span>
+                          <select
+                            className="af-input"
+                            value={unidad}
+                            onChange={(e) => setEx({ unidadInventario: e.target.value })}
+                          >
+                            {UNIDADES_HECHAS.filter((u) => u.id !== "raciones" || paquete > 1).map((u) => (
+                              <option key={u.id} value={u.id}>{u.label}</option>
+                            ))}
+                          </select>
+                          {paquete > 1 && (
+                            <p className="af-ink-soft text-xs mt-1">
+                              Se vende de {paquete} en {paquete}, así que cada venta descuenta{" "}
+                              <strong>{unidad === "piezas" ? `${paquete} piezas` : "1 ración"}</strong>.
+                            </p>
+                          )}
+                        </label>
+                      )}
                       {comparte ? (
                         <p className="af-ink-soft text-xs">
-                          Sale de la misma olla que <strong>{dueno.nombre}</strong>: hay {hay < 0 ? `${-hay} por hacer` : `${hay} ${unidad}`} entre las dos.
+                          Sale de la misma olla que <strong>{dueno.nombre}</strong>: hay {hay < 0 ? `${-hay} por hacer` : `${hay} ${diUnidad(hay, unidad)}`} entre las dos.
                           El número se lleva allá.
                         </p>
                       ) : (
@@ -8364,7 +8435,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       </div>
                       {/* Lo normal es "hice otras 60", no "ahora hay 84". */}
                       <div className="af-hecho-sumar">
-                        {[6, 12, 24, 60].map((n) => (
+                        {/* Los saltos son los de una tanda de verdad: nadie
+                            hace 60 kilos de bacalao, ni 1 croqueta. */}
+                        {(unidad === "kilos" || unidad === "litros" ? [1, 2, 5, 10] : unidad === "piezas" ? [6, 12, 24, 60] : [1, 2, 5, 10]).map((n) => (
                           <button key={n} className="af-chip" onClick={() => setEx({ stock: hay + n })}>
                             +{n}
                           </button>
@@ -8373,13 +8446,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                           Se acabaron
                         </button>
                       </div>
-                      {porVenta > 1 && hay > 0 && (
+                      {unidad === "piezas" && paquete > 1 && hay > 0 && (
                         <p className="af-ink-soft text-xs">
-                          Alcanzan para {Math.floor(hay / porVenta)} {Math.floor(hay / porVenta) === 1 ? "ración" : "raciones"} de {porVenta}.
+                          Alcanzan para {Math.floor(hay / paquete)} {Math.floor(hay / paquete) === 1 ? "ración" : "raciones"} de {paquete}.
                         </p>
                       )}
                       {hay < 0 && (
-                        <div className="af-stock-alert">Ya vendiste {-hay} {unidad} que faltan por hacer.</div>
+                        <div className="af-stock-alert">Ya vendiste {-hay} {diUnidad(hay, unidad)} que faltan por hacer.</div>
                       )}
                       {hay >= 0 && hay <= minimo && <div className="af-stock-alert">¡Hay que hacer más!</div>}
                       {compartenCuenta(ex, draft.extras).length > 0 && (
@@ -8396,6 +8469,39 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               );
             })}
           </div>
+
+          {(draft.extras || []).filter((e) => e.llevaInventario).length === 0 && (
+            <div className="af-hint mb-3">Todavía no llevas la cuenta de nada. Elige abajo el primero.</div>
+          )}
+          {(draft.extras || []).some((e) => !e.llevaInventario) && (
+            <label className="af-field mb-4">
+              <span className="af-mini-label">Llevar la cuenta de otro platillo</span>
+              <select
+                className="af-input"
+                value=""
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) return;
+                  setDraft((prev) => ({
+                    ...prev,
+                    extras: (prev.extras || []).map((x) =>
+                      x.id === id
+                        ? { ...x, llevaInventario: true, stock: Number(x.stock) || 0, minimo: Number(x.minimo) || 0, unidadInventario: x.unidadInventario || unidadPorDefecto(x) }
+                        : x
+                    ),
+                  }));
+                }}
+              >
+                <option value="">Elige un platillo…</option>
+                {(draft.extras || []).filter((x) => !x.llevaInventario).map((x) => (
+                  <option key={x.id} value={x.id}>{x.nombre}</option>
+                ))}
+              </select>
+              <p className="af-ink-soft text-xs mt-1">
+                Para quitar uno de la lista, apaga su interruptor: el número se guarda por si lo vuelves a encender.
+              </p>
+            </label>
+          )}
 
           <div className="af-section-title">Ingredientes</div>
           <div className="af-hint mb-3">
@@ -9236,7 +9342,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                       ? Object.values(carrito).reduce((suma, f) => {
                           const c2 = (config.extras || []).find((e) => e.id === f.producto.id);
                           if (!llevaCuentaDeHechas(c2) || duenoDeLaCuenta(c2, config.extras) !== dueno) return suma;
-                          return suma + f.cantidad * piezasPorVenta(c2);
+                          return suma + f.cantidad * piezasPorVenta(c2, unidadDeLoHecho(dueno));
                         }, 0)
                       : 0;
                     const restan = hay - enLaOlla;
@@ -9249,8 +9355,8 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                             {cuenta && (
                               <span className={"af-quedan" + (restan < 0 ? " sin" : "")}>
                                 {restan < 0
-                                  ? `faltan ${-restan} ${unidadDeLoHecho(dueno)}`
-                                  : `quedan ${restan} ${unidadDeLoHecho(dueno)}`}
+                                  ? `faltan ${-restan} ${diUnidad(restan, unidadDeLoHecho(dueno))}`
+                                  : `quedan ${restan} ${diUnidad(restan, unidadDeLoHecho(dueno))}`}
                               </span>
                             )}
                           </div>
@@ -12275,7 +12381,11 @@ export default function App() {
                 <div key={f.id} className="af-dup-item">
                   <span>{f.nombre}</span>
                   <span className="af-dup-monto">
-                    quedan {f.hay} de {f.pide} {f.unidad}
+                    {/* Con la cuenta ya en negativo, "quedan -1" no se
+                        entiende: lo que pasa es que se debe de antes. */}
+                    {f.hay < 0
+                      ? `ya debes ${-f.hay} y este pide ${f.pide} ${diUnidad(f.pide, f.unidad)} más`
+                      : `quedan ${f.hay} de ${f.pide} ${diUnidad(f.pide, f.unidad)}`}
                   </span>
                 </div>
               ))}
