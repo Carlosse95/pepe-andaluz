@@ -1309,6 +1309,78 @@ const ajustarStock = (desechables, consumo, direccion) =>
     return { ...d, stock: Math.max(0, Math.round((d.stock + delta) * 100) / 100) };
   });
 
+// ---- Lo que ya está hecho (croquetas, aliolis, tortillas...) ----
+//
+// Esto NO es el inventario de ingredientes. Aquel dice cuánta harina y cuánta
+// leche quedan; éste dice cuántas croquetas hay HECHAS, listas para vender.
+// Son dos cosas distintas: se puede tener harina de sobra y cero croquetas.
+//
+// Solo lleva la cuenta de los platillos que se marcan uno por uno en
+// Ajustes → Inventario. Del resto la app no opina, porque se hacen al momento.
+
+// Las croquetas se venden por ración de 6 pero se hacen y se cuentan por
+// PIEZA ("hoy hicimos casi cien"). Los aliolis se venden por frasco y se
+// cuentan por frasco. Esto traduce de lo uno a lo otro.
+const piezasPorVenta = (extra) =>
+  Number(extra?.piezasPorUnidad) > 0 ? Number(extra.piezasPorUnidad) : 1;
+
+const unidadDeLoHecho = (extra) => (piezasPorVenta(extra) > 1 ? "piezas" : "unidades");
+
+const llevaCuentaDeHechas = (extra) => !!extra?.llevaInventario;
+
+// Lo hecho SÍ puede quedar en negativo, y es a propósito. El almacén de
+// ingredientes se topa en cero porque no existe media bolsa de harina de
+// menos; aquí un -6 significa "debes 6 croquetas", que es justo el recado que
+// Pepe quiere cuando acepta un pedido diciendo "ahorita las hago".
+//
+// Y sin negativo las cuentas se rompen: vendiendo 66 de 60 el stock quedaba en
+// 0 en vez de -6; al editar ese pedido se le devolvían las 66 y aparecían 6
+// piezas que nunca existieron. Medido: bajando de 11 a 6 raciones daba 30
+// cuando la respuesta es 24.
+const ajustarHechas = (extras, consumo, direccion) =>
+  (extras || []).map((e) => {
+    const cantidad = consumo[e.id] || 0;
+    if (cantidad === 0) return e;
+    const delta = direccion === "consumir" ? -cantidad : cantidad;
+    return { ...e, stock: Math.round(((Number(e.stock) || 0) + delta) * 100) / 100 };
+  });
+
+// Cuántas piezas hechas se lleva un pedido, por platillo.
+const calcularConsumoHechas = (items, extras) => {
+  const consumo = {};
+  (items || []).forEach((it) => {
+    if (!it || it.tipo === "paella" || !it.extraId) return;
+    const extra = (extras || []).find((e) => e.id === it.extraId);
+    if (!llevaCuentaDeHechas(extra)) return;
+    consumo[extra.id] = (consumo[extra.id] || 0) + (Number(it.cantidad) || 0) * piezasPorVenta(extra);
+  });
+  return consumo;
+};
+
+// Qué se está vendiendo sin tenerlo hecho. Al EDITAR un pedido se le suma lo
+// que ese mismo pedido ya tenía apartado, porque al guardar primero se
+// devuelve: si no, cambiarle la hora a un pedido de 12 croquetas avisaría de
+// que faltan 12 que en realidad son las suyas.
+const faltanteDeHechas = (items, extras, itemsAnteriores) => {
+  const pide = calcularConsumoHechas(items, extras);
+  const devuelve = calcularConsumoHechas(itemsAnteriores, extras);
+  return Object.entries(pide)
+    .map(([id, cantidad]) => {
+      const extra = (extras || []).find((e) => e.id === id) || {};
+      const hay = (Number(extra.stock) || 0) + (devuelve[id] || 0);
+      return {
+        id,
+        nombre: extra.nombre || "",
+        pide: cantidad,
+        hay,
+        falta: cantidad - hay,
+        unidad: unidadDeLoHecho(extra),
+      };
+    })
+    .filter((f) => f.falta > 0)
+    .sort((a, b) => b.falta - a.falta);
+};
+
 // ---- Unidades de medida para ingredientes ----
 // La app convierte entre unidades de la misma familia (peso: g/kg, volumen: ml/l,
 // piezas: pza) para descontar en "presentaciones" (bolsas, cajas...) aunque el
@@ -2567,6 +2639,8 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   // hay que resolver antes de que sea tarde.
   const [verCompras, setVerCompras] = useState(false);
   const [verPorConfirmar, setVerPorConfirmar] = useState(true);
+  // Lo hecho se abre solo si algo está por acabarse; si alcanza, no estorba.
+  const [verLoHecho, setVerLoHecho] = useState(false);
   const [verSinPagar, setVerSinPagar] = useState(true);
 
   // Transferencias apuntadas que todavía no se han visto en el banco. Se
@@ -2635,6 +2709,18 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const bajoStock = (config.desechables || []).filter((d) => d.stock <= d.minimo);
   const bajoIngredientes = (config.ingredientes || []).filter((i) => i.stock <= i.minimo);
   const hayPorComprar = bajoStock.length > 0 || bajoIngredientes.length > 0;
+  // Lo ya hecho va aparte de "por comprar": eso se resuelve yendo a la tienda,
+  // esto poniéndose a cocinar. Son dos recados distintos.
+  const loHecho = (config.extras || []).filter(llevaCuentaDeHechas);
+  const porHacer = loHecho.filter((e) => (Number(e.stock) || 0) <= (Number(e.minimo) || 0));
+  // Si hay algo por hacer, el panel se abre solo la primera vez que se ve.
+  const avisoHechoDado = useRef(false);
+  useEffect(() => {
+    if (porHacer.length > 0 && !avisoHechoDado.current) {
+      avisoHechoDado.current = true;
+      setVerLoHecho(true);
+    }
+  }, [porHacer.length]);
 
   return (
     <div>
@@ -2707,9 +2793,42 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
       {/* Todo lo que no es "atender el pedido de ahorita" vive aquí abajo, con
           el mismo aspecto y plegado. Antes cada aviso tenía su propio estilo y
           estaban repartidos arriba y abajo: se sentía revuelto. */}
-      {(hayPorComprar || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
+      {(hayPorComprar || loHecho.length > 0 || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
         <div className="af-secundarios mt-5">
           <div className="af-section-title">Lo demás</div>
+
+          {/* Lo que hay preparado. Va arriba y se abre solo cuando algo está
+              por acabarse: es lo que decide si hoy hay que ponerse a cocinar
+              antes de que entren los pedidos. */}
+          {loHecho.length > 0 && (
+            <PanelPlegable
+              tono={porHacer.length > 0 ? "alerta" : undefined}
+              icono={<ChefHat size={15} />}
+              titulo="Lo que tenemos hecho"
+              resumen={porHacer.length > 0 ? `${porHacer.length} por hacer` : "Alcanza"}
+              abierto={verLoHecho}
+              onToggle={() => setVerLoHecho((v) => !v)}
+            >
+              {loHecho.map((e) => {
+                const porVenta = Number(e.piezasPorUnidad) > 0 ? Number(e.piezasPorUnidad) : 1;
+                const hay = Number(e.stock) || 0;
+                const bajo = hay <= (Number(e.minimo) || 0);
+                return (
+                  <div key={e.id} className="af-confirmar-row">
+                    <div className="flex-1 min-w-0">
+                      <div className="af-confirmar-nombre">{e.nombre}</div>
+                      <div className="af-ink-soft text-sm">
+                        {hay < 0
+                          ? `Debes ${-hay} ${porVenta > 1 ? "piezas" : "unidades"}`
+                          : `${hay} ${porVenta > 1 ? "piezas" : "unidades"}${porVenta > 1 ? ` · ${Math.floor(hay / porVenta)} ${Math.floor(hay / porVenta) === 1 ? "ración" : "raciones"}` : ""}`}
+                      </div>
+                    </div>
+                    {bajo && <span className="af-chip af-chip-hacer">Hay que hacer</span>}
+                  </div>
+                );
+              })}
+            </PanelPlegable>
+          )}
 
           {/* "Por comprar" ya no vive aquí: se movió a la campana de la barra
               de arriba, como en cualquier app. Abajo estorbaba más que avisar. */}
@@ -8101,6 +8220,92 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
         // (no solo el admin) — aquí no hay riesgo de borrar sin querer un
         // platillo del menú, y todos necesitan poder actualizar existencias.
         <fieldset className="af-fieldset-reset">
+          {/* Va PRIMERO porque es lo que se toca a diario: se hacen croquetas
+              por la mañana y se apunta cuántas salieron. Los ingredientes se
+              revisan de vez en cuando; esto, cada día. */}
+          <div className="af-section-title">Lo que ya está hecho</div>
+          <div className="af-hint mb-3">
+            Enciende aquí los platillos que preparas <strong>por adelantado</strong> —croquetas,
+            aliolis, tortillas— y apunta cuántos te salieron. Cada pedido los va descontando
+            solo, en "Hoy" te avisa cuando queden pocos, y al guardar un pedido que pide más
+            de los que hay, la app te lo dice antes.
+            <br />
+            Las croquetas se cuentan <strong>por pieza</strong> aunque se vendan por ración de 6:
+            una ración descuenta 6.
+          </div>
+          <div className="af-menu-grid mb-4">
+            {(draft.extras || []).map((ex, i) => {
+              const lleva = !!ex.llevaInventario;
+              const porVenta = Number(ex.piezasPorUnidad) > 0 ? Number(ex.piezasPorUnidad) : 1;
+              const unidad = porVenta > 1 ? "piezas" : "unidades";
+              const hay = Number(ex.stock) || 0;
+              const minimo = Number(ex.minimo) || 0;
+              const setEx = (cambios) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  extras: (prev.extras || []).map((x, j) => (j === i ? { ...x, ...cambios } : x)),
+                }));
+              return (
+                <div key={ex.id || i} className={"af-hecho-fila" + (lleva && hay <= minimo ? " bajo" : "")}>
+                  <button
+                    className={"af-toggle-fila" + (lleva ? " encendido" : "")}
+                    onClick={() => setEx({ llevaInventario: !lleva, stock: Number(ex.stock) || 0, minimo: Number(ex.minimo) || 0 })}
+                  >
+                    <span className="af-toggle-nombre">{ex.nombre}</span>
+                    <span className="af-toggle-estado">
+                      {!lleva ? "Sin cuenta" : hay < 0 ? `debes ${-hay} ${unidad}` : `${hay} ${unidad}`}
+                    </span>
+                    <span className="af-toggle-switch" />
+                  </button>
+                  {lleva && (
+                    <div className="af-hecho-campos">
+                      <div className="af-menu-card-row">
+                        <div className="flex-1">
+                          <div className="af-mini-label">Hay hechas ({unidad})</div>
+                          <NumberField
+                            value={hay}
+                            min={0}
+                            className="af-input w-full"
+                            onChange={(v) => setEx({ stock: Math.max(0, Number(v) || 0) })}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="af-mini-label">Avísame en</div>
+                          <NumberField
+                            value={minimo}
+                            min={0}
+                            className="af-input w-full"
+                            onChange={(v) => setEx({ minimo: Math.max(0, Number(v) || 0) })}
+                          />
+                        </div>
+                      </div>
+                      {/* Lo normal es "hice otras 60", no "ahora hay 84". */}
+                      <div className="af-hecho-sumar">
+                        {[6, 12, 24, 60].map((n) => (
+                          <button key={n} className="af-chip" onClick={() => setEx({ stock: hay + n })}>
+                            +{n}
+                          </button>
+                        ))}
+                        <button className="af-chip af-chip-cero" onClick={() => setEx({ stock: 0 })}>
+                          Se acabaron
+                        </button>
+                      </div>
+                      {porVenta > 1 && hay > 0 && (
+                        <p className="af-ink-soft text-xs">
+                          Alcanzan para {Math.floor(hay / porVenta)} {Math.floor(hay / porVenta) === 1 ? "ración" : "raciones"} de {porVenta}.
+                        </p>
+                      )}
+                      {hay < 0 && (
+                        <div className="af-stock-alert">Ya vendiste {-hay} {unidad} que faltan por hacer.</div>
+                      )}
+                      {hay >= 0 && hay <= minimo && <div className="af-stock-alert">¡Hay que hacer más!</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
           <div className="af-section-title">Ingredientes</div>
           <div className="af-hint mb-3">
             Dile a la app cómo COMPRAS cada ingrediente (ej. bolsa de 1.5 kilos) y cuánto USAS
@@ -8664,7 +8869,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
         </fieldset>
       )}
 
-      {tab !== "datos" && tab !== "usuarios" && esAdmin && (
+      {/* Inventario lo guarda CUALQUIERA. Los campos ya estaban abiertos para
+          todos —así se escribió a propósito, porque quien cocina es quien sabe
+          qué se acabó— pero el botón de guardar seguía siendo solo del
+          administrador: se podía escribir el número y no había manera de
+          dejarlo. Menú y Datos sí siguen siendo del administrador. */}
+      {(tab === "inventario" || (tab !== "datos" && tab !== "usuarios" && esAdmin)) && (
         <button className="af-btn-primary w-full mt-5" onClick={guardar}>
           {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
         </button>
@@ -8920,12 +9130,28 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                   <div className="af-picker-group-title">{g.label}</div>
                   {g.items.map((p) => {
                     const enCarrito = carrito[p.id];
+                    // De los platillos que se preparan por adelantado se dice
+                    // aquí mismo cuántos quedan, ya restando los que lleva este
+                    // pedido: enterarse al guardar es tarde, el cliente ya
+                    // colgó. Se cuenta en piezas, que es como se hacen.
+                    const cat = (config.extras || []).find((e) => e.id === p.id);
+                    const cuenta = llevaCuentaDeHechas(cat);
+                    const porVenta = cuenta ? piezasPorVenta(cat) : 1;
+                    const hay = cuenta ? Number(cat.stock) || 0 : 0;
+                    const restan = hay - (enCarrito?.cantidad || 0) * porVenta;
                     return (
                       <div key={p.id} className={"af-picker-item" + (enCarrito ? " active" : "")}>
                         <div className="min-w-0" style={{ flex: 1, cursor: "pointer" }} onClick={() => agregarAlCarrito(p)}>
                           <div className="af-item-nombre">{p.nombre}</div>
                           <div className="af-ink-soft text-sm">
                             {enCarrito ? money(subtotalDe(p, enCarrito.cantidad)) : (esPorKg(p) ? "Precio por kg" : p.unidad)}
+                            {cuenta && (
+                              <span className={"af-quedan" + (restan < 0 ? " sin" : "")}>
+                                {restan < 0
+                                  ? `faltan ${-restan} ${unidadDeLoHecho(cat)}`
+                                  : `quedan ${restan} ${unidadDeLoHecho(cat)}`}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -10810,6 +11036,8 @@ export default function App() {
   };
 
   const guardarPedidos = (lista) => { setPedidos(lista); persist("pedidos", lista); };
+  // Lo que el pedido pide y no está hecho, para el aviso de antes de guardar.
+  const [faltaHechas, setFaltaHechas] = useState(null);
   const guardarClientes = (lista) => { setClientes(lista); persist("clientes", lista); };
   // Segundo candado: mientras no se haya leído la configuración de la nube,
   // lo que hay en memoria son los valores de fábrica. Guardar en ese momento
@@ -11335,13 +11563,26 @@ export default function App() {
     } catch { /* si el aparato no deja guardar, se sigue trabajando igual */ }
   }, [form, view, formModo, formOrigen]);
 
-  const guardarPedidoForm = () => {
+  // opciones.saltarAviso lo manda el propio aviso de "no hay hechas" al
+  // aceptar. Es un objeto y no un true a secas porque el botón de guardar
+  // pasa su evento de clic como primer argumento, y ese evento es truthy.
+  const guardarPedidoForm = (opciones) => {
     if (!form.clienteId) { setError("Selecciona o crea un cliente para continuar."); return; }
     if (form.items.length === 0) { setError("Añade al menos una paella o un platillo."); return; }
     if (form.entrega && !form.ubicacion.trim() && !form.direccion.trim()) { setError("Agrega la ubicación o una referencia para la entrega."); return; }
 
     const esNuevo = !form.pedidoId;
     const anteriorPedido = form.pedidoId ? pedidos.find((p) => p.id === form.pedidoId) : null;
+
+    // ¿Se está vendiendo algo que no está hecho? Se avisa, no se prohíbe: casi
+    // siempre la respuesta es "sí, ahorita las hago", y un pedido que no se
+    // puede guardar sería peor que uno con la cuenta en rojo. Solo aplica a
+    // pedidos de hoy o de más adelante; los de días pasados no tocan almacén.
+    if (opciones?.saltarAviso !== true && tocaElAlmacen(form.fecha)) {
+      const faltan = faltanteDeHechas(form.items, config.extras || [], anteriorPedido && anteriorPedido.descontoAlmacen !== false ? anteriorPedido.items : []);
+      if (faltan.length > 0) { setFaltaHechas(faltan); return; }
+    }
+    setFaltaHechas(null);
 
     const total = totalDe(form);
     const abonos = form.abonos || [];
@@ -11392,18 +11633,24 @@ export default function App() {
     // "devuelve" lo que ese pedido consumía antes, luego se descuenta lo nuevo.
     let desechables = config.desechables || [];
     let ingredientes = config.ingredientes || [];
+    // Lo ya hecho (croquetas, aliolis...) se mueve igual que lo demás. Vive en
+    // el catálogo de platillos porque es una cuenta POR PLATILLO, no un
+    // ingrediente aparte.
+    let extrasCat = config.extras || [];
     // Al editar se devuelve lo que ese pedido consumía antes — pero SOLO si de
     // verdad consumió algo. Un pedido viejo no descontó nada, así que
     // "devolverle" su material metería al almacén comida que nunca salió.
     if (anteriorPedido && anteriorPedido.descontoAlmacen !== false && tocaElAlmacen(anteriorPedido.fecha)) {
       desechables = ajustarStock(desechables, calcularConsumo(anteriorPedido.items, desechables, config.extras), "restaurar");
       ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(anteriorPedido.items, ingredientes), "restaurar");
+      extrasCat = ajustarHechas(extrasCat, calcularConsumoHechas(anteriorPedido.items, extrasCat), "restaurar");
     }
     if (tocaElAlmacen(pedidoObj.fecha)) {
       desechables = ajustarStock(desechables, calcularConsumo(form.items, desechables, config.extras), "consumir");
       ingredientes = ajustarStock(ingredientes, calcularConsumoIngredientes(form.items, ingredientes), "consumir");
+      extrasCat = ajustarHechas(extrasCat, calcularConsumoHechas(form.items, extrasCat), "consumir");
     }
-    guardarConfig({ ...config, desechables, ingredientes });
+    guardarConfig({ ...config, desechables, ingredientes, extras: extrasCat });
 
     guardarPedidos(nuevaLista);
     // Se recuerda la fecha para el SIGUIENTE pedido, pero solo si no es hoy:
@@ -11483,7 +11730,8 @@ export default function App() {
     if (pedido && pedido.descontoAlmacen !== false && tocaElAlmacen(pedido.fecha)) {
       const desechables = ajustarStock(config.desechables || [], calcularConsumo(pedido.items, config.desechables || [], config.extras), "restaurar");
       const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(pedido.items, config.ingredientes || []), "restaurar");
-      guardarConfig({ ...config, desechables, ingredientes });
+      const extrasCat = ajustarHechas(config.extras || [], calcularConsumoHechas(pedido.items, config.extras || []), "restaurar");
+      guardarConfig({ ...config, desechables, ingredientes, extras: extrasCat });
     }
     guardarPedidos(pedidos.filter((p) => p.id !== form.pedidoId));
     olvidarBorrador();
@@ -11580,7 +11828,8 @@ export default function App() {
     if (tocaElAlmacen(nuevoPedido.fecha)) {
       const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
       const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
-      guardarConfig({ ...config, desechables, ingredientes });
+      const extrasCat = ajustarHechas(config.extras || [], calcularConsumoHechas(nuevoPedido.items, config.extras || []), "consumir");
+      guardarConfig({ ...config, desechables, ingredientes, extras: extrasCat });
     }
     guardarPedidos([nuevoPedido, ...pedidos]);
 
@@ -11623,7 +11872,8 @@ export default function App() {
     if (tocaElAlmacen(nuevoPedido.fecha)) {
       const desechables = ajustarStock(config.desechables || [], calcularConsumo(nuevoPedido.items, config.desechables || [], config.extras), "consumir");
       const ingredientes = ajustarStock(config.ingredientes || [], calcularConsumoIngredientes(nuevoPedido.items, config.ingredientes || []), "consumir");
-      guardarConfig({ ...config, desechables, ingredientes });
+      const extrasCat = ajustarHechas(config.extras || [], calcularConsumoHechas(nuevoPedido.items, config.extras || []), "consumir");
+      guardarConfig({ ...config, desechables, ingredientes, extras: extrasCat });
     }
     guardarPedidos([nuevoPedido, ...pedidos]);
     guardarPresupuestos(presupuestos.map((x) => (x.id === pr.id ? { ...x, convertido: true, pedidoId: nuevoPedido.id } : x)));
@@ -11909,6 +12159,39 @@ export default function App() {
         {/* Si el aparato recargó la app a media captura, aquí está lo que se
           estaba escribiendo. Se pregunta en vez de reaparecer solo: puede que
           lo hubiera abandonado a propósito. */}
+      {/* No alcanza lo que está hecho. Se avisa con números claros y se deja
+          seguir: el pedido es real aunque haya que ponerse a cocinar. */}
+      {faltaHechas && faltaHechas.length > 0 && (
+        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setFaltaHechas(null)}>
+          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
+            <div className="af-alerta-titulo">No alcanza lo que hay hecho</div>
+            <div className="af-alerta-texto mb-3">
+              Este pedido pide más de lo que tienes:
+            </div>
+            <div className="af-dup-lista mb-3">
+              {faltaHechas.map((f) => (
+                <div key={f.id} className="af-dup-item">
+                  <span>{f.nombre}</span>
+                  <span className="af-dup-monto">
+                    quedan {f.hay} de {f.pide} {f.unidad}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button className="af-btn-primary w-full" onClick={() => setFaltaHechas(null)}>
+              Mejor lo cambio
+            </button>
+            <button
+              className="af-btn-secondary w-full mt-2"
+              onClick={() => { setFaltaHechas(null); guardarPedidoForm({ saltarAviso: true }); }}
+            >
+              Las voy a hacer, guárdalo
+            </button>
+          </div>
+        </div>
+      )}
+
       {borradorPendiente && view !== "nuevo" && (
         <div className="af-modal-overlay af-modal-overlay-center">
           <div className="af-alerta-modal">
@@ -13035,6 +13318,21 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-gasto-celda { min-width: 0; }
 .af-col-monto { text-align: right; padding-right: 14px; }
 /* Botones grandes: se pican con el dedo en el iPad y con prisa. */
+/* Cuántas quedan hechas, en el catálogo al armar el pedido. */
+.af-quedan { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; color: #2f9e6d; background: color-mix(in srgb, #2f9e6d 12%, transparent); }
+.af-quedan.sin { color: #b91c1c; background: color-mix(in srgb, #b91c1c 12%, transparent); }
+
+/* Lo que ya está hecho, en Ajustes → Inventario. */
+.af-hecho-fila { border: 1px solid var(--line); border-radius: var(--radio-campo); background: var(--surface); padding: 6px 10px 10px; }
+.af-hecho-fila.bajo { border-color: color-mix(in srgb, #c0392b 45%, transparent); }
+.af-hecho-fila .af-toggle-fila { border: none; background: none; padding: 6px 2px; }
+.af-hecho-campos { display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 0; }
+/* Lo normal es "hice otras 60", no "ahora hay 84": los atajos suman. */
+.af-hecho-sumar { display: flex; flex-wrap: wrap; gap: 6px; }
+.af-hecho-sumar .af-chip { cursor: pointer; }
+.af-chip-cero { color: #b91c1c; border-color: color-mix(in srgb, #b91c1c 35%, transparent); background: color-mix(in srgb, #b91c1c 8%, transparent); }
+.af-chip-hacer { color: #b7791f; border-color: color-mix(in srgb, #b7791f 40%, transparent); background: color-mix(in srgb, #b7791f 12%, transparent); white-space: nowrap; }
+
 .af-gasto-acciones { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 /* Los botones no se encogen: la columna se hace del tamaño que piden, y no al
    revés. Antes medían 32px de dibujo en una columna de 76 donde hacían falta
