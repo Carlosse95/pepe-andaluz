@@ -1328,6 +1328,33 @@ const unidadDeLoHecho = (extra) => (piezasPorVenta(extra) > 1 ? "piezas" : "unid
 
 const llevaCuentaDeHechas = (extra) => !!extra?.llevaInventario;
 
+// Dos platillos del menú pueden salir de la MISMA olla. Las croquetas de jamón
+// y las de mayoreo son las mismas croquetas: cambia el precio (el mayoreo es
+// para un solo cliente) y el nombre que sale en el ticket, pero se hacen
+// juntas y se acaban juntas. Cada una sigue siendo su propio platillo —así el
+// precio y el historial no se mezclan— pero la CUENTA es una sola.
+//
+// El que manda es el "dueño": el que guarda el número. El otro apunta a él con
+// cuentaCon y no guarda nada suyo.
+const duenoDeLaCuenta = (extra, extras) => {
+  if (!extra) return null;
+  if (!extra.cuentaCon) return extra;
+  const dueno = (extras || []).find((e) => e.id === extra.cuentaCon);
+  // Si al que apunta ya no existe, o le apagaron la cuenta, se queda con la
+  // suya: mejor un número aparte que perder el descuento por completo.
+  if (!llevaCuentaDeHechas(dueno) || dueno.cuentaCon) return extra;
+  return dueno;
+};
+
+// Los platillos que de verdad guardan un número (los que se dibujan y se
+// editan). Los que comparten cuenta no salen: saldrían repetidos.
+const duenosDeCuenta = (extras) =>
+  (extras || []).filter((e) => llevaCuentaDeHechas(e) && duenoDeLaCuenta(e, extras) === e);
+
+// Quiénes más salen de esta misma cuenta, para poder decirlo en pantalla.
+const compartenCuenta = (dueno, extras) =>
+  (extras || []).filter((e) => e !== dueno && llevaCuentaDeHechas(e) && duenoDeLaCuenta(e, extras) === dueno);
+
 // Lo hecho SÍ puede quedar en negativo, y es a propósito. El almacén de
 // ingredientes se topa en cero porque no existe media bolsa de harina de
 // menos; aquí un -6 significa "debes 6 croquetas", que es justo el recado que
@@ -1345,14 +1372,18 @@ const ajustarHechas = (extras, consumo, direccion) =>
     return { ...e, stock: Math.round(((Number(e.stock) || 0) + delta) * 100) / 100 };
   });
 
-// Cuántas piezas hechas se lleva un pedido, por platillo.
+// Cuántas piezas hechas se lleva un pedido. La llave es el DUEÑO de la cuenta,
+// no el platillo vendido: vender una ración de mayoreo descuenta de las mismas
+// croquetas de jamón. Las piezas por ración salen del platillo que se vendió,
+// que es el que sabe cómo se vende.
 const calcularConsumoHechas = (items, extras) => {
   const consumo = {};
   (items || []).forEach((it) => {
     if (!it || it.tipo === "paella" || !it.extraId) return;
     const extra = (extras || []).find((e) => e.id === it.extraId);
     if (!llevaCuentaDeHechas(extra)) return;
-    consumo[extra.id] = (consumo[extra.id] || 0) + (Number(it.cantidad) || 0) * piezasPorVenta(extra);
+    const dueno = duenoDeLaCuenta(extra, extras);
+    consumo[dueno.id] = (consumo[dueno.id] || 0) + (Number(it.cantidad) || 0) * piezasPorVenta(extra);
   });
   return consumo;
 };
@@ -2711,7 +2742,9 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const hayPorComprar = bajoStock.length > 0 || bajoIngredientes.length > 0;
   // Lo ya hecho va aparte de "por comprar": eso se resuelve yendo a la tienda,
   // esto poniéndose a cocinar. Son dos recados distintos.
-  const loHecho = (config.extras || []).filter(llevaCuentaDeHechas);
+  // Una línea por CUENTA, no por platillo: las croquetas de jamón y las de
+  // mayoreo salen de la misma olla y saldrían dos veces con el mismo número.
+  const loHecho = duenosDeCuenta(config.extras || []);
   const porHacer = loHecho.filter((e) => (Number(e.stock) || 0) <= (Number(e.minimo) || 0));
   // Si hay algo por hacer, el panel se abre solo la primera vez que se ve.
   const avisoHechoDado = useRef(false);
@@ -2816,7 +2849,12 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                 return (
                   <div key={e.id} className="af-confirmar-row">
                     <div className="flex-1 min-w-0">
-                      <div className="af-confirmar-nombre">{e.nombre}</div>
+                      <div className="af-confirmar-nombre">
+                        {e.nombre}
+                        {compartenCuenta(e, config.extras || []).length > 0 && (
+                          <span className="af-ink-soft"> + {compartenCuenta(e, config.extras || []).map((o) => o.nombre).join(", ")}</span>
+                        )}
+                      </div>
                       <div className="af-ink-soft text-sm">
                         {hay < 0
                           ? `Debes ${-hay} ${porVenta > 1 ? "piezas" : "unidades"}`
@@ -8238,8 +8276,16 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               const lleva = !!ex.llevaInventario;
               const porVenta = Number(ex.piezasPorUnidad) > 0 ? Number(ex.piezasPorUnidad) : 1;
               const unidad = porVenta > 1 ? "piezas" : "unidades";
-              const hay = Number(ex.stock) || 0;
-              const minimo = Number(ex.minimo) || 0;
+              const dueno = duenoDeLaCuenta(ex, draft.extras);
+              const comparte = lleva && dueno !== ex;
+              const hay = Number((comparte ? dueno : ex).stock) || 0;
+              const minimo = Number((comparte ? dueno : ex).minimo) || 0;
+              // Con quién PUEDE compartir: cualquier otro que lleve cuenta
+              // propia. No se ofrece encadenar (A con B y B con C): una cuenta
+              // de dos saltos es imposible de seguir en la cabeza.
+              const posiblesDuenos = (draft.extras || []).filter(
+                (o) => o.id !== ex.id && o.llevaInventario && !o.cuentaCon
+              );
               const setEx = (cambios) =>
                 setDraft((prev) => ({
                   ...prev,
@@ -8259,6 +8305,43 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   </button>
                   {lleva && (
                     <div className="af-hecho-campos">
+                      {/* Dos platillos que salen de la misma olla. Es el caso
+                          de las croquetas de mayoreo: son las mismas de jamón,
+                          solo que a otro precio y para un solo cliente. */}
+                      {posiblesDuenos.length > 0 && (
+                        <label className="af-field">
+                          <span className="af-mini-label">¿De qué cuenta sale?</span>
+                          <select
+                            className="af-input"
+                            value={ex.cuentaCon || ""}
+                            // Al pasarse a una cuenta compartida se le borra
+                            // su número propio: ya no lo lleva él. Si no, se
+                            // quedaba ahí muerto y reaparecía tal cual el día
+                            // que volviera a su cuenta, con una cifra vieja.
+                            // No se le suma al dueño a propósito: son las
+                            // mismas croquetas contadas dos veces.
+                            onChange={(e) =>
+                              setEx(
+                                e.target.value
+                                  ? { cuentaCon: e.target.value, stock: 0, minimo: 0 }
+                                  : { cuentaCon: undefined }
+                              )
+                            }
+                          >
+                            <option value="">De la suya propia</option>
+                            {posiblesDuenos.map((o) => (
+                              <option key={o.id} value={o.id}>De la de {o.nombre}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {comparte ? (
+                        <p className="af-ink-soft text-xs">
+                          Sale de la misma olla que <strong>{dueno.nombre}</strong>: hay {hay < 0 ? `${-hay} por hacer` : `${hay} ${unidad}`} entre las dos.
+                          El número se lleva allá.
+                        </p>
+                      ) : (
+                      <>
                       <div className="af-menu-card-row">
                         <div className="flex-1">
                           <div className="af-mini-label">Hay hechas ({unidad})</div>
@@ -8299,6 +8382,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                         <div className="af-stock-alert">Ya vendiste {-hay} {unidad} que faltan por hacer.</div>
                       )}
                       {hay >= 0 && hay <= minimo && <div className="af-stock-alert">¡Hay que hacer más!</div>}
+                      {compartenCuenta(ex, draft.extras).length > 0 && (
+                        <p className="af-ink-soft text-xs">
+                          De esta misma cuenta sale también{" "}
+                          <strong>{compartenCuenta(ex, draft.extras).map((o) => o.nombre).join(", ")}</strong>.
+                        </p>
+                      )}
+                      </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -9136,9 +9227,19 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                     // colgó. Se cuenta en piezas, que es como se hacen.
                     const cat = (config.extras || []).find((e) => e.id === p.id);
                     const cuenta = llevaCuentaDeHechas(cat);
-                    const porVenta = cuenta ? piezasPorVenta(cat) : 1;
-                    const hay = cuenta ? Number(cat.stock) || 0 : 0;
-                    const restan = hay - (enCarrito?.cantidad || 0) * porVenta;
+                    const dueno = cuenta ? duenoDeLaCuenta(cat, config.extras) : null;
+                    const hay = cuenta ? Number(dueno.stock) || 0 : 0;
+                    // Se resta lo que el carrito lleva de TODOS los platillos de
+                    // esa misma cuenta: pidiendo 5 de jamón y 5 de mayoreo, que
+                    // son la misma olla, cada uno decía que quedaban de sobra.
+                    const enLaOlla = cuenta
+                      ? Object.values(carrito).reduce((suma, f) => {
+                          const c2 = (config.extras || []).find((e) => e.id === f.producto.id);
+                          if (!llevaCuentaDeHechas(c2) || duenoDeLaCuenta(c2, config.extras) !== dueno) return suma;
+                          return suma + f.cantidad * piezasPorVenta(c2);
+                        }, 0)
+                      : 0;
+                    const restan = hay - enLaOlla;
                     return (
                       <div key={p.id} className={"af-picker-item" + (enCarrito ? " active" : "")}>
                         <div className="min-w-0" style={{ flex: 1, cursor: "pointer" }} onClick={() => agregarAlCarrito(p)}>
@@ -9148,8 +9249,8 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                             {cuenta && (
                               <span className={"af-quedan" + (restan < 0 ? " sin" : "")}>
                                 {restan < 0
-                                  ? `faltan ${-restan} ${unidadDeLoHecho(cat)}`
-                                  : `quedan ${restan} ${unidadDeLoHecho(cat)}`}
+                                  ? `faltan ${-restan} ${unidadDeLoHecho(dueno)}`
+                                  : `quedan ${restan} ${unidadDeLoHecho(dueno)}`}
                               </span>
                             )}
                           </div>
