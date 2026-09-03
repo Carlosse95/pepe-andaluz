@@ -632,11 +632,12 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
     lineas.push("");
     lineas.push(...bloqueDatosBancarios(pago));
     lineas.push("");
-    // Las otras formas de pagar van hasta abajo. El texto viejo exigía el 50%
-    // de anticipo como si fuera la única manera de apartar, y no lo es: hay
-    // clientes que pagan TODO en efectivo al llegar.
+    // El anticipo es obligatorio para apartar. Hubo una temporada en que se
+    // ofrecía pagar todo al final, pero con clientes nuevos a los que no se
+    // conoce eso deja a Pepe cocinando por su cuenta y riesgo. El RESTO sí es
+    // libre: en efectivo o por transferencia, al momento de la entrega.
     lineas.push(
-      `También puede pagar todo ${enEfectivo(datos.entrega)}, o apartarlo con el 50% de anticipo y liquidar el resto ${datos.entrega ? "al recibirlo" : "al recogerlo"}.`
+      `Para apartar su pedido le pedimos el *50% de anticipo* por transferencia. El resto lo paga ${datos.entrega ? "al recibirlo" : "al recogerlo"}, en efectivo o por transferencia, como le acomode.`
     );
   }
   // Dónde recoger, desde que se aparta el pedido: así el cliente ya sabe a
@@ -726,7 +727,8 @@ const bloqueSaldo = (pedido, pago) => {
     lineas.push("");
     lineas.push(...bloqueDatosBancarios(pago));
     lineas.push("");
-    lineas.push(`También lo puede pagar ${enEfectivo(pedido?.entrega)}.`);
+    // Aquí ya se habla del RESTO, que se paga como el cliente prefiera.
+    lineas.push(`O si gusta lo paga ${enEfectivo(pedido?.entrega)}.`);
   }
   return lineas.join("\n");
 };
@@ -1048,7 +1050,7 @@ const productosDeConfig = (config, fecha) => [
 
 const TERMINOS_DEFAULT =
   "Este presupuesto tiene vigencia de 30 días.\n" +
-  "Forma de pago: 50% de anticipo, 50% al finalizar / entregar el pedido.\n" +
+  "Forma de pago: 50% de anticipo para apartar la fecha; el 50% restante al entregar, en efectivo o por transferencia.\n" +
   "Precios sujetos a disponibilidad de producto e ingredientes el día del evento.";
 
 // Dónde queda lo que se está escribiendo, por si el aparato recarga la app.
@@ -10213,7 +10215,7 @@ const construirPDF = async (form, tipoDoc, config) => {
     // Corto a propósito: es el encabezado de un recuadro, no cabe la frase
     // larga del mensaje de WhatsApp.
     doc.text(
-      `Puede pagar todo en efectivo ${form.entrega ? "a la entrega" : "al recoger"}, o apartar con 50% de anticipo`,
+      `Para apartar: 50% de anticipo. El resto ${form.entrega ? "a la entrega" : "al recoger"}, en efectivo o transferencia.`,
       margin + 5,
       y + 7
     );
