@@ -3349,6 +3349,414 @@ function PresupuestosView({ presupuestos, onAbrir, onAceptar, onNuevo }) {
   );
 }
 
+
+/* ---------------------------------------------------------------------- */
+/*  Vista: Me deben                                                        */
+/* ---------------------------------------------------------------------- */
+//
+// Alguien le debe dinero a Pepe y se lo va pagando de a poco. Esto no son
+// pedidos: es dinero prestado, sin platillos ni entregas, así que va aparte y
+// no ensucia las cuentas del negocio.
+//
+// Se guarda dentro de la configuración, como los gastos fijos o el inventario:
+// son cuatro datos y no vale la pena una clave nueva en la nube, con todo lo
+// que arrastra (carga inicial, sincronización, respaldo).
+
+const sumaPagos = (deuda) =>
+  (deuda?.pagos || []).reduce((a, p) => a + (parseFloat(p.monto) || 0), 0);
+
+const faltaDe = (deuda) =>
+  Math.max(0, Math.round(((parseFloat(deuda?.total) || 0) - sumaPagos(deuda)) * 100) / 100);
+
+function BarraDeuda({ total, abonado }) {
+  const pct = total > 0 ? Math.min(100, Math.round((abonado / total) * 100)) : 0;
+  return (
+    <div className="af-deuda-barra" title={`${pct}% pagado`}>
+      <div className="af-deuda-barra-llena" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function DeudasView({ deudas, onGuardar, showToast }) {
+  const [abiertaId, setAbiertaId] = useState(null);
+  const [formDeuda, setFormDeuda] = useState(null); // {id?, quien, total, nota}
+  const [formPago, setFormPago] = useState(null);   // {deudaId, id?, monto, fecha, nota, comprobante}
+  const [subiendo, setSubiendo] = useState(false);
+  const [viendo, setViendo] = useState(null);       // {url, cargando, pago}
+  const [porBorrar, setPorBorrar] = useState(null); // {tipo:"deuda"|"pago", ...}
+
+  const lista = deudas || [];
+  // Casi siempre es UNA sola persona la que debe. Con una, la lista sobraría:
+  // sería una pantalla de un solo renglón que hay que picar para llegar a lo
+  // que interesa. Así que con una se entra derecho a su detalle, y la lista
+  // solo aparece cuando de verdad hay varias.
+  const unicaDeuda = lista.length === 1 ? lista[0] : null;
+  const abierta = (abiertaId ? lista.find((d) => d.id === abiertaId) : null) || unicaDeuda;
+
+  const guardarLista = (nueva) => onGuardar(nueva);
+
+  const guardarDeuda = () => {
+    const quien = (formDeuda.quien || "").trim();
+    const total = parseFloat(formDeuda.total) || 0;
+    if (!quien) { showToast("¿Quién te debe? Ponle un nombre.", "error"); return; }
+    if (total <= 0) { showToast("Pon cuánto te debe.", "error"); return; }
+    if (formDeuda.id) {
+      guardarLista(lista.map((d) => (d.id === formDeuda.id ? { ...d, quien, total, nota: formDeuda.nota || "" } : d)));
+      showToast("Guardado");
+    } else {
+      const nueva = { id: uid(), quien, total, nota: formDeuda.nota || "", creadoEn: todayISO(), pagos: [] };
+      guardarLista([nueva, ...lista]);
+      setAbiertaId(nueva.id);
+      // Con la primera se entra derecho; a partir de la segunda hay lista, y
+      // se abre la recién creada, que es la que se estaba capturando.
+      showToast(`Anotado: ${quien} debe ${money(total)}`);
+    }
+    setFormDeuda(null);
+  };
+
+  const guardarPago = () => {
+    const monto = parseFloat(formPago.monto) || 0;
+    if (monto <= 0) { showToast("Pon cuánto te pagó.", "error"); return; }
+    const deudaId = formPago.deudaId;
+    const pago = {
+      id: formPago.id || uid(),
+      monto,
+      fecha: formPago.fecha || todayISO(),
+      nota: (formPago.nota || "").trim(),
+      comprobante: formPago.comprobante || null,
+    };
+    guardarLista(lista.map((d) => {
+      if (d.id !== deudaId) return d;
+      const pagos = formPago.id
+        ? (d.pagos || []).map((p) => (p.id === formPago.id ? pago : p))
+        : [...(d.pagos || []), pago];
+      return { ...d, pagos };
+    }));
+    setFormPago(null);
+    showToast(`Abono de ${money(monto)} anotado`);
+  };
+
+  const borrar = () => {
+    if (porBorrar.tipo === "deuda") {
+      guardarLista(lista.filter((d) => d.id !== porBorrar.deuda.id));
+      setAbiertaId(null);
+      // Sin esto, borrando la que estaba abierta quedaba señalando a una que
+      // ya no existe.
+      showToast("Borrado");
+    } else {
+      guardarLista(lista.map((d) =>
+        d.id === porBorrar.deudaId ? { ...d, pagos: (d.pagos || []).filter((p) => p.id !== porBorrar.pago.id) } : d
+      ));
+      showToast("Abono borrado");
+    }
+    setPorBorrar(null);
+  };
+
+  const subirComprobante = async (archivo) => {
+    if (!archivo) return;
+    setSubiendo(true);
+    try {
+      const ruta = await subirTicket(archivo);
+      setFormPago((f) => (f ? { ...f, comprobante: ruta } : f));
+    } catch (e) {
+      showToast("No se pudo guardar la foto: " + (e.message || ""), "error");
+    }
+    setSubiendo(false);
+  };
+
+  const abrirComprobante = async (pago) => {
+    if (!pago.comprobante) return;
+    setViendo({ pago, url: null, cargando: true });
+    try {
+      const url = await verTicket(pago.comprobante);
+      if (!url) throw new Error("No encontré la foto");
+      setViendo((v) => (v ? { ...v, url, cargando: false } : v));
+    } catch (e) {
+      setViendo(null);
+      showToast("No se pudo abrir la foto: " + (e.message || ""), "error");
+    }
+  };
+
+  /* ---------- El detalle de una deuda ---------- */
+  if (abierta) {
+    const abonado = sumaPagos(abierta);
+    const falta = faltaDe(abierta);
+    const pagos = [...(abierta.pagos || [])].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+    return (
+      <div>
+        {lista.length > 1 && (
+          <button className="af-back-row" onClick={() => setAbiertaId(null)}>
+            <ArrowLeft size={16} /> Todos los que me deben
+          </button>
+        )}
+
+        <div className="af-card p-4 mb-4">
+          <div className="af-deuda-nombre">{abierta.quien}</div>
+          {abierta.nota && <div className="af-ink-soft text-sm mb-2">{abierta.nota}</div>}
+          <div className="af-deuda-cifra">{money(falta)}</div>
+          <div className="af-ink-soft text-sm mb-3">
+            {falta === 0 ? "¡Ya te pagó todo!" : "es lo que falta"}
+          </div>
+          <BarraDeuda total={parseFloat(abierta.total) || 0} abonado={abonado} />
+          <div className="af-deuda-resumen">
+            <span>Te debía <strong>{money(abierta.total)}</strong></span>
+            <span>Ya te pagó <strong>{money(abonado)}</strong></span>
+          </div>
+        </div>
+
+        <button
+          className="af-btn-primary w-full mb-4"
+          onClick={() => setFormPago({ deudaId: abierta.id, monto: "", fecha: todayISO(), nota: "", comprobante: null })}
+        >
+          <Plus size={16} className="inline mr-1" /> Anotar un pago
+        </button>
+
+        <div className="af-section-title">
+          {pagos.length === 0 ? "Todavía no te ha pagado nada" : `Pagos (${pagos.length})`}
+        </div>
+        {pagos.length === 0 ? (
+          <div className="af-card p-4 mb-4 af-ink-soft text-sm">
+            Cuando te dé algo, dale a "Anotar un pago" y aquí se va guardando todo con su fecha.
+          </div>
+        ) : (
+          <div className="af-card mb-4">
+            {pagos.map((p) => (
+              <div key={p.id} className="af-pago-fila">
+                <div className="min-w-0 flex-1">
+                  <div className="af-pago-monto">{money(p.monto)}</div>
+                  <div className="af-ink-soft text-sm">
+                    {fmtDateHuman(p.fecha)}{p.nota ? ` · ${p.nota}` : ""}
+                  </div>
+                </div>
+                {p.comprobante && (
+                  <button className="af-icon-btn" title="Ver el comprobante" onClick={() => abrirComprobante(p)}>
+                    <Receipt size={16} />
+                  </button>
+                )}
+                <button
+                  className="af-icon-btn"
+                  title="Editar"
+                  onClick={() => setFormPago({ deudaId: abierta.id, id: p.id, monto: String(p.monto), fecha: p.fecha, nota: p.nota || "", comprobante: p.comprobante || null })}
+                >
+                  <Pencil size={16} />
+                </button>
+                <button className="af-icon-btn" title="Borrar" onClick={() => setPorBorrar({ tipo: "pago", deudaId: abierta.id, pago: p })}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="af-deuda-acciones">
+          <button
+            className="af-btn-secondary"
+            onClick={() => setFormDeuda({ id: abierta.id, quien: abierta.quien, total: String(abierta.total), nota: abierta.nota || "" })}
+          >
+            <Pencil size={15} className="inline mr-1" /> Cambiar el nombre o el total
+          </button>
+          <button className="af-btn-danger" onClick={() => setPorBorrar({ tipo: "deuda", deuda: abierta })}>
+            <Trash2 size={15} className="inline mr-1" /> Borrar todo esto
+          </button>
+          {lista.length === 1 && (
+            <button className="af-btn-secondary" onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}>
+              <Plus size={15} className="inline mr-1" /> Anotar a alguien más
+            </button>
+          )}
+        </div>
+
+        {modales()}
+      </div>
+    );
+  }
+
+  /* ---------- La lista ---------- */
+  return (
+    <div>
+      <div className="af-hint mb-3">
+        Para el dinero que te deben y te van pagando de a poco. Nada de esto entra en las
+        cuentas del negocio: es solo para llevar el control.
+      </div>
+
+      <button
+        className="af-btn-primary w-full mb-4"
+        onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}
+      >
+        <Plus size={16} className="inline mr-1" /> Anotar quién me debe
+      </button>
+
+      {lista.length === 0 ? (
+        <div className="af-empty">
+          <div className="af-empty-icon"><Wallet size={28} /></div>
+          <div className="af-empty-title">Nadie te debe nada</div>
+          <div className="af-empty-sub">Cuando prestes dinero, anótalo aquí y ve descontando lo que te paguen.</div>
+        </div>
+      ) : (
+        lista.map((d) => {
+          const abonado = sumaPagos(d);
+          const falta = faltaDe(d);
+          const ultimo = [...(d.pagos || [])].sort((a, b) => (a.fecha < b.fecha ? 1 : -1))[0];
+          return (
+            <button key={d.id} className="af-card p-4 mb-3 af-deuda-card" onClick={() => setAbiertaId(d.id)}>
+              <div className="af-deuda-card-fila">
+                <span className="af-deuda-nombre">{d.quien}</span>
+                <span className={"af-deuda-falta" + (falta === 0 ? " pagado" : "")}>
+                  {falta === 0 ? "Pagado" : money(falta)}
+                </span>
+              </div>
+              <BarraDeuda total={parseFloat(d.total) || 0} abonado={abonado} />
+              <div className="af-deuda-resumen">
+                <span>de {money(d.total)}</span>
+                <span>{ultimo ? `último pago: ${fmtDateHuman(ultimo.fecha)}` : "sin pagos todavía"}</span>
+              </div>
+            </button>
+          );
+        })
+      )}
+
+      {modales()}
+    </div>
+  );
+
+  /* ---------- Ventanas ---------- */
+  function modales() {
+    return (
+      <>
+        {formDeuda && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setFormDeuda(null)}>
+            <div className="af-alerta-modal af-modal-form" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-titulo">{formDeuda.id ? "Cambiar los datos" : "¿Quién te debe?"}</div>
+              <div className="af-field">
+                <label>Nombre</label>
+                <input
+                  className="af-input"
+                  placeholder="Ej. Juan Pérez"
+                  value={formDeuda.quien}
+                  onChange={(e) => setFormDeuda({ ...formDeuda, quien: e.target.value })}
+                />
+              </div>
+              <div className="af-field">
+                <label>¿Cuánto te debe?</label>
+                <input
+                  className="af-input"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={formDeuda.total}
+                  onChange={(e) => setFormDeuda({ ...formDeuda, total: e.target.value })}
+                />
+              </div>
+              <div className="af-field">
+                <label>Nota (opcional)</label>
+                <input
+                  className="af-input"
+                  placeholder="Ej. préstamo de la camioneta"
+                  value={formDeuda.nota}
+                  onChange={(e) => setFormDeuda({ ...formDeuda, nota: e.target.value })}
+                />
+              </div>
+              <button className="af-btn-primary w-full mt-2" onClick={guardarDeuda}>Guardar</button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setFormDeuda(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {formPago && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setFormPago(null)}>
+            <div className="af-alerta-modal af-modal-form" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-titulo">{formPago.id ? "Cambiar el pago" : "¿Cuánto te pagó?"}</div>
+              <div className="af-field">
+                <label>Cantidad</label>
+                <input
+                  className="af-input"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={formPago.monto}
+                  onChange={(e) => setFormPago({ ...formPago, monto: e.target.value })}
+                />
+              </div>
+              <div className="af-field">
+                <label>¿Qué día?</label>
+                <input
+                  className="af-input"
+                  type="date"
+                  value={formPago.fecha}
+                  onChange={(e) => setFormPago({ ...formPago, fecha: e.target.value })}
+                />
+              </div>
+              <div className="af-field">
+                <label>Comprobante (opcional)</label>
+                {formPago.comprobante ? (
+                  <div className="af-ticket-guardado">
+                    <Receipt size={16} /> <span>Foto guardada</span>
+                    <button className="af-link-quitar" onClick={() => setFormPago({ ...formPago, comprobante: null })}>Quitar</button>
+                  </div>
+                ) : (
+                  <label className="af-subir-foto">
+                    {subiendo ? "Subiendo…" : (<><Camera size={16} /> <span>Tomar o subir la foto</span></>)}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      disabled={subiendo}
+                      onChange={(e) => subirComprobante(e.target.files?.[0])}
+                    />
+                  </label>
+                )}
+              </div>
+              <div className="af-field">
+                <label>Nota (opcional)</label>
+                <input
+                  className="af-input"
+                  placeholder="Ej. me lo dio en efectivo"
+                  value={formPago.nota}
+                  onChange={(e) => setFormPago({ ...formPago, nota: e.target.value })}
+                />
+              </div>
+              <button className="af-btn-primary w-full mt-2" disabled={subiendo} onClick={guardarPago}>Guardar</button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setFormPago(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {viendo && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setViendo(null)}>
+            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-titulo">{money(viendo.pago.monto)}</div>
+              <div className="af-alerta-texto mb-3">{fmtDateHuman(viendo.pago.fecha)}</div>
+              {viendo.cargando ? (
+                <div className="af-ink-soft text-sm">Abriendo la foto…</div>
+              ) : (
+                <img src={viendo.url} alt="Comprobante" className="af-comprobante-foto" />
+              )}
+              <button className="af-btn-primary w-full mt-3" onClick={() => setViendo(null)}>Cerrar</button>
+            </div>
+          </div>
+        )}
+
+        {porBorrar && (
+          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setPorBorrar(null)}>
+            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
+              <div className="af-alerta-titulo">
+                {porBorrar.tipo === "deuda" ? "¿Borrar esta deuda?" : "¿Borrar este pago?"}
+              </div>
+              <div className="af-alerta-texto mb-3">
+                {porBorrar.tipo === "deuda"
+                  ? `Se va ${porBorrar.deuda.quien} con todos sus pagos apuntados. No se puede deshacer.`
+                  : `${money(porBorrar.pago.monto)} del ${fmtDateHuman(porBorrar.pago.fecha)}. El total que falta vuelve a subir.`}
+              </div>
+              <button className="af-btn-danger w-full" onClick={borrar}>Sí, bórralo</button>
+              <button className="af-btn-secondary w-full mt-2" onClick={() => setPorBorrar(null)}>Mejor no</button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+}
+
 /* ---------------------------------------------------------------------- */
 /*  Vista: Buscar                                                         */
 /* ---------------------------------------------------------------------- */
@@ -4000,6 +4408,7 @@ const NAV_ESCONDIBLES = [
   { key: "agenda", label: "Agenda" },
   { key: "mensajes", label: "Mensajes" },
   { key: "presupuestos", label: "Presupuestos" },
+  { key: "deudas", label: "Me deben" },
   { key: "clientes", label: "Clientes" },
   { key: "reportes", label: "Reportes" },
 ];
@@ -11225,6 +11634,12 @@ export default function App() {
   };
   const guardarHistorico = (nuevo) => { setHistorico(nuevo); persist("historico-mensual", nuevo); };
   const guardarPresupuestos = (lista) => { setPresupuestos(lista); persist("presupuestos", lista); };
+  // El dinero que le deben a Pepe vive dentro de la configuración, junto a los
+  // gastos fijos y el inventario: son cuatro datos y no ameritan una clave
+  // nueva en la nube, con todo lo que arrastra (carga inicial, sincronización,
+  // respaldo). Se parte SIEMPRE de la config de este momento para no pisar
+  // nada de lo demás que viva ahí.
+  const guardarDeudas = (lista) => guardarConfig({ ...config, deudas: lista });
   const guardarGastos = (lista) => { setGastos(lista); persist("gastos", lista); };
 
   // Foto y nombre personalizado: se guardan por usuario (clave = su correo)
@@ -12139,13 +12554,14 @@ export default function App() {
 
   const pedidosHoy = pedidos.filter((p) => esHoy(p.fecha));
 
-  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", reportes: "Reportes", ajustes: "Ajustes" };
+  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", deudas: "Me deben", reportes: "Reportes", ajustes: "Ajustes" };
 
   const navTodos = [
     { key: "hoy", icon: <Home size={20} />, label: "Hoy" },
     { key: "agenda", icon: <CalendarDays size={20} />, label: "Agenda" },
     { key: "mensajes", icon: <MessageCircle size={20} />, label: "Mensajes", badge: pendientesWhatsApp },
     { key: "presupuestos", icon: <FileText size={20} />, label: "Presupuestos" },
+    { key: "deudas", icon: <Wallet size={20} />, label: "Me deben" },
     { key: "clientes", icon: <Users size={20} />, label: "Clientes" },
     { key: "reportes", icon: <TrendingUp size={20} />, label: "Reportes" },
     { key: "ajustes", icon: <Settings size={20} />, label: "Ajustes" },
@@ -12311,6 +12727,7 @@ export default function App() {
           )}
           {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} showToast={showToast} />}
           {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} onNuevo={() => goToNuevoPresupuesto()} />}
+          {view === "deudas" && <DeudasView deudas={config?.deudas || []} onGuardar={guardarDeudas} showToast={showToast} />}
           {view === "ajustes" && (
             <AjustesView
               config={config}
@@ -13535,6 +13952,36 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-gasto-celda { min-width: 0; }
 .af-col-monto { text-align: right; padding-right: 14px; }
 /* Botones grandes: se pican con el dedo en el iPad y con prisa. */
+/* ---- Me deben: dinero prestado que se va cobrando de a poco ---- */
+.af-deuda-card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); cursor: pointer; font-family: inherit; }
+.af-deuda-card:hover { border-color: color-mix(in srgb, var(--wine) 40%, transparent); }
+.af-deuda-card-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.af-deuda-nombre { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; color: var(--ink); }
+.af-deuda-falta { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; color: var(--wine); white-space: nowrap; }
+.af-deuda-falta.pagado { color: var(--olive); font-size: 14px; }
+/* El número grande del detalle: lo que falta es LO que se quiere saber. */
+.af-deuda-cifra { font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; color: var(--wine); line-height: 1.1; }
+.af-deuda-barra { height: 8px; border-radius: 999px; background: var(--neutral-soft); overflow: hidden; }
+.af-deuda-barra-llena { height: 100%; border-radius: 999px; background: var(--olive); transition: width 0.3s ease; }
+.af-deuda-resumen { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 12.5px; color: var(--ink-soft); }
+.af-deuda-resumen strong { color: var(--ink); font-family: 'Space Grotesk', sans-serif; }
+.af-deuda-acciones { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+
+.af-pago-fila { display: flex; align-items: center; gap: 6px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.af-pago-fila:first-child { border-top: none; }
+.af-pago-monto { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; color: var(--olive); }
+
+/* Una ventana con campos necesita alinear a la izquierda y poder crecer: las
+   de aviso van centradas y con ancho fijo. */
+.af-modal-form { text-align: left; width: 360px; max-height: 88vh; overflow-y: auto; }
+.af-modal-form .af-alerta-titulo { text-align: center; margin-bottom: 14px; }
+
+.af-subir-foto { display: flex; align-items: center; justify-content: center; gap: 8px; height: var(--alto-campo); border: 1px dashed var(--line); border-radius: var(--radio-campo); color: var(--wine); font-size: 13.5px; font-weight: 600; cursor: pointer; background: var(--surface); }
+.af-subir-foto:hover { border-color: var(--wine); background: var(--wine-soft); }
+.af-ticket-guardado { display: flex; align-items: center; gap: 8px; height: var(--alto-campo); padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radio-campo); color: var(--olive); font-size: 13.5px; font-weight: 600; background: var(--surface); }
+.af-comprobante-foto { display: block; width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; background: color-mix(in srgb, var(--ink-soft) 6%, transparent); }
+.af-link-quitar { margin-left: auto; background: none; border: none; color: var(--wine); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+
 /* Cuántas quedan hechas, en el catálogo al armar el pedido. */
 .af-quedan { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; color: #2f9e6d; background: color-mix(in srgb, #2f9e6d 12%, transparent); }
 .af-quedan.sin { color: #b91c1c; background: color-mix(in srgb, #b91c1c 12%, transparent); }
