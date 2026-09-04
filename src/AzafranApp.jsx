@@ -4404,6 +4404,32 @@ const categoriaDeTienda = (tienda) =>
 // Cada gasto dice de dónde sale, y las cuentas del negocio solo miran los
 // suyos. Se guarda en el gasto (no se deduce de la categoría) para poder
 // mandar un gasto suelto al otro lado sin inventar categorías nuevas.
+// Qué pestañas esconde CADA usuario.
+//
+// Antes era UNA lista dentro de la configuración, que es compartida entre
+// todos: al esconderle Clientes a Danira se le escondían también a Pepe y a
+// Carlos, y encender la de uno encendía la de los demás. Ahora cada quien
+// guarda la suya bajo su id de usuario, así que le sigue a cualquier aparato
+// donde entre y no le toca la barra a nadie más.
+const idDeUsuario = (perfil) => perfil?.user_id || perfil?.id || null;
+
+// Quien todavía no ha elegido nada ve la lista vieja y compartida: así nadie
+// se encuentra de golpe con pestañas que llevaba meses sin ver. En cuanto
+// toca un interruptor, esa lista pasa a ser suya y deja de seguir a la común.
+const navOcultasDe = (config, perfil) => {
+  const id = idDeUsuario(perfil);
+  const porUsuario = config?.navOcultasPorUsuario || {};
+  if (id && porUsuario[id]) return porUsuario[id];
+  return config?.navOcultas || [];
+};
+
+const conNavOcultas = (config, perfil, lista) => {
+  const id = idDeUsuario(perfil);
+  // Sin sesión (modo local, un solo aparato) no hay a quién separar.
+  if (!id) return { ...config, navOcultas: lista };
+  return { ...config, navOcultasPorUsuario: { ...(config?.navOcultasPorUsuario || {}), [id]: lista } };
+};
+
 // Pestañas que se pueden esconder desde Ajustes cuando no se usan. Hoy y
 // Ajustes no están: sin ellas no habría por dónde volver a encenderlas.
 const NAV_ESCONDIBLES = [
@@ -8306,11 +8332,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           <div className="af-section-title">Qué se ve en el menú</div>
           <div className="af-card p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
-              Apaga lo que no uses y desaparece de la barra de arriba. No se borra nada:
-              lo que hubiera ahí sigue guardado y vuelve a aparecer al encenderlo.
+              Apaga lo que no uses y desaparece de tu barra. <strong>Esto es solo tuyo</strong>:
+              a los demás no les cambia nada, y te sigue a cualquier aparato donde entres.
+              No se borra nada — lo que hubiera ahí sigue guardado y vuelve a aparecer al encenderlo.
             </p>
             {NAV_ESCONDIBLES.map((n) => {
-              const ocultas = draft.navOcultas || [];
+              const ocultas = navOcultasDe(draft, perfil);
               const visible = !ocultas.includes(n.key);
               return (
                 <button
@@ -8321,13 +8348,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   // primera y solo se quedaba una apagada.
                   onClick={() =>
                     setDraft((prev) => {
-                      const actuales = prev.navOcultas || [];
-                      return {
-                        ...prev,
-                        navOcultas: actuales.includes(n.key)
+                      const actuales = navOcultasDe(prev, perfil);
+                      return conNavOcultas(
+                        prev,
+                        perfil,
+                        actuales.includes(n.key)
                           ? actuales.filter((k) => k !== n.key)
-                          : [...actuales, n.key],
-                      };
+                          : [...actuales, n.key]
+                      );
                     })
                   }
                 >
@@ -11968,8 +11996,8 @@ export default function App() {
   // Si se esconde desde Ajustes la pestaña en la que uno está, la app se
   // quedaría en una pantalla que ya no tiene botón para salir.
   useEffect(() => {
-    if ((config?.navOcultas || []).includes(view)) setView("hoy");
-  }, [config?.navOcultas, view]);
+    if (navOcultasDe(config, perfil).includes(view)) setView("hoy");
+  }, [navOcultasDe(config, perfil).join(","), view]);
 
   // Lo que está por acabarse, para la campana de la barra. Vive aquí y no en
   // Hoy porque la barra se ve desde cualquier pantalla.
@@ -12570,7 +12598,7 @@ export default function App() {
   ];
   // Las pestañas que no se usan se pueden esconder desde Ajustes. Hoy y
   // Ajustes nunca se esconden: sin ellas no habría por dónde volver.
-  const navItems = navTodos.filter((n) => !(config?.navOcultas || []).includes(n.key));
+  const navItems = navTodos.filter((n) => !navOcultasDe(config, perfil).includes(n.key));
 
   // La campana de avisos. Va en una variable porque se dibuja en DOS sitios:
   // la barra de arriba en pantalla ancha, y el encabezado del celular. Vivía
