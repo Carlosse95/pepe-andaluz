@@ -5414,8 +5414,22 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     );
   };
 
-  const guardarGastoNuevo = (g) => {
+  // `yaRevisados` son los gastos parecidos que se le enseñaron a Pepe en el
+  // aviso de antes de guardar y que él dio por buenos ("sí es otro").
+  const guardarGastoNuevo = (g, yaRevisados) => {
     onGuardarGastos([g, ...gastos]);
+    // Esa decisión se apunta AQUÍ MISMO. Sin esto, la misma pareja volvía a
+    // salir abajo en "Parecen apuntados dos veces" y había que descartarla por
+    // segunda vez: dos preguntas idénticas para un solo gasto. Se apuntan
+    // todas de una sola vez —no una por una— porque cada llamada parte de la
+    // misma configuración de este render y se pisarían entre ellas.
+    if (yaRevisados && yaRevisados.length) {
+      const nuevas = yaRevisados.map((viejo) => clavePareja(g, viejo));
+      onGuardarConfig({
+        ...config,
+        duplicadosOmitidos: [...new Set([...omitidos, ...nuevas])],
+      });
+    }
     // Avisar SIEMPRE que quedó guardado. Sin esto no había forma de saberlo:
     // el formulario se cerraba igual que si no hubiera pasado nada, y con dos
     // tickets seguidos uno se queda con la duda de cuál sí entró. (Si el
@@ -7573,7 +7587,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <button className="af-btn-primary w-full" onClick={() => setPosibleDuplicado(null)}>
                 Mejor no, ya estaba
               </button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo)}>
+              <button
+                className="af-btn-secondary w-full mt-2"
+                onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo, posibleDuplicado.parecidos)}
+              >
                 Sí es otro, guárdalo
               </button>
             </div>
