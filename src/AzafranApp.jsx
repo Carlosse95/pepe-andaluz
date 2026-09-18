@@ -390,6 +390,23 @@ const fmtPersonas = (kg) => {
   return `para ${n} persona${n === 1 ? "" : "s"}`;
 };
 
+// El día de un pedido dicho en relación a hoy: "Hoy", "Mañana", "En 3 días",
+// "Hace 2 días". Es lo que hace saltar a la vista un día equivocado: leer
+// "viernes 19" no alarma a nadie, leer "mañana" cuando era para el sábado sí.
+// Se arma con los pedazos locales de la fecha, no pasando por UTC.
+const diaRelativo = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  const dia = new Date(y, m - 1, d);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const n = Math.round((dia - hoy) / 86400000);
+  if (n === 0) return "Hoy";
+  if (n === 1) return "Mañana";
+  if (n === -1) return "Ayer";
+  return n > 0 ? `En ${n} días` : `Hace ${-n} días`;
+};
+
 const fmtHora12 = (hora24) => {
   if (!hora24) return "";
   const [h, m] = hora24.split(":").map(Number);
@@ -11752,6 +11769,8 @@ export default function App() {
   const guardarPedidos = (lista) => { setPedidos(lista); persist("pedidos", lista); };
   // Lo que el pedido pide y no está hecho, para el aviso de antes de guardar.
   const [faltaHechas, setFaltaHechas] = useState(null);
+  // El día y la hora del pedido nuevo, para confirmarlos antes de guardar.
+  const [confirmarFecha, setConfirmarFecha] = useState(null);
   const guardarClientes = (lista) => { setClientes(lista); persist("clientes", lista); };
   // Segundo candado: mientras no se haya leído la configuración de la nube,
   // lo que hay en memoria son los valores de fábrica. Guardar en ese momento
@@ -12316,6 +12335,18 @@ export default function App() {
     // siempre la respuesta es "sí, ahorita las hago", y un pedido que no se
     // puede guardar sería peor que uno con la cuenta en rojo. Solo aplica a
     // pedidos de hoy o de más adelante; los de días pasados no tocan almacén.
+    // A quien lo tenga encendido en su perfil (hoy, solo Pepe) se le enseñan el
+    // día y la hora en grande antes de guardar un pedido NUEVO, para que los
+    // confirme. Salió de un pedido que quedó a las 6 de la tarde de otro día y
+    // nadie supo si fue el sistema o el dedo: así lo ve y lo firma él mismo.
+    // Va ANTES del aviso de lo hecho a propósito: la fecha decide si el pedido
+    // toca el inventario, así que primero hay que estar seguros de ella.
+    if (esNuevo && perfil?.confirmar_fecha && opciones?.fechaConfirmada !== true) {
+      setConfirmarFecha({ fecha: form.fecha, hora: form.hora });
+      return;
+    }
+    setConfirmarFecha(null);
+
     if (opciones?.saltarAviso !== true && tocaElAlmacen(form.fecha)) {
       const faltan = faltanteDeHechas(form.items, config.extras || [], anteriorPedido && anteriorPedido.descontoAlmacen !== false ? anteriorPedido.items : []);
       if (faltan.length > 0) { setFaltaHechas(faltan); return; }
@@ -12927,6 +12958,32 @@ export default function App() {
         {/* Si el aparato recargó la app a media captura, aquí está lo que se
           estaba escribiendo. Se pregunta en vez de reaparecer solo: puede que
           lo hubiera abandonado a propósito. */}
+      {/* Confirmar el día y la hora del pedido nuevo. Solo eso, en grande: es
+          lo que se quiere revisar, y cualquier otro dato distraería. */}
+      {confirmarFecha && (
+        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmarFecha(null)}>
+          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="af-alerta-icon"><CalendarDays size={26} /></div>
+            <div className="af-alerta-titulo">¿Es para este día y hora?</div>
+            <div className={"af-confirma-relativo" + (confirmarFecha.fecha < todayISO() ? " pasado" : "")}>
+              {diaRelativo(confirmarFecha.fecha)}
+              {confirmarFecha.fecha < todayISO() && " — ese día ya pasó"}
+            </div>
+            <div className="af-confirma-dia">{fmtDateHuman(confirmarFecha.fecha)}</div>
+            <div className="af-confirma-hora">{confirmarFecha.hora ? fmtHora12(confirmarFecha.hora) : "Sin hora"}</div>
+            <button
+              className="af-btn-primary w-full mt-4"
+              onClick={() => { setConfirmarFecha(null); guardarPedidoForm({ fechaConfirmada: true }); }}
+            >
+              Sí, así está
+            </button>
+            <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmarFecha(null)}>
+              No, lo cambio
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* No alcanza lo que está hecho. Se avisa con números claros y se deja
           seguir: el pedido es real aunque haya que ponerse a cocinar. */}
       {faltaHechas && faltaHechas.length > 0 && (
@@ -12956,7 +13013,7 @@ export default function App() {
             </button>
             <button
               className="af-btn-secondary w-full mt-2"
-              onClick={() => { setFaltaHechas(null); guardarPedidoForm({ saltarAviso: true }); }}
+              onClick={() => { setFaltaHechas(null); guardarPedidoForm({ saltarAviso: true, fechaConfirmada: true }); }}
             >
               Las voy a hacer, guárdalo
             </button>
@@ -14119,6 +14176,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-ticket-guardado { display: flex; align-items: center; gap: 8px; height: var(--alto-campo); padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radio-campo); color: var(--olive); font-size: 13.5px; font-weight: 600; background: var(--surface); }
 .af-comprobante-foto { display: block; width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; background: color-mix(in srgb, var(--ink-soft) 6%, transparent); }
 .af-link-quitar { margin-left: auto; background: none; border: none; color: var(--wine); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+/* Confirmar el día y la hora de un pedido nuevo. */
+.af-confirma-relativo { display: inline-block; margin: 2px 0 10px; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--wine); background: var(--wine-soft); }
+.af-confirma-relativo.pasado { color: #b91c1c; background: color-mix(in srgb, #b91c1c 12%, transparent); }
+.af-confirma-dia { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; color: var(--ink); line-height: 1.25; }
+.af-confirma-hora { font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; color: var(--wine); margin-top: 4px; }
 
 /* Rentabilidad mes por mes. */
 .af-rent-meses { padding: 4px 16px; }
