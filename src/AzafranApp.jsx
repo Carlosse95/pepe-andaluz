@@ -4767,7 +4767,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [buscaGasto, setBuscaGasto] = useState("");
   // El día concreto que se quiere ver. Manda sobre el mes.
   const [diaGasto, setDiaGasto] = useState("");
-  const [mesGasto, setMesGasto] = useState("todos");
+  // Se entra al mes en curso, no a "Todo el año": lo que se viene a revisar
+  // es lo de este mes. Un año que no es el actual sí se abre completo.
+  const hoyAnio = new Date().getFullYear();
+  const hoyMes = new Date().getMonth();
+  const mesPorDefecto = anio === hoyAnio ? hoyMes : "todos";
+  const [mesGasto, setMesGasto] = useState(() => new Date().getMonth());
+  // Al cambiar de año con las flechas, el mes vuelve a su lugar natural: el
+  // mes en curso si se regresa a este año, o el año entero si es otro.
+  useEffect(() => {
+    setMesGasto(anio === new Date().getFullYear() ? new Date().getMonth() : "todos");
+  }, [anio]);
   // Rango de fechas en vez de un solo día: "lo de la semana pasada" no se
   // podía buscar con una fecha exacta.
   const [desdeGasto, setDesdeGasto] = useState("");
@@ -5035,11 +5045,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
 
   // Meses que de verdad tienen gastos, para no ofrecer los doce vacíos.
-  const mesesConGastos = [...new Set(
-    gastosDelAmbito
+  const mesesConGastos = [...new Set([
+    ...gastosDelAmbito
       .filter((g) => filtroCategoria === "todos" || g.categoria === filtroCategoria)
-      .map((g) => Number(g.fecha.split("-")[1]) - 1)
-  )].sort((a, b) => a - b);
+      .map((g) => Number(g.fecha.split("-")[1]) - 1),
+    // El mes en curso siempre tiene su pestaña, aunque sea el día 1 y todavía
+    // no haya nada: es donde se entra, y sin pestaña no se vería marcado.
+    ...(anio === hoyAnio ? [hoyMes] : []),
+  ])].sort((a, b) => a - b);
 
   // Cuánto se lleva gastado en cada categoría, para verlo sin sacar cuentas.
   const totalPorCategoria = {};
@@ -5110,7 +5123,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     (filtroFactura !== "todos" ? 1 : 0) +
     (diaGasto ? 1 : 0) +
     (filtroTienda !== "todas" ? 1 : 0) +
-    (mesGasto !== "todos" && !hayRango ? 1 : 0) +
+    (mesGasto !== mesPorDefecto && !hayRango ? 1 : 0) +
     (hayRango ? 1 : 0) +
     (buscaGasto.trim() ? 1 : 0);
   // Si hay algún filtro puesto, "no hay nada" significa "no encontré", no
@@ -5122,7 +5135,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     setDiaGasto("");
     setFiltroCategoria("todos");
     setFiltroTienda("todas");
-    setMesGasto("todos");
+    // Quitar filtros regresa a la vista de siempre, que ahora es el mes en
+    // curso — no a "Todo el año".
+    setMesGasto(mesPorDefecto);
     setDesdeGasto("");
     setHastaGasto("");
     setBuscaGasto("");
@@ -5620,20 +5635,29 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Se junta lo VENDIDO del año (kilos/piezas e ingresos) contra el costo
   // aproximado que capturó el usuario, para saber si cada precio deja margen.
   const ventasPorProducto = {};
-  const acumular = (clave, campos) => {
+  // Lo mismo, pero separado por mes, para ver cuánto dejó cada uno. Se llena
+  // en el MISMO recorrido y con la MISMA regla que el total del año: así los
+  // doce meses suman exactamente lo que dice la tarjeta de arriba.
+  const ventasPorMesProducto = Array.from({ length: 12 }, () => ({}));
+  const acumular = (clave, campos, mes) => {
     if (!ventasPorProducto[clave]) ventasPorProducto[clave] = { volumen: 0, ingreso: 0 };
     ventasPorProducto[clave].volumen += campos.volumen;
     ventasPorProducto[clave].ingreso += campos.ingreso;
+    const delMes = ventasPorMesProducto[mes];
+    if (!delMes[clave]) delMes[clave] = { volumen: 0, ingreso: 0 };
+    delMes[clave].volumen += campos.volumen;
+    delMes[clave].ingreso += campos.ingreso;
   };
   pedidos.forEach((p) => {
     if (Number(p.fecha.split("-")[0]) !== anio || !esVentaHecha(p)) return;
+    const mes = Number(p.fecha.split("-")[1]) - 1;
     (p.items || []).forEach((it) => {
       if (it.tipo === "paella") {
         // Solo la paella en sí: los extras (langosta, chorizo) se cobran aparte
         // y tienen su propio costo, así no se ensucia el margen del platillo.
-        acumular("paella:" + it.paellaId, { volumen: it.kg || 0, ingreso: (it.kg || 0) * (it.precioKg || 0) });
+        acumular("paella:" + it.paellaId, { volumen: it.kg || 0, ingreso: (it.kg || 0) * (it.precioKg || 0) }, mes);
       } else if (it.tipo === "extra") {
-        acumular("extra:" + it.extraId, { volumen: it.cantidad || 0, ingreso: it.subtotal || 0 });
+        acumular("extra:" + it.extraId, { volumen: it.cantidad || 0, ingreso: it.subtotal || 0 }, mes);
       }
     });
   });
@@ -5836,6 +5860,28 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const margenRent = ingresoRent > 0 ? utilidadRent / ingresoRent : 0;
   const faltanCostos = filasRentabilidad.filter((f) => f.sinCosto).length;
 
+  // Cuánto dejó la comida cada mes. Solo cuentan los productos que ya tienen
+  // costo, igual que en el total: si no, un platillo sin costo capturado
+  // saldría dejando hasta el último peso cobrado y el mes diría una mentira.
+  const costoPorClave = Object.fromEntries(conCosto.map((f) => [f.clave, f.costo]));
+  const rentPorMes = ventasPorMesProducto
+    .map((ventas, mes) => {
+      let ingreso = 0;
+      let costo = 0;
+      Object.entries(ventas).forEach(([clave, v]) => {
+        if (!(clave in costoPorClave)) return;
+        ingreso += v.ingreso;
+        costo += v.volumen * costoPorClave[clave];
+      });
+      const utilidad = ingreso - costo;
+      return { mes, ingreso, costo, utilidad, margen: ingreso > 0 ? utilidad / ingreso : 0 };
+    })
+    .filter((m) => m.ingreso > 0)
+    // El más reciente arriba: lo que se viene a ver es este mes y el pasado.
+    .reverse();
+  // Para las barritas: cada mes contra el mejor del año.
+  const mejorMesRent = Math.max(1, ...rentPorMes.map((m) => m.utilidad));
+
   // Guarda cambios en un producto del menú (costo manual o desglose) sin tocar
   // el resto de la configuración.
   const actualizarProducto = (fila, cambios) => {
@@ -5921,8 +5967,43 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
           {faltanCostos > 0 && (
             <div className="af-hint mb-3">
-              Faltan {faltanCostos} {faltanCostos === 1 ? "producto" : "productos"} por capturar su costo. Los de arriba solo consideran los que ya lo tienen.
+              {faltanCostos === 1 ? "Falta" : "Faltan"} {faltanCostos} {faltanCostos === 1 ? "producto" : "productos"} por capturar su costo. Los de arriba solo consideran los que ya lo tienen.
             </div>
+          )}
+
+          {/* Lo mismo de la tarjeta de arriba, pero mes por mes. */}
+          {rentPorMes.length > 0 && (
+            <>
+              <div className="af-section-title">Mes por mes</div>
+              <div className="af-card mb-4 af-rent-meses">
+                {rentPorMes.map((m) => {
+                  const enCurso = anio === hoyAnio && m.mes === hoyMes;
+                  return (
+                    <div key={m.mes} className="af-rent-mes">
+                      <div className="af-rent-mes-fila">
+                        <span className="af-rent-mes-nombre">
+                          {MESES[m.mes]}
+                          {enCurso && <span className="af-rent-mes-curso">va en curso</span>}
+                        </span>
+                        <span className="af-rent-mes-valor">{money(m.utilidad)}</span>
+                        <span className={"af-rent-margen-badge chico " + (m.margen >= 0.5 ? "bien" : m.margen >= 0.35 ? "ajustado" : "malo")}>
+                          {Math.round(m.margen * 100)}%
+                        </span>
+                      </div>
+                      <div className="af-rent-mes-barra" title="Comparado con el mejor mes del año">
+                        <div
+                          className="af-rent-mes-barra-fill"
+                          style={{ width: `${Math.max(0, Math.min(100, (m.utilidad / mejorMesRent) * 100))}%` }}
+                        />
+                      </div>
+                      <div className="af-rent-mes-pie">
+                        Vendido {money(m.ingreso)} · Costó {money(m.costo)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           <div className="af-section-title">Producto por producto</div>
@@ -6690,10 +6771,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   : leyendoTicket
                     ? "Leyendo el ticket…"
                     : <><Camera size={15} className="inline mr-1" /> Tomar o elegir foto</>}
+                {/* Sin "capture". Ese atributo manda al iPhone directo a la
+                    cámara y ESCONDE la galería: no había forma de subir un
+                    ticket que te mandaron por WhatsApp, aunque el botón dice
+                    "tomar o elegir". Sin él, iOS pregunta: tomar foto,
+                    fototeca o archivo. */}
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   style={{ display: "none" }}
                   disabled={subiendoTicket || leyendoTicket}
                   onChange={async (e) => {
@@ -6988,10 +7073,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {gastosFiltrados.length === 0 ? (
           <EmptyState
             icon={<Receipt size={26} />}
-            title={hayFiltro ? "Sin resultados" : "Sin gastos registrados"}
+            title={hayFiltro
+              ? "Sin resultados"
+              : mesGasto !== "todos"
+                ? `Aún no hay gastos en ${MESES[mesGasto].toLowerCase()}`
+                : "Sin gastos registrados"}
             subtitle={hayFiltro
               ? "Prueba con otra palabra, otro día, o quita los filtros."
-              : "Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."}
+              : mesGasto !== "todos"
+                ? "Los de los otros meses están en «Todo el año»."
+                : "Agrega los gastos del negocio para ver la utilidad neta y comparar ingresos contra gastos."}
           />
         ) : (
           <>
@@ -14029,6 +14120,19 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-comprobante-foto { display: block; width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; background: color-mix(in srgb, var(--ink-soft) 6%, transparent); }
 .af-link-quitar { margin-left: auto; background: none; border: none; color: var(--wine); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 
+/* Rentabilidad mes por mes. */
+.af-rent-meses { padding: 4px 16px; }
+.af-rent-mes { padding: 12px 0; border-top: 1px solid var(--line); }
+.af-rent-mes:first-child { border-top: none; }
+.af-rent-mes-fila { display: flex; align-items: center; gap: 10px; }
+.af-rent-mes-nombre { flex: 1; min-width: 0; font-weight: 700; color: var(--ink); font-size: 14.5px; }
+.af-rent-mes-curso { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; color: var(--wine); background: var(--wine-soft); vertical-align: 2px; }
+.af-rent-mes-valor { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; color: var(--olive); white-space: nowrap; }
+.af-rent-margen-badge.chico { font-size: 11px; padding: 2px 8px; }
+.af-rent-mes-barra { height: 6px; border-radius: 999px; background: var(--neutral-soft); overflow: hidden; margin: 8px 0 6px; }
+.af-rent-mes-barra-fill { height: 100%; border-radius: 999px; background: var(--olive); }
+.af-rent-mes-pie { font-size: 12px; color: var(--ink-soft); }
+
 /* Cuántas quedan hechas, en el catálogo al armar el pedido. */
 .af-quedan { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; color: #2f9e6d; background: color-mix(in srgb, #2f9e6d 12%, transparent); }
 .af-quedan.sin { color: #b91c1c; background: color-mix(in srgb, #b91c1c 12%, transparent); }
@@ -14105,8 +14209,23 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    cada gasto se volvía un bloque alto y confuso; ahora la tabla se recorre de
    lado, como una tabla de verdad. Lo de arriba y abajo lo sigue moviendo la
    página, así que el dedo nunca se queda atrapado. */
-.af-tabla-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.af-tabla-scroll .af-tabla-gastos { min-width: 940px; margin-bottom: 0; }
+/* La tabla se recorre en UN solo marco, de lado y de arriba a abajo.
+   Antes eran dos, uno dentro de otro: el de afuera se movía de lado y el de
+   adentro (el de los renglones) solo arriba y abajo. En el iPhone el dedo cae
+   casi siempre sobre un renglón, así que se quedaba con el gesto el de
+   adentro — y como ése no se mueve de lado, deslizar no hacía nada. Solo se
+   podía agarrando la tirita de los títulos.
+   El borde y las esquinas pasan al marco. Estaban en la tabla con overflow
+   hidden, y eso anula el encabezado fijo: habría dejado de quedarse arriba.
+   Alto de sobra a propósito: un marco chico en el celular se lleva el dedo
+   —uno quiere bajar la página y baja la lista—; alto, el dedo casi siempre
+   cae fuera y adentro solo cuando de verdad se está revisando la tabla. */
+.af-tabla-scroll {
+  overflow: auto; -webkit-overflow-scrolling: touch;
+  max-height: min(62vh, 620px);
+  border: 1px solid var(--line); border-radius: 18px; background: var(--surface);
+}
+.af-tabla-scroll .af-tabla-gastos { min-width: 940px; margin-bottom: 0; border: none; border-radius: 0; overflow: visible; }
 
 /* En la laptop y en el iPad la tabla CABE: solo se sube y se baja, nunca se
    desliza de lado. Para lograrlo se recorta la columna "Cada mes" —la que
@@ -14167,14 +14286,15 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   }
 }
 
-/* La lista de gastos se recorre DENTRO de su marco, con el encabezado fijo.
-   Alto de sobra a propósito: un marco chico en el celular se lleva el dedo
-   —uno quiere bajar la página y baja la lista—; alto, el dedo casi siempre
-   cae fuera y adentro solo cuando de verdad se está revisando la tabla.
-   No se le pone overscroll-behavior contain: cuando la lista llega a su fin,
-   se quiere justamente que el desplazamiento siga con la página. */
-.af-tabla-cuerpo { max-height: min(62vh, 620px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.af-gasto-encabezado { position: sticky; top: 0; z-index: 2; }
+/* Los títulos se quedan arriba mientras se baja por la lista. Ahora los
+   renglones pasan POR DEBAJO de ellos, así que el fondo tiene que ser opaco:
+   con el tinte transparente de antes se verían los renglones a través.
+   No se le pone overscroll-behavior contain al marco: cuando la lista llega a
+   su fin, se quiere justamente que el desplazamiento siga con la página. */
+.af-gasto-encabezado {
+  position: sticky; top: 0; z-index: 2;
+  background: color-mix(in srgb, var(--ink-soft) 7%, var(--surface));
+}
 /* Un aviso discreto de que hay más a la derecha. Solo en el celular: de 701px
    para arriba la tabla ya cabe entera y no hay nada que deslizar. */
 .af-tabla-pista { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); margin: 0 0 8px 2px; }
