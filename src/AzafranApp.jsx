@@ -5015,9 +5015,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const altaDeCliente = (c) => {
     const delPedido = primerPedidoDe[c.id];
     if (delPedido) return { anio: +delPedido.slice(0, 4), mes: +delPedido.slice(5, 7) - 1 };
-    if (!c.createdAt) return null;
-    const d = new Date(c.createdAt);
-    return { anio: d.getFullYear(), mes: d.getMonth() };
+    // Sin pedido entregado no cuenta: en agosto de 2026 se cargaron casi 3,000
+    // contactos de golpe y los ~1,900 que nunca compraron inflaban la barra de
+    // agosto. Un cliente nuevo, para la gráfica, es alguien que ya compró.
+    return null;
   };
 
   const clientesConFecha = (clientes || []).map(altaDeCliente).filter(Boolean);
