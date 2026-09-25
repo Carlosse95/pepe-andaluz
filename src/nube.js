@@ -73,6 +73,74 @@ export const almacen = {
   },
 };
 
+/* --------------------- Copia local en el aparato --------------------- */
+// Guarda en el celular la última versión que se bajó de cada clave, junto
+// con su hora (`updated_at`). Al abrir la app, si la hora en la nube sigue
+// siendo la misma, se usa la copia y no se baja nada.
+//
+// Por qué: al crecer el negocio, `pedidos` llegó a 4 MB (3,500 pedidos) y
+// CADA vez que se abría o recargaba la app se bajaban todas las listas
+// completas, casi 5 MB. Unas 45 aperturas al día eran ~265 MB diarios, más
+// de lo que aguanta el plan gratis (5 GB al mes). Medido el 24 sep 2026.
+//
+// Regla para que la copia nunca engañe: cada registro guarda el valor y la
+// hora JUNTOS, y la hora nunca puede ser más nueva que el valor. Si hay duda,
+// la hora queda vieja → no coincide con la nube → se vuelve a bajar. Lo peor
+// que puede pasar es una descarga de más, nunca enseñar datos viejos.
+//
+// Va en IndexedDB y no en localStorage porque localStorage tiene un tope de
+// ~5 MB y ya no cabría. Si IndexedDB falla (modo privado, sin espacio), todo
+// sigue funcionando como antes: simplemente se baja de la nube.
+const BD_COPIA = "pepe-andaluz-copia";
+let bdCopia = null;
+const abrirCopia = () => {
+  if (!bdCopia) {
+    bdCopia = new Promise((resolve, reject) => {
+      const pet = indexedDB.open(BD_COPIA, 1);
+      pet.onupgradeneeded = () => pet.result.createObjectStore("claves");
+      pet.onsuccess = () => resolve(pet.result);
+      pet.onerror = () => reject(pet.error);
+      pet.onblocked = () => reject(new Error("IndexedDB bloqueada"));
+    }).catch((e) => { bdCopia = null; throw e; });
+  }
+  return bdCopia;
+};
+const operarCopia = async (modo, accion) => {
+  const bd = await abrirCopia();
+  return new Promise((resolve, reject) => {
+    const tx = bd.transaction("claves", modo);
+    const pet = accion(tx.objectStore("claves"));
+    tx.oncomplete = () => resolve(pet.result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+};
+
+export const copiaLocal = {
+  // { value, hora } o null si no hay copia o no se pudo leer.
+  async leer(clave) {
+    if (!nubeActiva) return null;
+    try {
+      const r = await operarCopia("readonly", (s) => s.get(clave));
+      return r && typeof r.value === "string" && r.hora ? r : null;
+    } catch {
+      return null;
+    }
+  },
+  // `hora` debe ser la del valor que se guarda, o una ANTERIOR (nunca posterior).
+  async guardar(clave, value, hora) {
+    if (!nubeActiva || !hora || typeof value !== "string") return;
+    try {
+      await operarCopia("readwrite", (s) => s.put({ value, hora }, clave));
+    } catch { /* sin copia: la próxima vez se baja de la nube */ }
+  },
+  async borrarTodo() {
+    try {
+      await operarCopia("readwrite", (s) => s.clear());
+    } catch { /* nada que borrar */ }
+  },
+};
+
 // Escucha cambios hechos desde OTROS dispositivos (tiempo real).
 // callback(clave, valorJSONString | null si se borró la fila).
 export const suscribirAlmacen = (callback) => {
@@ -286,7 +354,12 @@ export const iniciarSesion = async (email, password) => {
   return data.session;
 };
 
-export const cerrarSesion = () => supabase.auth.signOut();
+// Al salir se borra la copia local: son los pedidos y clientes del negocio y
+// no deben quedarse en un aparato donde ya no hay sesión.
+export const cerrarSesion = () => {
+  copiaLocal.borrarTodo();
+  return supabase.auth.signOut();
+};
 
 /* ----------------------------- Perfiles ---------------------------- */
 

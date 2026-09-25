@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
-  nubeActiva, almacen, suscribirAlmacen,
+  nubeActiva, almacen, copiaLocal, suscribirAlmacen,
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
   obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil,
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
@@ -11452,15 +11452,33 @@ export default function App() {
       // nueva que la que se anota aquí y la siguiente revisión lo va a
       // detectar. Al revés (anotar horas de después) ese cambio se perdería.
       const horasAlSalir = await almacen.horas().catch(() => null);
+      // Si la copia guardada en el aparato tiene la MISMA hora que la nube,
+      // es idéntica y se usa sin bajar nada. Antes cada apertura bajaba todo
+      // (~5 MB con 3,500 pedidos) y eso volvió a pasarse del plan gratis.
+      // Si la hora no coincide, no hay copia o no se pudieron leer las horas,
+      // se baja de la nube como siempre.
+      const leerClave = async (clave) => {
+        const hora = horasAlSalir && horasAlSalir[clave];
+        if (hora) {
+          const copia = await copiaLocal.leer(clave);
+          if (copia && copia.hora === hora) return { key: clave, value: copia.value };
+        }
+        const r = await almacen.get(clave);
+        // La hora se pidió ANTES de bajar el valor, así que nunca es más
+        // nueva que él: si alguien guardó en medio, la próxima vez no
+        // coincidirá y se volverá a bajar. Nunca se usa una copia vieja.
+        if (r && hora) copiaLocal.guardar(clave, r.value, hora);
+        return r;
+      };
       try {
         const [rp, rc, rcfg, rh, rpr, rav, rg] = await Promise.allSettled([
-          almacen.get("pedidos"),
-          almacen.get("clientes"),
-          almacen.get("config-productos"),
-          almacen.get("historico-mensual"),
-          almacen.get("presupuestos"),
-          almacen.get("avatares"),
-          almacen.get("gastos"),
+          leerClave("pedidos"),
+          leerClave("clientes"),
+          leerClave("config-productos"),
+          leerClave("historico-mensual"),
+          leerClave("presupuestos"),
+          leerClave("avatares"),
+          leerClave("gastos"),
         ]);
         if (cancelado) return;
         // Una clave cuenta como leída aunque venga vacía: "no existe todavía"
@@ -11657,6 +11675,7 @@ export default function App() {
           cambiadas.map(async (clave) => {
             const r = await almacen.get(clave);
             if (cancelado || !r) return;
+            copiaLocal.guardar(clave, r.value, horas[clave]);
             leidasDeLaNube.current.add(clave);
             if (lecturaVigente(clave, emitidaEn)) aplicarClave(clave, r.value);
           })
@@ -11739,8 +11758,12 @@ export default function App() {
     }
     escriturasEnVuelo.current[key] = (escriturasEnVuelo.current[key] || 0) + 1;
     try {
-      const guardado = await almacen.set(key, JSON.stringify(value));
+      const raw = JSON.stringify(value);
+      const guardado = await almacen.set(key, raw);
       guardadoEn.current[key] = Date.now();
+      // Lo recién guardado también queda en la copia del aparato, con la
+      // hora exacta de esta escritura: al volver a abrir no hay que bajarlo.
+      if (guardado && guardado.updatedAt) copiaLocal.guardar(key, raw, guardado.updatedAt);
       // Se anota la hora que dejó ESTE guardado, para no volver a bajarse lo
       // que uno mismo acaba de escribir.
       //
