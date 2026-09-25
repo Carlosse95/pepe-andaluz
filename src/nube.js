@@ -275,9 +275,35 @@ export const suscribirBandejaWhatsApp = (callback) => {
 // pesadísimo. Van en Storage, en un bucket privado, y en el gasto solo se
 // guarda la ruta.
 
+// Las fotos del celular pesan ~2.2 MB cada una y el plan gratis da 1 GB de
+// Storage: a ~70 MB al mes se llenaba en un año (medido sep 2026). Se achican
+// a 2000 px por lado en JPEG antes de subir, que queda en unos 300-500 KB y
+// se sigue leyendo perfecto (el lector de tickets no aprovecha más de ~1600
+// px de todos modos). Si algo falla o no queda más ligera, se sube la
+// original: más vale una foto pesada que perder el ticket.
+const LADO_MAXIMO_FOTO = 2000;
+const achicarFoto = async (archivo) => {
+  try {
+    if (!archivo.type || !archivo.type.startsWith("image/") || archivo.size < 600 * 1024) return archivo;
+    const imagen = await createImageBitmap(archivo, { imageOrientation: "from-image" });
+    const escala = Math.min(1, LADO_MAXIMO_FOTO / Math.max(imagen.width, imagen.height));
+    const lienzo = document.createElement("canvas");
+    lienzo.width = Math.round(imagen.width * escala);
+    lienzo.height = Math.round(imagen.height * escala);
+    lienzo.getContext("2d").drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
+    imagen.close && imagen.close();
+    const blob = await new Promise((res) => lienzo.toBlob(res, "image/jpeg", 0.82));
+    if (!blob || blob.size >= archivo.size) return archivo;
+    return new File([blob], "ticket.jpg", { type: "image/jpeg" });
+  } catch {
+    return archivo;
+  }
+};
+
 // Sube la foto y devuelve la ruta con la que después se recupera.
-export const subirTicket = async (archivo) => {
+export const subirTicket = async (original) => {
   if (!nubeActiva) throw new Error("Sin conexión a la nube no se pueden guardar fotos.");
+  const archivo = await achicarFoto(original);
   const ext = (archivo.name.split(".").pop() || "jpg").toLowerCase();
   // El nombre lleva la fecha para poder localizarlo desde el panel de Supabase
   // si algún día hay que buscarlo a mano.
