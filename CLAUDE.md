@@ -89,10 +89,15 @@ operación, NO con una consulta aparte** — entre una cosa y otra puede colarse
 el guardado de otro aparato y entonces se anotaría la hora del otro y su
 cambio no se bajaría nunca.
 
-Tercera vuelta (25 de septiembre de 2026): 265 MB en un día sin ningún
-bucle. `pedidos` creció a 4.2 MB (3,523 pedidos) y **cada apertura o recarga
-de la app bajaba todas las claves completas** (~5 MB); ~45 aperturas al día.
-Arreglado con `copiaLocal` (en `nube.js`, IndexedDB): se guarda cada clave con
+Tercera vuelta (25 de septiembre de 2026): `pedidos` creció a 4.2 MB (3,523
+pedidos) y **cada apertura o recarga de la app bajaba todas las claves
+completas**; ~45 aperturas al día. Se estimó en 265 MB/día multiplicando
+conteo × `octet_length`, pero **el panel de Supabase marcó ~30 MB ese día**:
+las respuestas van comprimidas (gzip) y el JSON se comprime ~8-9 veces. Para
+estimar egress desde `edge_logs`, dividir los bytes crudos entre ~8, o mejor
+confirmar en el panel (Organización → Usage → Egress per day), que es la
+cifra real. Aun así se optimizó, porque crece con cada pedido:
+`copiaLocal` (en `nube.js`, IndexedDB): se guarda cada clave con
 su `updated_at` y al abrir solo se baja la que tenga hora distinta en la nube.
 Regla de la copia: la hora guardada nunca puede ser más nueva que el valor
 (se toma de `horas()` pedida ANTES del `get`, o del propio `set`); si hay
