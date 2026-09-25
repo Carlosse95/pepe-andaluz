@@ -11454,7 +11454,7 @@ export default function App() {
       const horasAlSalir = await almacen.horas().catch(() => null);
       // Si la copia guardada en el aparato tiene la MISMA hora que la nube,
       // es idéntica y se usa sin bajar nada. Antes cada apertura bajaba todo
-      // (~5 MB con 3,500 pedidos) y eso volvió a pasarse del plan gratis.
+      // (~5 MB con 3,500 pedidos), y eso crece con cada pedido nuevo.
       // Si la hora no coincide, no hay copia o no se pudieron leer las horas,
       // se baja de la nube como siempre.
       const leerClave = async (clave) => {

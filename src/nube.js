@@ -80,8 +80,9 @@ export const almacen = {
 //
 // Por qué: al crecer el negocio, `pedidos` llegó a 4 MB (3,500 pedidos) y
 // CADA vez que se abría o recargaba la app se bajaban todas las listas
-// completas, casi 5 MB. Unas 45 aperturas al día eran ~265 MB diarios, más
-// de lo que aguanta el plan gratis (5 GB al mes). Medido el 24 sep 2026.
+// completas, casi 5 MB (unos 600 KB ya comprimidos), unas 45 veces al día.
+// Todavía cabía en el plan gratis (5 GB al mes), pero crece con cada pedido
+// nuevo. Medido el 24 sep 2026.
 //
 // Regla para que la copia nunca engañe: cada registro guarda el valor y la
 // hora JUNTOS, y la hora nunca puede ser más nueva que el valor. Si hay duda,
@@ -116,12 +117,19 @@ const operarCopia = async (modo, accion) => {
   });
 };
 
+// Safari en iPhone a veces deja colgada la apertura de IndexedDB sin avisar
+// ni con éxito ni con error. La carga de la app espera a `leer`, así que sin
+// este tope se quedaría en "Cargando pedidos" para siempre. Pasado el tiempo
+// se hace como si no hubiera copia y se baja de la nube.
+const conTope = (promesa, ms) =>
+  Promise.race([promesa, new Promise((_, rej) => setTimeout(() => rej(new Error("copia local lenta")), ms))]);
+
 export const copiaLocal = {
   // { value, hora } o null si no hay copia o no se pudo leer.
   async leer(clave) {
-    if (!nubeActiva) return null;
+    if (!nubeActiva || typeof indexedDB === "undefined") return null;
     try {
-      const r = await operarCopia("readonly", (s) => s.get(clave));
+      const r = await conTope(operarCopia("readonly", (s) => s.get(clave)), 1500);
       return r && typeof r.value === "string" && r.hora ? r : null;
     } catch {
       return null;
@@ -129,12 +137,13 @@ export const copiaLocal = {
   },
   // `hora` debe ser la del valor que se guarda, o una ANTERIOR (nunca posterior).
   async guardar(clave, value, hora) {
-    if (!nubeActiva || !hora || typeof value !== "string") return;
+    if (!nubeActiva || !hora || typeof value !== "string" || typeof indexedDB === "undefined") return;
     try {
       await operarCopia("readwrite", (s) => s.put({ value, hora }, clave));
     } catch { /* sin copia: la próxima vez se baja de la nube */ }
   },
   async borrarTodo() {
+    if (typeof indexedDB === "undefined") return;
     try {
       await operarCopia("readwrite", (s) => s.clear());
     } catch { /* nada que borrar */ }
