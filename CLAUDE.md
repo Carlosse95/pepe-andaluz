@@ -103,6 +103,11 @@ Regla de la copia: la hora guardada nunca puede ser más nueva que el valor
 (se toma de `horas()` pedida ANTES del `get`, o del propio `set`); si hay
 duda, la hora queda vieja y se vuelve a bajar. Se borra al cerrar sesión.
 
+Storage (1 GB gratis): las fotos de tickets pesaban ~2.2 MB y sumaban ~70
+MB/mes, así que el espacio se habría acabado en ~1 año. Desde el 25 sep 2026
+`subirTicket` las achica a 2000 px en JPEG (~0.5 MB) antes de subirlas; si
+falla, sube la original.
+
 **Antes de agregar cualquier consulta que corra en bucle, calcular cuánto
 pesa × cuántas veces por minuto.** La base de datos y el Storage están al 6%;
 lo que se agota es el ancho de banda. Para medirlo de verdad: envolver
