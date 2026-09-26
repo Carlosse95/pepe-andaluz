@@ -40,7 +40,7 @@ const LOGO_MASK_B64 = "iVBORw0KGgoAAAANSUhEUgAAArwAAAFVBAMAAAD/NyGnAAAAMFBMVEUAA
 // Plantillas de los mensajes automáticos de WhatsApp; se pueden editar en
 // Ajustes → Datos. Admiten {nombre} y {folio} como marcadores.
 const MENSAJES_DEFAULT = {
-  saludoPedido: "¡Hola {nombre}! Le compartimos el resumen de su pedido en Pepe Andaluz 🥘",
+  saludoPedido: "¡Hola {nombre}! Le compartimos el resumen de su pedido en Pepe El Andaluz 🥘",
   cierrePedido: "¡Gracias por su preferencia!",
   // Sin la dirección: ya se le mandó al cliente cuando apartó el pedido, y
   // repetirla en cada aviso hace el mensaje largo para nada. Quien la quiera
@@ -65,7 +65,7 @@ const MENSAJES_DEFAULT = {
     "¡Hola {nombre}! Recibimos su pago de {abono} 🙏\n\n" +
     "Con esto su pedido {folio} queda totalmente pagado. ¡Muchas gracias! ✅",
   extranamos:
-    "¡Hola {nombre}! Le saludamos de Pepe Andaluz 🥘\n\n" +
+    "¡Hola {nombre}! Le saludamos de Pepe El Andaluz 🥘\n\n" +
     "Hace rato que no lo vemos por acá y queríamos saludarlo. " +
     "Cuando se le antoje una paella, con gusto se la preparamos.",
 };
@@ -612,7 +612,7 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   } else if (modo === "pedido") {
     lineas.push(aplicarPlantillaMensaje(mensajes?.saludoPedido || MENSAJES_DEFAULT.saludoPedido, datos));
   } else {
-    lineas.push(`¡Hola${nombre ? " " + nombre : ""}! Le compartimos el resumen de su presupuesto en Pepe Andaluz 🥘`);
+    lineas.push(`¡Hola${nombre ? " " + nombre : ""}! Le compartimos el resumen de su presupuesto en Pepe El Andaluz 🥘`);
   }
   if (datos.folio) lineas.push(`Folio: ${fmtFolio(datos.folio, modo === "presupuesto" ? "P-" : "#")}`);
   lineas.push("");
@@ -7958,7 +7958,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       try {
         const data = JSON.parse(reader.result);
         if (!Array.isArray(data.pedidos) || !Array.isArray(data.clientes)) {
-          setImportError("El archivo no parece un respaldo válido de Pepe Andaluz.");
+          setImportError("El archivo no parece un respaldo válido de Pepe El Andaluz.");
           return;
         }
         setImportPreview(data);
