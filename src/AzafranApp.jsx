@@ -11738,7 +11738,6 @@ export default function App() {
   // guardado, así que no sirve".
   const escriturasEnVuelo = useRef({}); // clave -> cuántos guardados van en camino
   const guardadoEn = useRef({});        // clave -> cuándo terminó el último
-  const turnoGuardado = useRef({});     // clave -> número del último guardado que salió
 
   // La hora del último cambio de cada clave, como la conoce este aparato. Es
   // contra esto que la revisión de cada 3s decide si hay que bajar algo.
@@ -11752,64 +11751,78 @@ export default function App() {
   const lecturaVigente = (clave, emitidaEn) =>
     !escriturasEnVuelo.current[clave] && emitidaEn > (guardadoEn.current[clave] || 0);
 
+  // Lo que falta por subir de cada clave: solo la versión MÁS NUEVA.
+  const porSubir = useRef({});   // clave -> valor pendiente
+  const subiendo = useRef({});   // clave -> true mientras corre su fila
+
+  // Guardar en la nube, UNA subida a la vez por clave.
+  //
+  // Cada guardado sube la lista COMPLETA (pedidos pesa casi 4 MB). Antes cada
+  // cambio mandaba su propia subida en el instante, y en el iPad salían
+  // cuatro subidas de pedidos en 15 segundos: la base las atiende en fila
+  // sobre el mismo renglón, la última esperaba más de 8 segundos y se
+  // cancelaba ("no se pudo guardar" con internet bueno). Medido el 27 sep
+  // 2026.
+  //
+  // Ahora, si ya va una subida de esa clave, la nueva no sale: se anota como
+  // pendiente y, al terminar la que va, se sube solo la versión más nueva
+  // (que ya incluye todos los cambios de en medio, porque es la lista
+  // entera). Menos subidas, nada encimado y nada se pierde.
   const persist = async (key, value) => {
     if (nubeActiva && !leidasDeLaNube.current.has(key)) {
       console.warn(`No se guarda "${key}": todavía no se ha leído de la nube.`);
       showToast("Todavía no se terminan de cargar los datos; no se guardó", "error");
       return;
     }
+    porSubir.current[key] = value;
+    if (subiendo.current[key]) return; // la fila que ya corre lo recoge
+    subiendo.current[key] = true;
+    // El candado contra lecturas viejas queda puesto mientras haya algo de
+    // esta clave por subir o subiéndose.
     escriturasEnVuelo.current[key] = (escriturasEnVuelo.current[key] || 0) + 1;
-    // Número de este guardado para su clave. Si falla y mientras tanto ya
-    // salió otro guardado más nuevo de la misma clave, NO se reintenta: el
-    // nuevo ya lleva la lista completa y un reintento de la vieja la pisaría.
-    const turno = (turnoGuardado.current[key] = (turnoGuardado.current[key] || 0) + 1);
     try {
-      const raw = JSON.stringify(value);
-      // Un tropiezo del servidor (tarda más de la cuenta y cancela) o de la
-      // red no debe mostrarse como "no se guardó" a la primera: se reintenta
-      // dos veces, con una pausa, y solo si las tres fallan se avisa.
-      let guardado;
-      for (let intento = 0; ; intento++) {
+      while (Object.prototype.hasOwnProperty.call(porSubir.current, key)) {
+        const valor = porSubir.current[key];
+        delete porSubir.current[key];
+        const raw = JSON.stringify(valor);
         try {
-          guardado = await almacen.set(key, raw);
-          break;
+          // Un tropiezo del servidor o de la red no se avisa a la primera:
+          // se reintenta dos veces con pausa. Si mientras tanto llegó una
+          // versión más nueva, se deja de insistir con esta y se sube aquella.
+          let guardado;
+          for (let intento = 0; ; intento++) {
+            try {
+              guardado = await almacen.set(key, raw);
+              break;
+            } catch (e) {
+              if (intento >= 2 || Object.prototype.hasOwnProperty.call(porSubir.current, key)) throw e;
+              console.warn(`Reintentando guardar "${key}"`, e);
+              await new Promise((r) => setTimeout(r, 1500 * (intento + 1)));
+              if (Object.prototype.hasOwnProperty.call(porSubir.current, key)) throw e;
+            }
+          }
+          guardadoEn.current[key] = Date.now();
+          // Queda también en la copia del aparato con la hora exacta de esta
+          // escritura: al volver a abrir no hay que bajarlo.
+          if (guardado && guardado.updatedAt) copiaLocal.guardar(key, raw, guardado.updatedAt);
+          // Se anota la hora que dejó ESTE guardado para no volver a bajarse
+          // lo que uno mismo escribió. Es la que devuelve el propio guardado,
+          // no una consulta aparte: si otro aparato escribió después, su hora
+          // sigue siendo distinta y se baja en la vuelta siguiente.
+          if (horasVistas.current && guardado && guardado.updatedAt) {
+            horasVistas.current[key] = guardado.updatedAt;
+          }
         } catch (e) {
-          if (intento >= 2 || turnoGuardado.current[key] !== turno) throw e;
-          console.warn(`Reintentando guardar "${key}"`, e);
-          await new Promise((r) => setTimeout(r, 1500 * (intento + 1)));
-          if (turnoGuardado.current[key] !== turno) throw e;
+          console.error("Error guardando " + key, e);
+          // Si ya hay una versión más nueva esperando, esa lleva la lista
+          // completa con este cambio incluido: se sigue con ella sin avisar.
+          if (!Object.prototype.hasOwnProperty.call(porSubir.current, key)) {
+            showToast("No se pudo guardar en la nube, revisa tu conexión", "error");
+          }
         }
       }
-      guardadoEn.current[key] = Date.now();
-      // Lo recién guardado también queda en la copia del aparato, con la
-      // hora exacta de esta escritura: al volver a abrir no hay que bajarlo.
-      if (guardado && guardado.updatedAt) copiaLocal.guardar(key, raw, guardado.updatedAt);
-      // Se anota la hora que dejó ESTE guardado, para no volver a bajarse lo
-      // que uno mismo acaba de escribir.
-      //
-      // Sin esto, la revisión de los 3 segundos veía una hora distinta a la
-      // apuntada, creía que otro aparato había cambiado algo, y se bajaba el
-      // archivo completo. Con `pedidos` pesando más de un mega eso era un
-      // mega tirado por cada pedido guardado: capturando un mes viejo se
-      // iban cientos de megas en volver a bajar lo propio (382 guardados y
-      // 462 descargas completas en un solo día, medido en los registros).
-      //
-      // Se usa la hora que devuelve el propio guardado, NO una consulta
-      // aparte: entre una cosa y otra puede colarse el guardado de otro
-      // aparato, y entonces se anotaría la hora del otro y su cambio no se
-      // bajaría nunca. Así, si alguien más escribió después, su hora sigue
-      // siendo distinta y se baja en la vuelta siguiente, como debe ser.
-      if (horasVistas.current && guardado && guardado.updatedAt) {
-        horasVistas.current[key] = guardado.updatedAt;
-      }
-    } catch (e) {
-      console.error("Error guardando " + key, e);
-      // Si ya salió un guardado más nuevo de esta misma clave, ese lleva la
-      // lista completa (con este cambio incluido): no hay nada que avisar.
-      if (turnoGuardado.current[key] === turno) {
-        showToast("No se pudo guardar en la nube, revisa tu conexión", "error");
-      }
     } finally {
+      subiendo.current[key] = false;
       escriturasEnVuelo.current[key] = Math.max(0, (escriturasEnVuelo.current[key] || 1) - 1);
     }
   };
