@@ -3058,7 +3058,7 @@ function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, childr
 // pedido esta vista se desmonta, y si el estado viviera aquí se perdería justo
 // lo que se estaba mirando. Capturando meses viejos eso obligaba a volver a
 // elegir el día en cada pedido, que es lo que más estorbaba.
-function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, tab, onTab, diaEntregados, onDiaEntregados, onNuevoPedidoEseDia }) {
+function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, tab, onTab, diaEntregados, onDiaEntregados }) {
   const ahora = new Date();
   const [mesSel, setMesSel] = useState({ a: ahora.getFullYear(), m: ahora.getMonth() });
   const [verProduccion, setVerProduccion] = useState({}); // fecha -> bool
@@ -3183,13 +3183,6 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
             )}
           </div>
 
-          {/* Agregar sin salir del día: al guardar se regresa aquí mismo, con
-              este día puesto, para seguir comparando contra la libreta. */}
-          {diaEntregados && (
-            <button className="af-btn-secondary w-full mb-2" onClick={() => onNuevoPedidoEseDia(diaEntregados)}>
-              + Pedido del {fmtDateHuman(diaEntregados)}
-            </button>
-          )}
           {!diaEntregados && (
             <div className="af-year-switch" style={{ marginBottom: 0 }}>
               <button className="af-icon-btn" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></button>
@@ -12248,14 +12241,13 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
 
-  // Un pedido nuevo siempre arranca en HOY. Mientras se capturaban los meses
-  // viejos la app recordaba la última fecha usada; ya terminada esa captura
-  // se quitó (sept. 2026), para que un pedido de verdad no salga con otra
-  // fecha por descuido. La única excepción es `fechaPre`: la manda la Agenda
-  // al agregar desde un día concreto, que es una elección a propósito.
-  const goToNuevoPedido = (clientePre, fechaPre) => {
+  // Un pedido nuevo SIEMPRE arranca en hoy. Mientras se capturaban los meses
+  // viejos de la libreta la app recordaba la última fecha usada y la Agenda
+  // tenía un botón "+ Pedido del <día>"; ya terminada esa captura se quitaron
+  // los dos (sept. 2026) para que un pedido de verdad no salga con otra fecha
+  // por descuido.
+  const goToNuevoPedido = (clientePre) => {
     const base = emptyForm();
-    if (fechaPre) base.fecha = fechaPre;
     if (clientePre) {
       base.clienteId = clientePre.id;
       base.clienteNombre = clientePre.nombre;
@@ -12914,7 +12906,7 @@ export default function App() {
 
         <div className="af-content">
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
-          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} onNuevoPedidoEseDia={(fecha) => goToNuevoPedido(null, fecha)} />}
+          {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
             <MensajesView
