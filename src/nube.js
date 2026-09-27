@@ -151,15 +151,24 @@ export const copiaLocal = {
 };
 
 // Escucha cambios hechos desde OTROS dispositivos (tiempo real).
-// callback(clave, valorJSONString | null si se borró la fila).
+// callback(clave): solo avisa QUÉ cambió; quien escucha baja esa clave.
+//
+// Antes se escuchaba la tabla `almacen` directo y el aviso traía la fila
+// COMPLETA. Con `pedidos` pesando más de 4 MB, la base tenía que empaquetar
+// esos 4 MB por cada guardado y por cada aparato conectado: se saturaba, los
+// guardados se cancelaban a los 8 segundos ("no se pudo guardar en la nube"
+// con internet perfecto) y el propio tiempo real se caía, así que los demás
+// aparatos tardaban en enterarse. Medido el 27 sep 2026.
+//
+// Ahora se escucha `almacen_avisos`, que un disparador llena con solo la
+// clave y la hora del cambio: unos bytes por aviso.
 export const suscribirAlmacen = (callback) => {
   if (!nubeActiva) return () => {};
   const canal = supabase
-    .channel("almacen-cambios")
-    .on("postgres_changes", { event: "*", schema: "public", table: "almacen" }, (payload) => {
+    .channel("almacen-avisos")
+    .on("postgres_changes", { event: "*", schema: "public", table: "almacen_avisos" }, (payload) => {
       const fila = payload.new && payload.new.clave ? payload.new : payload.old;
-      if (!fila || !fila.clave) return;
-      callback(fila.clave, payload.new && payload.new.valor !== undefined ? JSON.stringify(payload.new.valor) : null);
+      if (fila && fila.clave) callback(fila.clave);
     })
     .subscribe();
   return () => supabase.removeChannel(canal);

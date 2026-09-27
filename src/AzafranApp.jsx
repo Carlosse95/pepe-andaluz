@@ -11594,14 +11594,13 @@ export default function App() {
 
     cargarTodo(true).then(incorporarPedidosWhatsApp);
 
-    // Tiempo real: si alguien más guarda desde otro dispositivo, se refleja aquí.
-    // Mientras un guardado nuestro va en camino no se hace caso al aviso de
-    // tiempo real: puede ser el eco del valor de antes, y pisaría lo que se
-    // acaba de hacer. En cuanto termina el guardado, el ping de 3 segundos
-    // trae lo que haya de nuevo.
-    const desuscribir = suscribirAlmacen((clave, raw) => {
-      if (escriturasEnVuelo.current[clave]) return;
-      aplicarClave(clave, raw);
+    // Tiempo real: si alguien más guarda desde otro dispositivo, llega un
+    // aviso con SOLO el nombre de lo que cambió y se hace la misma revisión
+    // de cada 3 segundos en ese instante: compara horas y baja nada más lo
+    // que es distinto. Esa revisión ya respeta los guardados propios en
+    // camino, así que el eco de lo que uno mismo guardó no pisa nada.
+    const desuscribir = suscribirAlmacen(() => {
+      if (horasVistas.current) revisarCambios();
     });
     const desuscribirWhatsApp = suscribirPedidosWhatsApp(incorporarPedidosWhatsApp);
 
@@ -11739,6 +11738,7 @@ export default function App() {
   // guardado, así que no sirve".
   const escriturasEnVuelo = useRef({}); // clave -> cuántos guardados van en camino
   const guardadoEn = useRef({});        // clave -> cuándo terminó el último
+  const turnoGuardado = useRef({});     // clave -> número del último guardado que salió
 
   // La hora del último cambio de cada clave, como la conoce este aparato. Es
   // contra esto que la revisión de cada 3s decide si hay que bajar algo.
@@ -11759,9 +11759,27 @@ export default function App() {
       return;
     }
     escriturasEnVuelo.current[key] = (escriturasEnVuelo.current[key] || 0) + 1;
+    // Número de este guardado para su clave. Si falla y mientras tanto ya
+    // salió otro guardado más nuevo de la misma clave, NO se reintenta: el
+    // nuevo ya lleva la lista completa y un reintento de la vieja la pisaría.
+    const turno = (turnoGuardado.current[key] = (turnoGuardado.current[key] || 0) + 1);
     try {
       const raw = JSON.stringify(value);
-      const guardado = await almacen.set(key, raw);
+      // Un tropiezo del servidor (tarda más de la cuenta y cancela) o de la
+      // red no debe mostrarse como "no se guardó" a la primera: se reintenta
+      // dos veces, con una pausa, y solo si las tres fallan se avisa.
+      let guardado;
+      for (let intento = 0; ; intento++) {
+        try {
+          guardado = await almacen.set(key, raw);
+          break;
+        } catch (e) {
+          if (intento >= 2 || turnoGuardado.current[key] !== turno) throw e;
+          console.warn(`Reintentando guardar "${key}"`, e);
+          await new Promise((r) => setTimeout(r, 1500 * (intento + 1)));
+          if (turnoGuardado.current[key] !== turno) throw e;
+        }
+      }
       guardadoEn.current[key] = Date.now();
       // Lo recién guardado también queda en la copia del aparato, con la
       // hora exacta de esta escritura: al volver a abrir no hay que bajarlo.
@@ -11786,7 +11804,11 @@ export default function App() {
       }
     } catch (e) {
       console.error("Error guardando " + key, e);
-      showToast("No se pudo guardar en la nube, revisa tu conexión", "error");
+      // Si ya salió un guardado más nuevo de esta misma clave, ese lleva la
+      // lista completa (con este cambio incluido): no hay nada que avisar.
+      if (turnoGuardado.current[key] === turno) {
+        showToast("No se pudo guardar en la nube, revisa tu conexión", "error");
+      }
     } finally {
       escriturasEnVuelo.current[key] = Math.max(0, (escriturasEnVuelo.current[key] || 1) - 1);
     }
