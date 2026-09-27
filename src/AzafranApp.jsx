@@ -11223,13 +11223,6 @@ export default function App() {
   const [borradorPendiente, setBorradorPendiente] = useState(() => leerBorrador());
   const [formModo, setFormModo] = useState("pedido");
   const [form, setForm] = useState(emptyForm());
-  // Capturando los pedidos de meses pasados, lo que más tiempo toma es la
-  // fecha: abrir el calendario y retroceder ocho meses, pedido por pedido.
-  // Así que la app se queda con la última fecha usada y arranca ahí el
-  // siguiente. Vive SOLO en memoria: al cerrar y volver a abrir la app
-  // regresa a hoy, para que un pedido de verdad no salga con fecha de enero
-  // por un descuido.
-  const [fechaPegajosa, setFechaPegajosa] = useState(null);
   // La pestaña y el día que se están viendo en Agenda. Viven aquí y no dentro
   // de AgendaView porque al salir a capturar un pedido esa vista se desmonta:
   // si el estado viviera allá, al volver se perdería el día que se estaba
@@ -12255,12 +12248,13 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
 
-  // `fechaPre` la manda quien ya sabe de qué día es el pedido (hoy solo la
-  // Agenda, al agregar desde un día concreto). Gana sobre la fecha pegajosa
-  // porque es una elección explícita, no un arrastre de la captura anterior.
+  // Un pedido nuevo siempre arranca en HOY. Mientras se capturaban los meses
+  // viejos la app recordaba la última fecha usada; ya terminada esa captura
+  // se quitó (sept. 2026), para que un pedido de verdad no salga con otra
+  // fecha por descuido. La única excepción es `fechaPre`: la manda la Agenda
+  // al agregar desde un día concreto, que es una elección a propósito.
   const goToNuevoPedido = (clientePre, fechaPre) => {
     const base = emptyForm();
-    if (fechaPegajosa) base.fecha = fechaPegajosa;
     if (fechaPre) base.fecha = fechaPre;
     if (clientePre) {
       base.clienteId = clientePre.id;
@@ -12483,11 +12477,6 @@ export default function App() {
     guardarConfig({ ...config, desechables, ingredientes, extras: extrasCat });
 
     guardarPedidos(nuevaLista);
-    // Se recuerda la fecha para el SIGUIENTE pedido, pero solo si no es hoy:
-    // capturando enero, el que sigue casi siempre es del mismo día o del
-    // siguiente. Guardando uno de hoy se suelta, que es la señal de que ya
-    // se volvió al trabajo normal.
-    setFechaPegajosa(pedidoObj.fecha !== todayISO() ? pedidoObj.fecha : null);
     olvidarBorrador();
     setView(formOrigen);
     setError("");
