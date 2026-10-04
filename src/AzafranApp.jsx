@@ -523,6 +523,61 @@ const IVA_TASA = 0.16;
 const ivaDe = (obj) => (obj.iva ? (computeTotal(obj.items) + envioDe(obj) + recoleccionDe(obj)) * IVA_TASA : 0);
 const totalDe = (obj) => computeTotal(obj.items) + envioDe(obj) + recoleccionDe(obj) + ivaDe(obj);
 
+// Junta dos versiones de lo mismo que se editaron en aparatos distintos.
+//
+// `base` es lo que este aparato vio la última vez en la nube, `local` lo que
+// quiere guardar y `nube` lo que hay ahora (con el cambio del otro). Se
+// queda todo lo de la nube y encima solo lo que ESTE aparato cambió de
+// verdad respecto a su `base`. Así un pedido nuevo de un celular y un cambio
+// de estado en el iPad conviven, en vez de que el último en guardar borre al
+// otro (pasó el 4 oct 2026: se perdió un pedido que José acababa de meter).
+//
+// - Listas de cosas con `id` (pedidos, clientes, gastos...): por id. Lo que
+//   este aparato agregó o editó gana; lo que borró se borra; lo demás, como
+//   en la nube. Si el otro borró algo que este editó, se conserva: perder
+//   datos es peor que tener uno de más.
+// - Objetos (la configuración): por campo, y hacia adentro cuando el campo
+//   es otra lista con id u otro objeto (el inventario, los extras...).
+// - Cualquier otra cosa: gana lo de este aparato.
+const conId = (v) => Array.isArray(v) && v.every((x) => x && typeof x === "object" && x.id != null);
+const esObjeto = (v) => v && typeof v === "object" && !Array.isArray(v);
+// Igualdad sin importar el ORDEN de los campos: al cargar, la app acomoda
+// cada pedido (migrarPedido) y los campos cambian de lugar aunque el
+// contenido sea el mismo. Comparando el texto tal cual, TODO parecería
+// editado y se volvería a pisar lo del otro aparato.
+const canonico = (v) => JSON.stringify(v, (_, x) =>
+  x && typeof x === "object" && !Array.isArray(x)
+    ? Object.keys(x).sort().reduce((o, k) => { o[k] = x[k]; return o; }, {})
+    : x
+);
+const igual = (a, b) => canonico(a) === canonico(b);
+const fusionarVersiones = (base, local, nube) => {
+  if (igual(local, base)) return nube; // este aparato no cambió nada aquí
+  if (nube === undefined || igual(nube, base)) return local; // el otro no cambió nada aquí
+  if (conId(local) && conId(nube) && (base == null || conId(base))) {
+    const enBase = new Map((base || []).map((x) => [x.id, x]));
+    const enLocal = new Map(local.map((x) => [x.id, x]));
+    const enNube = new Set(nube.map((x) => x.id));
+    const cambiados = new Set(local.filter((x) => !enBase.has(x.id) || !igual(x, enBase.get(x.id))).map((x) => x.id));
+    const borrados = new Set([...enBase.keys()].filter((id) => !enLocal.has(id)));
+    const resultado = nube
+      .filter((x) => !borrados.has(x.id))
+      .map((x) => (cambiados.has(x.id) ? enLocal.get(x.id) : x));
+    // Lo que solo existe aquí (nuevo, o editado y borrado allá) va adelante,
+    // como entra todo lo nuevo en las listas.
+    const soloAqui = local.filter((x) => cambiados.has(x.id) && !enNube.has(x.id));
+    return [...soloAqui, ...resultado];
+  }
+  if (esObjeto(local) && esObjeto(nube)) {
+    const b = esObjeto(base) ? base : {};
+    const r = { ...nube };
+    for (const k of Object.keys(local)) r[k] = fusionarVersiones(b[k], local[k], nube[k]);
+    for (const k of Object.keys(b)) if (!(k in local)) delete r[k];
+    return r;
+  }
+  return local;
+};
+
 // Cómo se llama el producto CUANDO LO LEE EL CLIENTE.
 //
 // En el catálogo las paellas se llaman "Mar y Tierra", "Carne", "Marisco".
@@ -1769,6 +1824,15 @@ const migrarPedido = (p) => {
   // permite mezclar formas de pago (ej. anticipo por transferencia, resto en efectivo).
   const abonos = p.abonos || (p.pagado > 0 ? [{ id: uid(), monto: p.pagado, metodo: p.metodoPago || "efectivo" }] : []);
   return { ...resto, items, estado: p.estado || "pendiente", abonos };
+};
+
+// El mismo acomodo que se le hace a cada clave al ponerla en pantalla.
+const normalizarComoPantalla = (clave, valor) => {
+  if (!Array.isArray(valor)) return valor;
+  if (clave === "pedidos") return asignarFolios(valor.map(migrarPedido));
+  if (clave === "presupuestos") return asignarFolios(valor);
+  if (clave === "gastos") return valor.map(migrarGasto);
+  return valor;
 };
 
 const sumaAbonos = (abonos) => (abonos || []).reduce((a, x) => a + (parseFloat(x.monto) || 0), 0);
@@ -11616,7 +11680,15 @@ export default function App() {
         marcarLeida(rav, "avatares");
         marcarLeida(rg, "gastos");
         // `aplicar` solo deja pasar lo que no esté viejo (ver lecturaVigente).
-        const aplicar = (clave, raw) => { if (lecturaVigente(clave, emitidaEn)) aplicarClave(clave, raw); };
+        const aplicadas = new Set();
+        const aplicar = (clave, raw) => {
+          if (!lecturaVigente(clave, emitidaEn)) return;
+          aplicarClave(clave, raw);
+          aplicadas.add(clave);
+          // La hora se pidió ANTES del valor: si el valor es más nuevo, el
+          // primer guardado chocará y se juntará, que es lo seguro.
+          if (horasAlSalir && horasAlSalir[clave]) baseNube.current[clave] = { raw, hora: horasAlSalir[clave] };
+        };
         if (rp.status === "fulfilled" && rp.value) aplicar("pedidos", rp.value.value);
         if (rc.status === "fulfilled" && rc.value) aplicar("clientes", rc.value.value);
         // Los valores de fábrica SOLO se siembran cuando la consulta salió
@@ -11642,7 +11714,19 @@ export default function App() {
         // Ya se tiene todo: estas son las horas contra las que se comparará de
         // aquí en adelante. Si no se pudieron leer, se deja como estaba y la
         // revisión siguiente vuelve a intentarlo.
-        if (horasAlSalir) horasVistas.current = horasAlSalir;
+        // Solo se dan por vistas las claves que de verdad se pusieron en
+        // pantalla. Si una lectura se descartó (por un guardado en medio), su
+        // hora NO se anota, para que la revisión siguiente la vuelva a bajar:
+        // antes se anotaba igual y el aparato se quedaba con la lista vieja
+        // sin volver a intentarlo — así el iPad dejaba de actualizarse.
+        if (horasAlSalir) {
+          const anteriores = horasVistas.current || {};
+          const nuevas = { ...anteriores };
+          for (const [clave, hora] of Object.entries(horasAlSalir)) {
+            if (aplicadas.has(clave) || !CLAVES_NUBE.includes(clave)) nuevas[clave] = hora;
+          }
+          horasVistas.current = nuevas;
+        }
         // A partir de aquí ya hay algo en pantalla: las siguientes lecturas
         // se hacen en silencio.
         hayDatosEnPantalla.current = true;
@@ -11692,13 +11776,15 @@ export default function App() {
 
         if (clientesNuevos.length) {
           const lista = [...clientesNuevos, ...clientesNube];
-          await almacen.set("clientes", JSON.stringify(lista));
+          const g = await almacen.set("clientes", JSON.stringify(lista));
           aplicarClave("clientes", JSON.stringify(lista));
+          if (g && g.updatedAt) baseNube.current.clientes = { raw: JSON.stringify(lista), hora: g.updatedAt };
         }
         if (pedidosNuevos.length) {
           const lista = [...pedidosNuevos, ...pedidosNube];
-          await almacen.set("pedidos", JSON.stringify(lista));
+          const g = await almacen.set("pedidos", JSON.stringify(lista));
           aplicarClave("pedidos", JSON.stringify(lista));
+          if (g && g.updatedAt) baseNube.current.pedidos = { raw: JSON.stringify(lista), hora: g.updatedAt };
           showToast(
             pedidosNuevos.length === 1
               ? "Llegó un pedido nuevo por WhatsApp"
@@ -11796,11 +11882,29 @@ export default function App() {
         const emitidaEn = Date.now();
         await Promise.allSettled(
           cambiadas.map(async (clave) => {
-            const r = await almacen.get(clave);
-            if (cancelado || !r) return;
+            const r = await almacen.get(clave).catch(() => null);
+            if (cancelado) return;
+            // Si no se pudo bajar, se olvida la hora para reintentar en la
+            // ronda siguiente (si nadie la cambió mientras tanto).
+            const olvidar = () => {
+              if (horasVistas.current && horasVistas.current[clave] === horas[clave]) {
+                horasVistas.current = { ...horasVistas.current, [clave]: null };
+              }
+            };
+            if (!r) { olvidar(); return; }
             copiaLocal.guardar(clave, r.value, horas[clave]);
             leidasDeLaNube.current.add(clave);
-            if (lecturaVigente(clave, emitidaEn)) aplicarClave(clave, r.value);
+            if (lecturaVigente(clave, emitidaEn)) {
+              aplicarClave(clave, r.value);
+              baseNube.current[clave] = { raw: r.value, hora: horas[clave] };
+            } else {
+              // Llegó cuando ya se había guardado algo encima: no se enseña,
+              // pero tampoco se da por vista. Antes se daba por vista y el
+              // aparato se quedaba con la lista vieja (el iPad no se
+              // actualizaba). Si el guardado de en medio chocó, ya se juntó;
+              // si no, la ronda siguiente lo vuelve a revisar.
+              olvidar();
+            }
           })
         );
       } finally {
@@ -11869,6 +11973,12 @@ export default function App() {
   // tiene que poder anotarla al guardar. Ver el porqué en `persist`.
   const horasVistas = useRef(null);
 
+  // Por clave: la última versión de la NUBE de la que sale lo que hay en
+  // pantalla, con su hora. Al guardar se le pide a la base que solo escriba
+  // si sigue en esa hora; si no, alguien más guardó en medio y se juntan los
+  // dos cambios con `fusionarVersiones` (ver `persist`).
+  const baseNube = useRef({}); // clave -> { raw, hora }
+
   // ¿Sirve lo que acaba de llegar de la nube para esta clave?
   const lecturaVigente = (clave, emitidaEn) =>
     !escriturasEnVuelo.current[clave] && emitidaEn > (guardadoEn.current[clave] || 0);
@@ -11911,22 +12021,53 @@ export default function App() {
           // Un tropiezo del servidor o de la red no se avisa a la primera:
           // se reintenta dos veces con pausa. Si mientras tanto llegó una
           // versión más nueva, se deja de insistir con esta y se sube aquella.
+          //
+          // Se guarda CON CONDICIÓN: solo si la nube sigue en la versión de la
+          // que sale lo de esta pantalla. Si otro aparato guardó en medio, se
+          // baja lo suyo, se juntan los dos cambios y se intenta de nuevo con
+          // lo junto. Sin esto el último en guardar borraba lo del otro.
           let guardado;
-          for (let intento = 0; ; intento++) {
+          let fallos = 0;
+          let choques = 0;
+          let rawAGuardar = raw;
+          for (;;) {
             try {
-              guardado = await almacen.set(key, raw);
-              break;
+              const conocida = baseNube.current[key];
+              const r = await almacen.setSi(key, rawAGuardar, conocida ? conocida.hora : null);
+              if (r.ok) {
+                guardado = { updatedAt: r.updatedAt };
+                baseNube.current[key] = { raw: rawAGuardar, hora: r.updatedAt };
+                break;
+              }
+              // Choque: alguien más guardó. Se baja lo de la nube y se junta.
+              if (++choques > 4) throw new Error("La lista cambió muchas veces seguidas; no se pudo juntar.");
+              const enNube = await almacen.get(key);
+              const valorNube = enNube ? JSON.parse(enNube.value) : null;
+              // La base pasa por el mismo acomodo que lo de pantalla, para
+              // que solo cuente como "cambiado" lo que de verdad se editó.
+              const valorBase = conocida ? normalizarComoPantalla(key, JSON.parse(conocida.raw)) : null;
+              const junto = fusionarVersiones(valorBase, JSON.parse(rawAGuardar), valorNube);
+              rawAGuardar = JSON.stringify(junto);
+              // La hora del choque es de ANTES de bajar el valor: nunca es más
+              // nueva que él, así que si alguien más guardó en medio, el
+              // siguiente intento vuelve a chocar y se vuelve a juntar.
+              baseNube.current[key] = { raw: enNube ? enNube.value : "null", hora: r.updatedAt };
+              // Se enseña ya lo junto (con el cambio del otro), salvo que
+              // detrás venga otra versión de este aparato: esa se junta sola.
+              if (!Object.prototype.hasOwnProperty.call(porSubir.current, key)) aplicarClave(key, rawAGuardar);
+              console.warn(`"${key}" cambió en otro aparato; se juntaron los cambios.`);
             } catch (e) {
-              if (intento >= 2 || Object.prototype.hasOwnProperty.call(porSubir.current, key)) throw e;
+              if (++fallos > 2 || Object.prototype.hasOwnProperty.call(porSubir.current, key)) throw e;
               console.warn(`Reintentando guardar "${key}"`, e);
-              await new Promise((r) => setTimeout(r, 1500 * (intento + 1)));
+              await new Promise((r) => setTimeout(r, 1500 * fallos));
               if (Object.prototype.hasOwnProperty.call(porSubir.current, key)) throw e;
             }
           }
+          const rawGuardado = rawAGuardar;
           guardadoEn.current[key] = Date.now();
           // Queda también en la copia del aparato con la hora exacta de esta
           // escritura: al volver a abrir no hay que bajarlo.
-          if (guardado && guardado.updatedAt) copiaLocal.guardar(key, raw, guardado.updatedAt);
+          if (guardado && guardado.updatedAt) copiaLocal.guardar(key, rawGuardado, guardado.updatedAt);
           // Se anota la hora que dejó ESTE guardado para no volver a bajarse
           // lo que uno mismo escribió. Es la que devuelve el propio guardado,
           // no una consulta aparte: si otro aparato escribió después, su hora

@@ -52,6 +52,25 @@ export const almacen = {
     return { key, value, updatedAt: data ? data.updated_at : null };
   },
 
+  // Guarda SOLO si en la nube sigue la versión `horaEsperada` (la que este
+  // aparato conoce). Si otro aparato guardó en medio, no escribe nada y
+  // devuelve { ok: false, updatedAt: <hora actual> } para que la app junte
+  // los dos cambios. Con horaEsperada null guarda sin condición.
+  // Devuelve { ok, updatedAt }.
+  async setSi(key, value, horaEsperada) {
+    if (!nubeActiva) {
+      await window.storage.set(key, value);
+      return { ok: true, updatedAt: null };
+    }
+    const { data, error } = await supabase.rpc("guardar_almacen_si", {
+      p_clave: key,
+      p_valor: JSON.parse(value),
+      p_hora: horaEsperada || null,
+    });
+    if (error) throw error;
+    return { ok: !!(data && data.ok), updatedAt: data ? data.updated_at : null };
+  },
+
   // Solo la HORA del último cambio de cada clave, sin los datos. Devuelve
   // { clave: hora }.
   //
