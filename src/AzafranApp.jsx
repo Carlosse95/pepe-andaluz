@@ -650,9 +650,9 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   });
   lineas.push("");
   const envio = envioDe(datos);
-  if (envio > 0) lineas.push(`Envío a domicilio: ${money(envio)}`);
+  if (envio > 0) lineas.push(`Costo de envío: ${money(envio)}`);
   const recoleccion = recoleccionDe(datos);
-  if (recoleccion > 0) lineas.push(`Recoger la paellera: ${money(recoleccion)}`);
+  if (recoleccion > 0) lineas.push(`Costo de recoger la paellera: ${money(recoleccion)}`);
   const iva = ivaDe(datos);
   if (iva > 0) lineas.push(`IVA (16%): ${money(iva)}`);
   const total = computeTotal(datos.items) + envio + recoleccion + iva;
@@ -2029,8 +2029,8 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
             )}
           </li>
         ))}
-        {pedido.envio > 0 && <li>Envío a domicilio — {money(pedido.envio)}</li>}
-        {recoleccionDe(pedido) > 0 && <li>Recoger la paellera — {money(recoleccionDe(pedido))}</li>}
+        {pedido.envio > 0 && <li>Costo de envío — {money(pedido.envio)}</li>}
+        {recoleccionDe(pedido) > 0 && <li>Costo de recoger la paellera — {money(recoleccionDe(pedido))}</li>}
         {pedido.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
@@ -3357,8 +3357,8 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
             {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}` : `${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
           </li>
         ))}
-        {presupuesto.envio > 0 && <li>Envío a domicilio — {money(presupuesto.envio)}</li>}
-        {recoleccionDe(presupuesto) > 0 && <li>Recoger la paellera — {money(recoleccionDe(presupuesto))}</li>}
+        {presupuesto.envio > 0 && <li>Costo de envío — {money(presupuesto.envio)}</li>}
+        {recoleccionDe(presupuesto) > 0 && <li>Costo de recoger la paellera — {money(recoleccionDe(presupuesto))}</li>}
         {presupuesto.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
@@ -10372,8 +10372,8 @@ const construirPDF = async (form, tipoDoc, config) => {
     doc.text(monto, colSub - 3, y, { align: "right" });
     y += 6;
   };
-  if (envioNum > 0) renglonTotal("Envío a domicilio", money(envioNum));
-  if (recoleccionNum > 0) renglonTotal("Recoger la paellera", money(recoleccionNum));
+  if (envioNum > 0) renglonTotal("Costo de envío", money(envioNum));
+  if (recoleccionNum > 0) renglonTotal("Costo de recoger la paellera", money(recoleccionNum));
   if (ivaNum > 0) renglonTotal("IVA (16%)", money(ivaNum));
 
   y += 2;
@@ -11004,13 +11004,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             )}
             {envioNum > 0 && (
               <div className="af-total-row af-total-row-sub">
-                <span>Envío</span>
+                <span>Costo de envío</span>
                 <span>{money(envioNum)}</span>
               </div>
             )}
             {recoleccionNum > 0 && (
               <div className="af-total-row af-total-row-sub">
-                <span>Recoger la paellera</span>
+                <span>Costo de recoger la paellera</span>
                 <span>{money(recoleccionNum)}</span>
               </div>
             )}
@@ -11052,46 +11052,43 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             <Truck size={16} className="inline mr-1" /> A domicilio
           </button>
         </div>
-        {form.entrega && (
-          <div className="mt-2">
-            <div className="af-envio-row">
-              <span className="af-mini-label" style={{ marginBottom: 0 }}>Costo de envío</span>
-              <NumberField value={parseFloat(form.envio) || 0} min={0} className="af-input af-input-small" onChange={(v) => setForm((p) => ({ ...p, envio: String(v) }))} />
-            </div>
-          </div>
-        )}
         {/* Ir por la paellera es aparte de llevar el pedido: se puede pedir
             uno, el otro o los dos. Solo aparece si alguna paella va en
             paellera; si no hay paellera no hay nada que ir a buscar. */}
         {hayPaelleraEnForm && (
-          <div className="mt-2">
-            <label className="af-check-row af-check-row-small">
-              <input
-                type="checkbox"
-                checked={!!form.recogerPaellera}
-                onChange={(e) => {
-                  const si = e.target.checked;
-                  setForm((p) => ({
-                    ...p,
-                    recogerPaellera: si,
-                    // Cuesta lo mismo que llevarla: se propone el monto del
-                    // envío (o el que ya tuviera), y se puede cambiar.
-                    costoRecoleccion: si && !(parseFloat(p.costoRecoleccion) > 0) ? String(parseFloat(p.envio) || 0) : p.costoRecoleccion,
-                  }));
-                }}
-              />
-              <span>Vamos por la paellera a su domicilio</span>
-            </label>
-            {form.recogerPaellera && (
-              <div className="af-envio-row mt-2">
-                <span className="af-mini-label" style={{ marginBottom: 0 }}>Costo de recoger la paellera</span>
-                <NumberField value={parseFloat(form.costoRecoleccion) || 0} min={0} className="af-input af-input-small" onChange={(v) => setForm((p) => ({ ...p, costoRecoleccion: String(v) }))} />
-              </div>
-            )}
-          </div>
+          <label className="af-check-row af-check-row-small mt-2">
+            <input
+              type="checkbox"
+              checked={!!form.recogerPaellera}
+              onChange={(e) => {
+                const si = e.target.checked;
+                setForm((p) => ({ ...p, recogerPaellera: si, costoRecoleccion: p.envio }));
+              }}
+            />
+            <span>Vamos por la paellera a su domicilio</span>
+          </label>
         )}
         {vamosAlDomicilio(form) && (
           <div className="mt-2">
+            {/* UN solo precio: llevar y recoger cuestan lo mismo, así que se
+                escribe una vez y vale por cada viaje. Al cliente le salen
+                como dos cobros separados ("Costo de envío" y "Costo de recoger
+                la paellera") para que sepa qué paga por cada cosa. */}
+            <div className="af-envio-row">
+              <span className="af-mini-label" style={{ marginBottom: 0 }}>
+                {form.entrega && form.recogerPaellera && hayPaelleraEnForm
+                  ? "Costo por viaje (se cobra al llevar y al recoger)"
+                  : form.entrega
+                    ? "Costo de envío"
+                    : "Costo de recoger la paellera"}
+              </span>
+              <NumberField
+                value={parseFloat(form.envio) || 0}
+                min={0}
+                className="af-input af-input-small"
+                onChange={(v) => setForm((p) => ({ ...p, envio: String(v), costoRecoleccion: String(v) }))}
+              />
+            </div>
             <div className="af-mini-label mt-2">Ubicación</div>
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
             <div className="af-mini-label mt-2">Referencias (opcional)</div>
@@ -12436,9 +12433,9 @@ export default function App() {
       entrega: pedido.entrega,
       direccion: pedido.direccion,
       ubicacion: pedido.ubicacion || "",
-      envio: String(pedido.envio || 0),
+      envio: String(pedido.envio || pedido.costoRecoleccion || 0),
       recogerPaellera: !!pedido.recogerPaellera,
-      costoRecoleccion: String(pedido.costoRecoleccion || 0),
+      costoRecoleccion: String(pedido.envio || pedido.costoRecoleccion || 0),
       iva: !!pedido.iva,
       abonos: pedido.abonos || [],
       estado: pedido.estado || "pendiente",
@@ -12467,9 +12464,9 @@ export default function App() {
       entrega: presupuesto.entrega,
       direccion: presupuesto.direccion,
       ubicacion: presupuesto.ubicacion || "",
-      envio: String(presupuesto.envio || 0),
+      envio: String(presupuesto.envio || presupuesto.costoRecoleccion || 0),
       recogerPaellera: !!presupuesto.recogerPaellera,
-      costoRecoleccion: String(presupuesto.costoRecoleccion || 0),
+      costoRecoleccion: String(presupuesto.envio || presupuesto.costoRecoleccion || 0),
       iva: !!presupuesto.iva,
       abonos: [],
       estado: "pendiente",
@@ -12873,7 +12870,7 @@ export default function App() {
       fecha: todayISO(),
       items: prev.items.map((it) => ({ ...it, id: uid(), enPaellera: false, paelleraDevuelta: false })),
       recogerPaellera: false,
-      costoRecoleccion: "0",
+      costoRecoleccion: prev.envio,
     }));
     setError("");
     showToast("Copia lista: revisa fecha y guarda");
