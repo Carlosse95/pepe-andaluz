@@ -6,6 +6,7 @@ import {
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
   PackageSearch, MessageCircle, Copy, Wallet,
   Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell, Filter,
+  ChevronUp, ChevronDown, ArrowUpDown,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
@@ -8056,6 +8057,26 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
   const [gruposMenuAbiertos, setGruposMenuAbiertos] = useState({});
   const [platilloAbierto, setPlatilloAbierto] = useState(null);
 
+  // Acomodar con flechas. El arrastre con el dedo dejó de funcionar cuando el
+  // menú pasó a renglones plegados: el renglón se abre al tocarlo, y en el
+  // iPad el desplazamiento de la página le ganaba al "dejar el dedo encima".
+  // Con flechas no hay gesto que adivinar: un toque sube, otro baja.
+  const [acomodandoGrupo, setAcomodandoGrupo] = useState(null);
+  // Sube o baja un producto un lugar DENTRO de su sección. Se intercambia con
+  // el vecino de la misma sección por su índice real en la lista, así las
+  // demás secciones (que viven en la misma lista) no se mueven.
+  const moverEnGrupo = (g, pos, dir) => {
+    const vecino = g.items[pos + dir];
+    if (!vecino) return;
+    const a = g.items[pos].i;
+    const b = vecino.i;
+    setDraft((prev) => {
+      const lista = [...(prev[g.lista] || [])];
+      [lista[a], lista[b]] = [lista[b], lista[a]];
+      return { ...prev, [g.lista]: lista };
+    });
+  };
+
   const CATS_DE_EXTRA = CATEGORIAS_ITEM.filter((c) => c.id !== "paella");
 
   // Los grupos del menú, cada uno sabiendo de qué lista sale, cómo se ordena
@@ -8071,7 +8092,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
         label: "Paellas",
         lista: "paellas",
         acomodar: acomodarPaellas,
-        hint: "Deja el dedo encima de una y arrástrala para acomodarlas a tu gusto.",
+        hint: "Toca \"Acomodar\" para cambiar el orden en que salen al hacer un pedido.",
         textoAgregar: "Añadir paella",
         nuevo: (id) => ({ id, nombre: "", precioKg: 0 }),
         items: (draft.paellas || []).map((it, i) => ({ it, i })).filter(({ it }) => pasa(it.nombre)),
@@ -8084,7 +8105,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
         acomodar: acomodarExtras,
         hint:
           c.id === "platillo"
-            ? "Deja el dedo encima un momento y arrástralo. El orden de aquí es el que verás al hacer un pedido: pon primero lo que más se vende."
+            ? "El orden de aquí es el que verás al hacer un pedido: con \"Acomodar\" pon primero lo que más se vende."
             : null,
         textoAgregar: "Añadir a " + c.label.toLowerCase(),
         nuevo: (id) => ({ id, nombre: "", unidad: "pieza", precio: 0, categoria: c.id }),
@@ -8812,9 +8833,37 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     <span className="af-mes-cuenta">{g.items.length}</span>
                   </button>
 
-                  {abierto && (
+                  {abierto && acomodandoGrupo === g.id && (
+                    <>
+                      <div className="af-hint mb-2">Usa las flechas para subir o bajar. Al terminar toca <strong>Listo</strong> y se guarda.</div>
+                      {g.items.map(({ it }, pos) => (
+                        <div key={it.id} className="af-ing-row af-menu-row af-acomodar-row">
+                          <span className="af-ing-row-nombre">{it.nombre || "Sin nombre"}</span>
+                          <button className="af-acomodar-btn" title="Subir" disabled={pos === 0} onClick={() => moverEnGrupo(g, pos, -1)}>
+                            <ChevronUp size={20} />
+                          </button>
+                          <button className="af-acomodar-btn" title="Bajar" disabled={pos === g.items.length - 1} onClick={() => moverEnGrupo(g, pos, 1)}>
+                            <ChevronDown size={20} />
+                          </button>
+                        </div>
+                      ))}
+                      <button className="af-btn-primary w-full mb-3" onClick={() => { setAcomodandoGrupo(null); guardar(); }}>
+                        <Check size={16} className="inline mr-1" /> Listo
+                      </button>
+                    </>
+                  )}
+                  {abierto && acomodandoGrupo !== g.id && (
                     <>
                       {g.hint && <div className="af-hint mb-2">{g.hint}</div>}
+                      {/* Buscando no se acomoda: la lista filtrada no es el orden real. */}
+                      {g.items.length > 1 && !normNombre(buscarMenu) && (
+                        <button
+                          className="af-btn-secondary w-full mb-2"
+                          onClick={() => { setPlatilloAbierto(null); setAcomodandoGrupo(g.id); }}
+                        >
+                          <ArrowUpDown size={15} className="inline mr-1" /> Acomodar
+                        </button>
+                      )}
                       {g.items.length === 0 && (
                         <p className="af-ink-soft text-sm mb-2">Todavía no hay nada en esta sección.</p>
                       )}
@@ -8829,11 +8878,6 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                             tabIndex={0}
                             onClick={() => setPlatilloAbierto(it.id)}
                             onKeyDown={(e) => { if (e.key === "Enter") setPlatilloAbierto(it.id); }}
-                            ref={g.acomodar ? (n) => g.acomodar.registrar(i, n) : undefined}
-                            onPointerDown={g.acomodar ? g.acomodar.alBajar(i) : undefined}
-                            onPointerMove={g.acomodar ? g.acomodar.alMover : undefined}
-                            onPointerUp={g.acomodar ? g.acomodar.alSoltar : undefined}
-                            onPointerCancel={g.acomodar ? g.acomodar.alSoltar : undefined}
                           >
                             <span className="af-ing-row-nombre">{it.nombre || "Sin nombre"}</span>
                             <span className="af-ing-row-meta">{g.metaDe(it)}</span>
@@ -13793,6 +13837,13 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 .af-total-row { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; }
 .af-total-row-sub { padding-top: 8px; font-size: 13.5px; color: var(--ink-soft); }
+.af-acomodar-row { cursor: default; gap: 6px; }
+.af-acomodar-btn {
+  width: 44px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.af-acomodar-btn:active { background: var(--wine-soft); }
+.af-acomodar-btn:disabled { opacity: 0.3; cursor: default; }
 .af-envio-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
 .af-total-big { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px; color: var(--wine); }
 
