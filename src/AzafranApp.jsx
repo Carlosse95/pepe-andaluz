@@ -23,6 +23,9 @@ import {
 // lista que se revisa cada pocos segundos para ver cuál cambió. No están todas
 // las de la tabla a propósito: `respaldo-config-antes-de-restaurar` es una
 // copia de seguridad que nadie lee en caliente.
+// Listas donde nada puede desaparecer si no se eliminó a propósito.
+const LISTAS_PROTEGIDAS = ["pedidos", "clientes", "presupuestos", "gastos"];
+
 const CLAVES_NUBE = [
   "pedidos", "clientes", "config-productos",
   "historico-mensual", "presupuestos", "avatares", "gastos",
@@ -551,7 +554,11 @@ const canonico = (v) => JSON.stringify(v, (_, x) =>
     : x
 );
 const igual = (a, b) => canonico(a) === canonico(b);
-const fusionarVersiones = (base, local, nube) => {
+// `borradosAProposito` (opcional, para las listas principales): los ids que
+// alguien ELIMINÓ con el botón en este aparato. Con él, solo se borra eso; lo
+// que nada más "falta" en la lista de aquí se conserva. Sin él (dentro de la
+// configuración), lo que falta respecto a la base se toma como borrado.
+const fusionarVersiones = (base, local, nube, borradosAProposito) => {
   if (igual(local, base)) return nube; // este aparato no cambió nada aquí
   if (nube === undefined || igual(nube, base)) return local; // el otro no cambió nada aquí
   if (conId(local) && conId(nube) && (base == null || conId(base))) {
@@ -559,7 +566,9 @@ const fusionarVersiones = (base, local, nube) => {
     const enLocal = new Map(local.map((x) => [x.id, x]));
     const enNube = new Set(nube.map((x) => x.id));
     const cambiados = new Set(local.filter((x) => !enBase.has(x.id) || !igual(x, enBase.get(x.id))).map((x) => x.id));
-    const borrados = new Set([...enBase.keys()].filter((id) => !enLocal.has(id)));
+    const borrados = borradosAProposito
+      ? new Set([...borradosAProposito].filter((id) => !enLocal.has(id)))
+      : new Set([...enBase.keys()].filter((id) => !enLocal.has(id)));
     const resultado = nube
       .filter((x) => !borrados.has(x.id))
       .map((x) => (cambiados.has(x.id) ? enLocal.get(x.id) : x));
@@ -5603,7 +5612,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     }
     guardarGastoNuevo(g);
   };
-  const eliminarGasto = (id) => onGuardarGastos(gastos.filter((g) => g.id !== id));
+  const eliminarGasto = (id) => onGuardarGastos(gastos.filter((g) => g.id !== id), [id]);
 
   // Ya se facturó: sale de la lista de pendientes. La foto del ticket SE
   // QUEDA — antes se borraba para no pagar por guardarla, pero es el único
@@ -11598,7 +11607,8 @@ export default function App() {
         // los datos de Ajustes → Datos. No se pisa nada personalizado a mano.
         if (MENSAJES_RECOGER_ANTERIORES.includes(mensajesFusionados.avisadoRecoger)) {
           mensajesFusionados.avisadoRecoger = MENSAJES_DEFAULT.avisadoRecoger;
-          almacen.set("config-productos", JSON.stringify({ ...valor, mensajes: mensajesFusionados })).catch(() => {});
+          // No se escribe aquí directo (sería un guardado sin protección):
+          // queda en pantalla y se sube con el siguiente guardado del menú.
         }
         setConfig({
           ...DEFAULT_CONFIG,
@@ -11701,7 +11711,9 @@ export default function App() {
             aplicar("config-productos", rcfg.value.value);
             configCargada.current = true;
           } else {
-            almacen.set("config-productos", JSON.stringify(DEFAULT_CONFIG)).catch(() => {});
+            // Solo si de verdad no existe: con una hora imposible, la base
+            // inserta si no hay nada y, si ya hay un menú, no lo toca.
+            almacen.setSi("config-productos", JSON.stringify(DEFAULT_CONFIG), "1970-01-01T00:00:00Z").catch(() => {});
             configCargada.current = true;
           }
         } else {
@@ -11752,43 +11764,64 @@ export default function App() {
 
       try {
         // Se relee lo que hay en la nube AHORA (no lo que tenga esta pantalla
-        // en memoria, que puede estar viejo) para no borrar nada de nadie.
-        const [rp, rc] = await Promise.all([almacen.get("pedidos"), almacen.get("clientes")]);
-        const pedidosNube = JSON.parse(rp.value) || [];
-        const clientesNube = JSON.parse(rc.value) || [];
-
-        const pedidosNuevos = [];
-        const clientesNuevos = [];
-        for (const fila of reclamados) {
-          const pedido = fila.pedido;
-          if (!pedido || pedidosNube.some((p) => p.id === pedido.id)) continue;
-          // Si ya existe un cliente con ese teléfono se reutiliza; si no, se da de alta.
-          const tel = telWhatsApp(pedido.clienteTelefono);
-          let cliente = tel
-            ? [...clientesNuevos, ...clientesNube].find((c) => telWhatsApp(c.telefono).slice(-10) === tel.slice(-10))
-            : null;
-          if (!cliente && fila.cliente) {
-            cliente = fila.cliente;
-            clientesNuevos.push(cliente);
+        // en memoria, que puede estar viejo) y se guarda CON CONDICIÓN: si
+        // otro aparato guardó entre leer y escribir (bajar 4 MB tarda), se
+        // vuelve a leer y a intentar, en vez de pisar lo suyo.
+        const agregarProtegido = async (clave, armar) => {
+          for (let intento = 0; intento < 5; intento++) {
+            const horas = await almacen.horas();
+            const hora = horas && horas[clave];
+            const r = await almacen.get(clave);
+            const enNube = r ? JSON.parse(r.value) || [] : [];
+            const lista = armar(enNube);
+            if (!lista) return { enNube, lista: null };
+            const g = await almacen.setSi(clave, JSON.stringify(lista), hora || null);
+            if (g.ok) {
+              // Se enseña solo si este aparato no tiene guardados propios en
+              // camino; si los tiene, la revisión de cada 3 s lo trae.
+              if (!escriturasEnVuelo.current[clave]) {
+                aplicarClave(clave, JSON.stringify(lista));
+                baseNube.current[clave] = { raw: JSON.stringify(lista), hora: g.updatedAt };
+                if (horasVistas.current) horasVistas.current = { ...horasVistas.current, [clave]: g.updatedAt };
+              }
+              return { enNube, lista };
+            }
           }
-          pedidosNuevos.push(cliente ? { ...pedido, clienteId: cliente.id } : pedido);
-        }
+          throw new Error(`No se pudo agregar a "${clave}": cambió muchas veces seguidas.`);
+        };
 
-        if (clientesNuevos.length) {
-          const lista = [...clientesNuevos, ...clientesNube];
-          const g = await almacen.set("clientes", JSON.stringify(lista));
-          aplicarClave("clientes", JSON.stringify(lista));
-          if (g && g.updatedAt) baseNube.current.clientes = { raw: JSON.stringify(lista), hora: g.updatedAt };
-        }
-        if (pedidosNuevos.length) {
-          const lista = [...pedidosNuevos, ...pedidosNube];
-          const g = await almacen.set("pedidos", JSON.stringify(lista));
-          aplicarClave("pedidos", JSON.stringify(lista));
-          if (g && g.updatedAt) baseNube.current.pedidos = { raw: JSON.stringify(lista), hora: g.updatedAt };
+        // Primero los clientes (los pedidos apuntan a ellos).
+        const idCliente = {}; // id del pedido -> id del cliente
+        await agregarProtegido("clientes", (clientesNube) => {
+          const nuevos = [];
+          for (const fila of reclamados) {
+            const pedido = fila.pedido;
+            if (!pedido) continue;
+            const tel = telWhatsApp(pedido.clienteTelefono);
+            let cliente = tel
+              ? [...nuevos, ...clientesNube].find((c) => telWhatsApp(c.telefono).slice(-10) === tel.slice(-10))
+              : null;
+            if (!cliente && fila.cliente) {
+              cliente = fila.cliente;
+              nuevos.push(cliente);
+            }
+            if (cliente) idCliente[pedido.id] = cliente.id;
+          }
+          return nuevos.length ? [...nuevos, ...clientesNube] : null;
+        });
+
+        let cuantos = 0;
+        await agregarProtegido("pedidos", (pedidosNube) => {
+          const nuevos = reclamados
+            .map((f) => f.pedido)
+            .filter((pedido) => pedido && !pedidosNube.some((p) => p.id === pedido.id))
+            .map((pedido) => (idCliente[pedido.id] ? { ...pedido, clienteId: idCliente[pedido.id] } : pedido));
+          cuantos = nuevos.length;
+          return nuevos.length ? [...nuevos, ...pedidosNube] : null;
+        });
+        if (cuantos) {
           showToast(
-            pedidosNuevos.length === 1
-              ? "Llegó un pedido nuevo por WhatsApp"
-              : `Llegaron ${pedidosNuevos.length} pedidos por WhatsApp`,
+            cuantos === 1 ? "Llegó un pedido nuevo por WhatsApp" : `Llegaron ${cuantos} pedidos por WhatsApp`,
             "ok"
           );
         }
@@ -11979,6 +12012,19 @@ export default function App() {
   // dos cambios con `fusionarVersiones` (ver `persist`).
   const baseNube = useRef({}); // clave -> { raw, hora }
 
+  // Lo que se ELIMINÓ a propósito (con el botón) en este aparato y todavía no
+  // se guarda. En las listas principales es lo ÚNICO que puede desaparecer:
+  // si a la lista de aquí le falta algo más (porque llegó de otro aparato en
+  // el mismo instante, o por cualquier tropiezo), se conserva. Un pedido que
+  // desaparece sin que nadie lo borrara es un cliente que llega y no hay nada
+  // hecho; ya pasó dos veces.
+  const borradosAProposito = useRef({}); // clave -> Set(ids)
+  const marcarBorrados = (clave, ids) => {
+    const set = borradosAProposito.current[clave] || new Set();
+    ids.forEach((id) => id != null && set.add(id));
+    borradosAProposito.current[clave] = set;
+  };
+
   // ¿Sirve lo que acaba de llegar de la nube para esta clave?
   const lecturaVigente = (clave, emitidaEn) =>
     !escriturasEnVuelo.current[clave] && emitidaEn > (guardadoEn.current[clave] || 0);
@@ -12030,13 +12076,46 @@ export default function App() {
           let fallos = 0;
           let choques = 0;
           let rawAGuardar = raw;
+          const esLista = LISTAS_PROTEGIDAS.includes(key);
+          const borrados = esLista ? borradosAProposito.current[key] || new Set() : undefined;
+          // Red de seguridad: en las listas principales, lo que estaba en la
+          // nube y aquí "falta" sin que nadie lo eliminara se vuelve a poner
+          // antes de subir. Nunca se sube una lista con huecos.
+          if (esLista && baseNube.current[key]) {
+            const enBase = normalizarComoPantalla(key, JSON.parse(baseNube.current[key].raw) || []);
+            const local = JSON.parse(rawAGuardar) || [];
+            const ids = new Set(local.map((x) => x.id));
+            const faltan = (enBase || []).filter((x) => !ids.has(x.id) && !borrados.has(x.id));
+            if (faltan.length) {
+              console.warn(`"${key}": ${faltan.length} sin borrar a propósito; se conservan.`);
+              rawAGuardar = JSON.stringify([...local, ...faltan]);
+              if (!Object.prototype.hasOwnProperty.call(porSubir.current, key)) aplicarClave(key, rawAGuardar);
+            }
+          }
           for (;;) {
             try {
-              const conocida = baseNube.current[key];
+              let conocida = baseNube.current[key];
+              // Sin versión conocida (no se pudo leer la hora al abrir), NO se
+              // guarda a ciegas: primero se mira qué hay y se junta.
+              if (!conocida && nubeActiva) {
+                const horas = await almacen.horas();
+                const hora = horas && horas[key];
+                if (hora) {
+                  const enNube = await almacen.get(key);
+                  const junto = fusionarVersiones(null, JSON.parse(rawAGuardar), enNube ? JSON.parse(enNube.value) : undefined, borrados);
+                  rawAGuardar = JSON.stringify(junto);
+                  conocida = { raw: enNube ? enNube.value : "null", hora };
+                  baseNube.current[key] = conocida;
+                }
+              }
               const r = await almacen.setSi(key, rawAGuardar, conocida ? conocida.hora : null);
               if (r.ok) {
                 guardado = { updatedAt: r.updatedAt };
                 baseNube.current[key] = { raw: rawAGuardar, hora: r.updatedAt };
+                if (borrados && borrados.size) {
+                  const quedan = new Set((JSON.parse(rawAGuardar) || []).map((x) => x.id));
+                  [...borrados].forEach((id) => { if (!quedan.has(id)) borrados.delete(id); });
+                }
                 break;
               }
               // Choque: alguien más guardó. Se baja lo de la nube y se junta.
@@ -12046,7 +12125,7 @@ export default function App() {
               // La base pasa por el mismo acomodo que lo de pantalla, para
               // que solo cuente como "cambiado" lo que de verdad se editó.
               const valorBase = conocida ? normalizarComoPantalla(key, JSON.parse(conocida.raw)) : null;
-              const junto = fusionarVersiones(valorBase, JSON.parse(rawAGuardar), valorNube);
+              const junto = fusionarVersiones(valorBase, JSON.parse(rawAGuardar), valorNube, borrados);
               rawAGuardar = JSON.stringify(junto);
               // La hora del choque es de ANTES de bajar el valor: nunca es más
               // nueva que él, así que si alguien más guardó en medio, el
@@ -12121,7 +12200,8 @@ export default function App() {
   // respaldo). Se parte SIEMPRE de la config de este momento para no pisar
   // nada de lo demás que viva ahí.
   const guardarDeudas = (lista) => guardarConfig({ ...config, deudas: lista });
-  const guardarGastos = (lista) => { setGastos(lista); persist("gastos", lista); };
+  // `borrar`: ids que se eliminaron a propósito con esta llamada.
+  const guardarGastos = (lista, borrar) => { if (borrar) marcarBorrados("gastos", borrar); setGastos(lista); persist("gastos", lista); };
 
   // Foto y nombre personalizado: se guardan por usuario (clave = su correo)
   // para que cada quien edite solo lo suyo, aunque compartan el mismo
@@ -12207,6 +12287,7 @@ export default function App() {
   // pedidos, que es justo lo que asustaría de un botón así.
   const eliminarCliente = (id) => {
     const c = clientes.find((x) => x.id === id);
+    marcarBorrados("clientes", [id]);
     guardarClientes(clientes.filter((x) => x.id !== id));
     showToast(`${c ? c.nombre : "Cliente"} se quitó de la lista`);
   };
@@ -12827,6 +12908,7 @@ export default function App() {
       const extrasCat = ajustarHechas(config.extras || [], calcularConsumoHechas(pedido.items, config.extras || []), "restaurar");
       guardarConfig({ ...config, desechables, ingredientes, extras: extrasCat });
     }
+    marcarBorrados("pedidos", [form.pedidoId]);
     guardarPedidos(pedidos.filter((p) => p.id !== form.pedidoId));
     olvidarBorrador();
     setView(formOrigen);
@@ -12883,6 +12965,7 @@ export default function App() {
   };
 
   const eliminarPresupuesto = () => {
+    marcarBorrados("presupuestos", [form.pedidoId]);
     guardarPresupuestos(presupuestos.filter((p) => p.id !== form.pedidoId));
     olvidarBorrador();
     setView(formOrigen);
@@ -12988,6 +13071,16 @@ export default function App() {
     const historicoImp = data.historico || {};
     const presupuestosImp = asignarFolios(data.presupuestos || []);
     const gastosImp = data.gastos || [];
+    // Restaurar es reemplazar: lo que no viene en el respaldo se quita a
+    // propósito (si no, la red de seguridad lo volvería a poner).
+    const quitar = (clave, actual, nueva) => {
+      const quedan = new Set(nueva.map((x) => x.id));
+      marcarBorrados(clave, (actual || []).filter((x) => !quedan.has(x.id)).map((x) => x.id));
+    };
+    quitar("pedidos", pedidos, pedidosImp);
+    quitar("clientes", clientes, clientesImp);
+    quitar("presupuestos", presupuestos, presupuestosImp);
+    quitar("gastos", gastos, gastosImp);
     guardarPedidos(pedidosImp);
     guardarClientes(clientesImp);
     guardarConfig(configImp);
