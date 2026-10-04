@@ -502,10 +502,25 @@ const computeTotal = (items) => items.reduce((acc, it) => acc + it.subtotal, 0);
 // Costo de envío: solo aplica cuando el pedido es a domicilio.
 const envioDe = (obj) => (obj.entrega ? parseFloat(obj.envio) || 0 : 0);
 
+// ¿Alguna paella del pedido va en paellera (que hay que recuperar después)?
+const llevaPaellera = (obj) => (obj.items || []).some((it) => it.tipo === "paella" && it.enPaellera);
+
+// Ir a recoger la paellera a casa del cliente. Es un servicio APARTE de la
+// entrega: hay quien pide que se la llevemos y él mismo la regresa para
+// ahorrarse este cobro, y hay quien la recoge en el local pero prefiere que
+// pasemos por la paellera. Cuesta lo mismo que un envío (se llena con ese
+// monto) pero se cobra por separado. Solo cuenta si de verdad hay paellera:
+// si se le quita la paellera a la paella, el cobro desaparece solo.
+const recoleccionDe = (obj) =>
+  obj.recogerPaellera && llevaPaellera(obj) ? parseFloat(obj.costoRecoleccion) || 0 : 0;
+
+// Hace falta saber a dónde ir si se entrega O si se pasa por la paellera.
+const vamosAlDomicilio = (obj) => !!obj.entrega || (!!obj.recogerPaellera && llevaPaellera(obj));
+
 // IVA opcional (solo cuando el cliente lo pide, p. ej. facturación de eventos).
 const IVA_TASA = 0.16;
-const ivaDe = (obj) => (obj.iva ? (computeTotal(obj.items) + envioDe(obj)) * IVA_TASA : 0);
-const totalDe = (obj) => computeTotal(obj.items) + envioDe(obj) + ivaDe(obj);
+const ivaDe = (obj) => (obj.iva ? (computeTotal(obj.items) + envioDe(obj) + recoleccionDe(obj)) * IVA_TASA : 0);
+const totalDe = (obj) => computeTotal(obj.items) + envioDe(obj) + recoleccionDe(obj) + ivaDe(obj);
 
 // Cómo se llama el producto CUANDO LO LEE EL CLIENTE.
 //
@@ -618,6 +633,9 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   lineas.push("");
   lineas.push(`📅 ${fmtDateHuman(datos.fecha)} · ${fmtHora12(datos.hora)}`);
   lineas.push(datos.entrega ? "🚚 Entrega a domicilio" : "🏠 Para recoger en el local");
+  if (recoleccionDe(datos) > 0 || (datos.recogerPaellera && llevaPaellera(datos))) {
+    lineas.push("🥘 Pasamos por la paellera a su domicilio");
+  }
   lineas.push("");
   datos.items.forEach((it) => {
     if (it.tipo === "paella") {
@@ -632,9 +650,11 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   lineas.push("");
   const envio = envioDe(datos);
   if (envio > 0) lineas.push(`Envío a domicilio: ${money(envio)}`);
+  const recoleccion = recoleccionDe(datos);
+  if (recoleccion > 0) lineas.push(`Recoger la paellera: ${money(recoleccion)}`);
   const iva = ivaDe(datos);
   if (iva > 0) lineas.push(`IVA (16%): ${money(iva)}`);
-  const total = computeTotal(datos.items) + envio + iva;
+  const total = computeTotal(datos.items) + envio + recoleccion + iva;
   lineas.push(`Total: ${money(total)}`);
   if (esPedido) {
     const pagado = sumaAbonos(datos.abonos);
@@ -1107,6 +1127,8 @@ const emptyForm = () => ({
   direccion: "",
   ubicacion: "",
   envio: "0",
+  recogerPaellera: false,
+  costoRecoleccion: "0",
   iva: false,
   abonos: [],
   estado: "pendiente",
@@ -1969,6 +1991,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
         {hayPaellera && (
           <span className={"af-chip " + (todasDevueltas ? "af-chip-olive" : "af-chip-gold")}>
             <ChefHat size={12} /> {todasDevueltas ? "Paellera devuelta" : itemsPaellera.length > 1 ? `${itemsPaellera.length} paelleras` : "Paellera"}
+            {!todasDevueltas && pedido.recogerPaellera ? " · vamos por ella" : ""}
           </span>
         )}
         {/* "Ya llegué", para tocarlo desde la calle. Va pegado al chip del
@@ -2006,6 +2029,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
           </li>
         ))}
         {pedido.envio > 0 && <li>Envío a domicilio — {money(pedido.envio)}</li>}
+        {recoleccionDe(pedido) > 0 && <li>Recoger la paellera — {money(recoleccionDe(pedido))}</li>}
         {pedido.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
@@ -2563,6 +2587,20 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
       <div>
         <div className="af-cliente-nombre">{item.clienteNombre} <span className="af-ink-soft text-sm">· {item.paellaNombre}</span></div>
         <div className="af-fecha-sub">{fmtDateHuman(item.fecha)} · {item.hora}</div>
+        {item.vamosPorElla && (() => {
+          const destino = item.ubicacion
+            ? enlaceDeUbicacion(item.ubicacion)
+            : (item.direccion || "").trim()
+              ? `https://maps.google.com/?q=${encodeURIComponent(item.direccion.trim())}`
+              : null;
+          return destino ? (
+            <a href={destino} target="_blank" rel="noopener noreferrer" className="af-chip af-chip-domicilio mt-1" onClick={(e) => e.stopPropagation()}>
+              <MapPin size={12} /> Vamos por ella · Ver mapa
+            </a>
+          ) : (
+            <span className="af-chip af-chip-domicilio mt-1"><Truck size={12} /> Vamos por ella</span>
+          );
+        })()}
       </div>
       <button className="af-btn-chip" onClick={() => setConfirmando(true)}>
         <Check size={14} /> Devuelta
@@ -2792,7 +2830,13 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
     if ((p.estado || "pendiente") !== "entregado") return;
     p.items.forEach((it) => {
       if (it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta) {
-        pendientesPaellera.push({ pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre });
+        pendientesPaellera.push({
+          pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre,
+          // Si se cobró ir por ella, aquí se ve y con la liga al mapa: es la
+          // lista que se revisa para salir a recogerlas.
+          vamosPorElla: !!p.recogerPaellera,
+          ubicacion: p.ubicacion || "", direccion: p.direccion || "",
+        });
       }
     });
   });
@@ -3313,6 +3357,7 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
           </li>
         ))}
         {presupuesto.envio > 0 && <li>Envío a domicilio — {money(presupuesto.envio)}</li>}
+        {recoleccionDe(presupuesto) > 0 && <li>Recoger la paellera — {money(recoleccionDe(presupuesto))}</li>}
         {presupuesto.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
@@ -10068,8 +10113,9 @@ const construirPDF = async (form, tipoDoc, config) => {
   // Las cuentas se sacan aquí y no se reciben de fuera: así el documento
   // siempre cuadra con lo que trae el pedido, lo genere quien lo genere.
   const envioNum = envioDe(form);
+  const recoleccionNum = recoleccionDe(form);
   const ivaNum = ivaDe(form);
-  const total = computeTotal(form.items) + envioNum + ivaNum;
+  const total = computeTotal(form.items) + envioNum + recoleccionNum + ivaNum;
 
   // Los mismos colores de la app, para que el papel y la pantalla se vean
   // del mismo negocio. Antes el PDF seguía con la paleta vieja (café y
@@ -10179,7 +10225,11 @@ const construirPDF = async (form, tipoDoc, config) => {
     y
   );
   y += 5;
-  if (form.entrega && form.direccion) {
+  if (recoleccionNum > 0 || (form.recogerPaellera && llevaPaellera(form))) {
+    doc.text("Pasamos por la paellera", pageWidth / 2 + 4, y);
+    y += 5;
+  }
+  if (vamosAlDomicilio(form) && form.direccion) {
     const lineasDir = doc.splitTextToSize(form.direccion, anchoColumna).slice(0, 3);
     doc.text(lineasDir, pageWidth / 2 + 4, y);
     y += lineasDir.length * 4.5;
@@ -10279,6 +10329,7 @@ const construirPDF = async (form, tipoDoc, config) => {
     y += 6;
   };
   if (envioNum > 0) renglonTotal("Envío a domicilio", money(envioNum));
+  if (recoleccionNum > 0) renglonTotal("Recoger la paellera", money(recoleccionNum));
   if (ivaNum > 0) renglonTotal("IVA (16%)", money(ivaNum));
 
   y += 2;
@@ -10446,8 +10497,10 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
   const totalItems = computeTotal(form.items);
   const envioNum = envioDe(form);
+  const recoleccionNum = recoleccionDe(form);
+  const hayPaelleraEnForm = llevaPaellera(form);
   const ivaNum = ivaDe(form);
-  const total = totalItems + envioNum + ivaNum;
+  const total = totalItems + envioNum + recoleccionNum + ivaNum;
   const pagadoNum = sumaAbonos(form.abonos);
   const saldo = Math.max(Math.round((total - pagadoNum) * 100) / 100, 0);
   // Si pagaron más de lo que costaba el pedido, la diferencia se toma como propina.
@@ -10853,9 +10906,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><Plus size={12} /></button>
                     </div>
                   ))}
-                  {it.tipo === "paella" && modo === "pedido" && (
+                  {/* También en presupuestos: el cliente decide desde ahí si la
+                      quiere en paellera y si vamos por ella, y eso cambia el total. */}
+                  {it.tipo === "paella" && (
                     <label className="af-check-row af-check-row-small">
-                      <input type="checkbox" checked={it.enPaellera} onChange={(e) => updateEnPaellera(it.id, e.target.checked)} />
+                      <input type="checkbox" checked={!!it.enPaellera} onChange={(e) => updateEnPaellera(it.id, e.target.checked)} />
                       <span><ChefHat size={13} className="inline mr-1" /> Va en paellera</span>
                     </label>
                   )}
@@ -10897,7 +10952,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </button>
         {form.items.length > 0 && (
           <>
-            {(envioNum > 0 || ivaNum > 0) && (
+            {(envioNum > 0 || recoleccionNum > 0 || ivaNum > 0) && (
               <div className="af-total-row af-total-row-sub">
                 <span>Platillos</span>
                 <span>{money(totalItems)}</span>
@@ -10907,6 +10962,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <div className="af-total-row af-total-row-sub">
                 <span>Envío</span>
                 <span>{money(envioNum)}</span>
+              </div>
+            )}
+            {recoleccionNum > 0 && (
+              <div className="af-total-row af-total-row-sub">
+                <span>Recoger la paellera</span>
+                <span>{money(recoleccionNum)}</span>
               </div>
             )}
             {ivaNum > 0 && (
@@ -10953,6 +11014,40 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <span className="af-mini-label" style={{ marginBottom: 0 }}>Costo de envío</span>
               <NumberField value={parseFloat(form.envio) || 0} min={0} className="af-input af-input-small" onChange={(v) => setForm((p) => ({ ...p, envio: String(v) }))} />
             </div>
+          </div>
+        )}
+        {/* Ir por la paellera es aparte de llevar el pedido: se puede pedir
+            uno, el otro o los dos. Solo aparece si alguna paella va en
+            paellera; si no hay paellera no hay nada que ir a buscar. */}
+        {hayPaelleraEnForm && (
+          <div className="mt-2">
+            <label className="af-check-row af-check-row-small">
+              <input
+                type="checkbox"
+                checked={!!form.recogerPaellera}
+                onChange={(e) => {
+                  const si = e.target.checked;
+                  setForm((p) => ({
+                    ...p,
+                    recogerPaellera: si,
+                    // Cuesta lo mismo que llevarla: se propone el monto del
+                    // envío (o el que ya tuviera), y se puede cambiar.
+                    costoRecoleccion: si && !(parseFloat(p.costoRecoleccion) > 0) ? String(parseFloat(p.envio) || 0) : p.costoRecoleccion,
+                  }));
+                }}
+              />
+              <span>Vamos por la paellera a su domicilio</span>
+            </label>
+            {form.recogerPaellera && (
+              <div className="af-envio-row mt-2">
+                <span className="af-mini-label" style={{ marginBottom: 0 }}>Costo de recoger la paellera</span>
+                <NumberField value={parseFloat(form.costoRecoleccion) || 0} min={0} className="af-input af-input-small" onChange={(v) => setForm((p) => ({ ...p, costoRecoleccion: String(v) }))} />
+              </div>
+            )}
+          </div>
+        )}
+        {vamosAlDomicilio(form) && (
+          <div className="mt-2">
             <div className="af-mini-label mt-2">Ubicación</div>
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
             <div className="af-mini-label mt-2">Referencias (opcional)</div>
@@ -12298,6 +12393,8 @@ export default function App() {
       direccion: pedido.direccion,
       ubicacion: pedido.ubicacion || "",
       envio: String(pedido.envio || 0),
+      recogerPaellera: !!pedido.recogerPaellera,
+      costoRecoleccion: String(pedido.costoRecoleccion || 0),
       iva: !!pedido.iva,
       abonos: pedido.abonos || [],
       estado: pedido.estado || "pendiente",
@@ -12327,6 +12424,8 @@ export default function App() {
       direccion: presupuesto.direccion,
       ubicacion: presupuesto.ubicacion || "",
       envio: String(presupuesto.envio || 0),
+      recogerPaellera: !!presupuesto.recogerPaellera,
+      costoRecoleccion: String(presupuesto.costoRecoleccion || 0),
       iva: !!presupuesto.iva,
       abonos: [],
       estado: "pendiente",
@@ -12416,9 +12515,11 @@ export default function App() {
       fecha: form.fecha,
       hora: form.hora,
       entrega: form.entrega,
-      direccion: form.entrega ? form.direccion.trim() : "",
-      ubicacion: form.entrega ? form.ubicacion.trim() : "",
+      direccion: vamosAlDomicilio(form) ? form.direccion.trim() : "",
+      ubicacion: vamosAlDomicilio(form) ? form.ubicacion.trim() : "",
       envio: envioDe(form),
+      recogerPaellera: !!form.recogerPaellera && llevaPaellera(form),
+      costoRecoleccion: recoleccionDe(form),
       iva: !!form.iva,
       abonos,
       pagado,
@@ -12566,9 +12667,11 @@ export default function App() {
       fecha: form.fecha,
       hora: form.hora,
       entrega: form.entrega,
-      direccion: form.entrega ? form.direccion.trim() : "",
-      ubicacion: form.entrega ? form.ubicacion.trim() : "",
+      direccion: vamosAlDomicilio(form) ? form.direccion.trim() : "",
+      ubicacion: vamosAlDomicilio(form) ? form.ubicacion.trim() : "",
       envio: envioDe(form),
+      recogerPaellera: !!form.recogerPaellera && llevaPaellera(form),
+      costoRecoleccion: recoleccionDe(form),
       iva: !!form.iva,
       notas: form.notas,
       terminos: form.terminos,
@@ -12621,9 +12724,11 @@ export default function App() {
       fecha: form.fecha,
       hora: form.hora,
       entrega: form.entrega,
-      direccion: form.entrega ? form.direccion.trim() : "",
-      ubicacion: form.entrega ? form.ubicacion.trim() : "",
+      direccion: vamosAlDomicilio(form) ? form.direccion.trim() : "",
+      ubicacion: vamosAlDomicilio(form) ? form.ubicacion.trim() : "",
       envio: envioDe(form),
+      recogerPaellera: !!form.recogerPaellera && llevaPaellera(form),
+      costoRecoleccion: recoleccionDe(form),
       iva: !!form.iva,
       abonos: [],
       pagado: 0,
@@ -12669,6 +12774,8 @@ export default function App() {
       direccion: pr.direccion || "",
       ubicacion: pr.ubicacion || "",
       envio: pr.envio || 0,
+      recogerPaellera: !!pr.recogerPaellera,
+      costoRecoleccion: pr.costoRecoleccion || 0,
       iva: !!pr.iva,
       abonos: [],
       pagado: 0,
@@ -12721,6 +12828,8 @@ export default function App() {
       presupuestoPedidoId: null,
       fecha: todayISO(),
       items: prev.items.map((it) => ({ ...it, id: uid(), enPaellera: false, paelleraDevuelta: false })),
+      recogerPaellera: false,
+      costoRecoleccion: "0",
     }));
     setError("");
     showToast("Copia lista: revisa fecha y guarda");
