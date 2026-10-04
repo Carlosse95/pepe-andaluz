@@ -53,6 +53,22 @@ proceso externo (bot, script) debe escribir `almacen.pedidos` o
 su propia tabla-buzón (ej. `pedidos_whatsapp`) y que la app la reclame
 releyendo primero de la nube.
 
+**3b. Guardado protegido (desde el 4 oct 2026).** Se perdieron dos pedidos
+porque un aparato con la lista vieja (el iPad recién despertado) guardó
+encima. Ahora:
+- La app guarda con la RPC `guardar_almacen_si(clave, valor, hora)`: solo
+  escribe si la nube sigue en la versión que ese aparato conoce. Si no,
+  baja lo nuevo, junta con `fusionarVersiones` (por `id`) y reintenta.
+  **Nunca volver a escribir `almacen` con un upsert a ciegas** desde la app.
+- En `pedidos`, `clientes`, `presupuestos` y `gastos` (`LISTAS_PROTEGIDAS`)
+  solo desaparece lo marcado con `marcarBorrados` (botón eliminar, o
+  restaurar respaldo). Todo borrado nuevo debe llamar a `marcarBorrados`, o
+  la red de seguridad lo volverá a poner.
+- Red de seguridad en la base: el disparador `almacen_copiar_eliminados`
+  copia a `almacen_eliminados` todo lo que desaparece de esas listas, con
+  fecha. Para recuperar un pedido borrado: buscarlo ahí por `item_id` o
+  `item->>'clienteNombre'` y volver a meter `item` a la lista.
+
 **4. Las fotos van en Supabase Storage, nunca en `almacen`.** Bucket privado
 `tickets`. En el registro solo se guarda la ruta. Meter imágenes en `almacen`
 lo volvería pesadísimo, por la razón del punto 3.
