@@ -78,10 +78,10 @@ ese celular dejó de recibir cambios). Ahora:
 - Cada cambio se apunta en IndexedDB (`pendientesLocales`) ANTES de subirlo,
   con la versión de la nube de la que salió, y se borra solo cuando la nube
   confirma. Al abrir la app, `recuperarPendientes` sube lo que quedó.
-- `correrSubida`: si falla, el cambio NO se tira; reintenta cada 15 s, al
+- `correrSubida`: si falla, el cambio NO se tira; reintenta cada 5 s, al
   volver a la app, al regresar internet y con un vigilante cada 30 s; una
   subida de más de 2 min se da por muerta.
-- `LetreroNube`: solo sale (rojo, con X que lo oculta 5 min) si una subida falló o nada se confirmó en 90 s; el reloj se reinicia con cada confirmación.
+- `LetreroNube`: solo sale (rojo, con X que lo oculta 5 min) si lleva >1 min fallando seguido o 2 min sin confirmar nada. En segundo plano (ir a WhatsApp) un corte no cuenta como falla; al volver se espera 1.5 s y se sube. Reintento cada 5 s.
 - Mientras una clave tiene algo sin subir, no se le aplica lo de la nube
   (se junta al subir). Al juntar, un pedido cambiado en dos aparatos se junta
   campo por campo (y los pagos por id); `recalcularPagado` cuadra el saldo.

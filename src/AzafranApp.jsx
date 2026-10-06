@@ -2429,10 +2429,14 @@ function LetreroNube({ pendientes, onReintentar }) {
     return () => clearInterval(t);
   }, [claves.length]);
   if (!claves.length) return null;
-  // Solo se avisa si de verdad hay un problema: una subida que falló, o
-  // nada confirmado en 90 s. Subir pedidos tarda unos segundos y eso no se
+  // Solo se avisa si de verdad hay un problema. Subir pedidos tarda unos
+  // segundos y un corte al ir a WhatsApp se arregla solo; nada de eso se
   // avisa (antes salía un letrero que asustaba sin que fallara nada).
-  const problema = claves.some((k) => pendientes[k].fallo || ahora - pendientes[k].desde > 90000);
+  // Un tropiezo de red se arregla solo con los reintentos: solo se avisa si
+  // lleva más de 1 min fallando seguido, o 2 min sin que nada se confirme.
+  const problema = claves.some(
+    (k) => (pendientes[k].fallo && ahora - (pendientes[k].falloDesde || ahora) > 60000) || ahora - pendientes[k].desde > 120000
+  );
   if (!problema) return null;
   // Ocultarlo con la X lo quita 5 minutos; si el problema sigue, vuelve.
   if (oculto && ahora - oculto < 5 * 60000) return null;
@@ -12108,7 +12112,16 @@ export default function App() {
   // Para el letrero de pantalla: qué está sin subir, desde cuándo, y si falló.
   const [nubePendiente, setNubePendiente] = useState({}); // clave -> { desde, fallo }
   const marcarPendiente = (clave, fallo) =>
-    setNubePendiente((prev) => ({ ...prev, [clave]: { desde: prev[clave]?.desde || Date.now(), fallo: !!fallo } }));
+    setNubePendiente((prev) => ({
+      ...prev,
+      [clave]: {
+        desde: prev[clave]?.desde || Date.now(),
+        fallo: !!fallo,
+        // Desde cuándo viene fallando (sin cortes): el letrero espera un
+        // minuto de fallas seguidas antes de salir.
+        falloDesde: fallo ? prev[clave]?.falloDesde || Date.now() : null,
+      },
+    }));
   const quitarPendiente = (clave) =>
     setNubePendiente((prev) => { const n = { ...prev }; delete n[clave]; return n; });
 
@@ -12260,8 +12273,13 @@ export default function App() {
         } catch (e) {
           console.error("Error guardando " + key, e);
           if (!esMia()) return;
+          // En segundo plano (se fue a WhatsApp a mandar el mensaje) el
+          // celular corta la subida: eso no es una falla, se sube al volver
+          // (lo dispara el aviso de "visible"). Antes salía el letrero rojo
+          // aunque al regresar se iba a arreglar solo.
+          if (document.visibilityState !== "visible") return;
           marcarPendiente(key, true);
-          reintento.current[key] = setTimeout(() => correrSubida(key), 15000);
+          reintento.current[key] = setTimeout(() => correrSubida(key), 5000);
           return;
         }
       }
@@ -12292,7 +12310,9 @@ export default function App() {
     Object.keys(porSubir.current).forEach((k) => correrSubida(k));
   };
   useEffect(() => {
-    const alVolver = () => { if (document.visibilityState === "visible") reintentarPendientes(); };
+    // Al volver a la app la red tarda un instante en despertar; si se
+    // reintenta en el mismo milisegundo, falla y parece problema.
+    const alVolver = () => { if (document.visibilityState === "visible") setTimeout(reintentarPendientes, 1500); };
     window.addEventListener("online", reintentarPendientes);
     document.addEventListener("visibilitychange", alVolver);
     // En compu, avisar antes de cerrar si hay algo sin subir (en el celular
