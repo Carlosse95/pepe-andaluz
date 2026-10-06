@@ -69,6 +69,23 @@ encima. Ahora:
   fecha. Para recuperar un pedido borrado: buscarlo ahí por `item_id` o
   `item->>'clienteNombre'` y volver a meter `item` a la lista.
 
+**3c. Ningún cambio se queda en un celular en silencio (desde el 5 oct 2026).**
+Un pago que Pepe registró nunca salió de su celular: la fila de subidas se
+trabó en una petición colgada y todo lo de después se quedó ahí sin aviso (y
+ese celular dejó de recibir cambios). Ahora:
+- Todas las peticiones a Supabase tienen tope de tiempo (`fetchConTope` en
+  `nube.js`: 45 s leer, 90 s escribir). Nada puede esperar para siempre.
+- Cada cambio se apunta en IndexedDB (`pendientesLocales`) ANTES de subirlo,
+  con la versión de la nube de la que salió, y se borra solo cuando la nube
+  confirma. Al abrir la app, `recuperarPendientes` sube lo que quedó.
+- `correrSubida`: si falla, el cambio NO se tira; reintenta cada 15 s, al
+  volver a la app, al regresar internet y con un vigilante cada 30 s; una
+  subida de más de 2 min se da por muerta.
+- `LetreroNube`: letrero amarillo si tarda, ROJO si falló o lleva >45 s.
+- Mientras una clave tiene algo sin subir, no se le aplica lo de la nube
+  (se junta al subir). Al juntar, un pedido cambiado en dos aparatos se junta
+  campo por campo (y los pagos por id); `recalcularPagado` cuadra el saldo.
+
 **4. Las fotos van en Supabase Storage, nunca en `almacen`.** Bucket privado
 `tickets`. En el registro solo se guarda la ruta. Meter imágenes en `almacen`
 lo volvería pesadísimo, por la razón del punto 3.

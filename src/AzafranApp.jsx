@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
-  nubeActiva, almacen, copiaLocal, suscribirAlmacen,
+  nubeActiva, almacen, copiaLocal, pendientesLocales, suscribirAlmacen,
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
   obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil,
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
@@ -569,9 +569,16 @@ const fusionarVersiones = (base, local, nube, borradosAProposito) => {
     const borrados = borradosAProposito
       ? new Set([...borradosAProposito].filter((id) => !enLocal.has(id)))
       : new Set([...enBase.keys()].filter((id) => !enLocal.has(id)));
+    // Si este aparato cambió un pedido que el otro TAMBIÉN cambió, se junta
+    // campo por campo (y los pagos, por id): el pago que metió uno y el
+    // estado que cambió el otro se quedan los dos.
     const resultado = nube
       .filter((x) => !borrados.has(x.id))
-      .map((x) => (cambiados.has(x.id) ? enLocal.get(x.id) : x));
+      .map((x) => {
+        if (!cambiados.has(x.id)) return x;
+        const b = enBase.get(x.id);
+        return b && !igual(x, b) ? fusionarVersiones(b, enLocal.get(x.id), x) : enLocal.get(x.id);
+      });
     // Lo que solo existe aquí (nuevo, o editado y borrado allá) va adelante,
     // como entra todo lo nuevo en las listas.
     const soloAqui = local.filter((x) => cambiados.has(x.id) && !enNube.has(x.id));
@@ -1844,6 +1851,16 @@ const normalizarComoPantalla = (clave, valor) => {
   return valor;
 };
 
+// Deja `pagado`, `saldo` y `estadoPago` de acuerdo con la lista de pagos.
+// Solo toca el pedido si no cuadra (p. ej. al juntar pagos de dos aparatos).
+const recalcularPagado = (p) => {
+  if (!p || !Array.isArray(p.abonos)) return p;
+  const pagado = sumaAbonos(p.abonos);
+  if (Math.abs(pagado - (parseFloat(p.pagado) || 0)) < 0.005) return p;
+  const total = parseFloat(p.total) || 0;
+  return { ...p, pagado, saldo: Math.max(Math.round((total - pagado) * 100) / 100, 0), estadoPago: estadoPagoDe(pagado, total) };
+};
+
 const sumaAbonos = (abonos) => (abonos || []).reduce((a, x) => a + (parseFloat(x.monto) || 0), 0);
 
 /* ---------------------------------------------------------------------- */
@@ -2379,6 +2396,50 @@ function CuentaBloqueadaView({ onSalir }) {
         </p>
         <button className="af-btn-secondary w-full" onClick={onSalir}>Salir</button>
       </div>
+    </div>
+  );
+}
+
+// Letrero de "cambios sin subir a la nube". Que algo se quede solo en un
+// celular NUNCA puede pasar en silencio (5 oct 2026: un pago de Pepe no llegó
+// a nadie y se le cobró de más a un cliente). Mientras se sube normal no
+// estorba; si tarda más de unos segundos avisa, y si falló sale en rojo con
+// botón para reintentar.
+const NOMBRE_CLAVE = {
+  pedidos: "pedidos", clientes: "clientes", "config-productos": "menú e inventario",
+  presupuestos: "presupuestos", gastos: "gastos", "historico-mensual": "histórico", avatares: "perfil",
+};
+function LetreroNube({ pendientes, onReintentar }) {
+  const [ahora, setAhora] = useState(Date.now());
+  const claves = Object.keys(pendientes);
+  useEffect(() => {
+    if (!claves.length) return;
+    const t = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [claves.length]);
+  if (!claves.length) return null;
+  const masViejo = Math.min(...claves.map((k) => pendientes[k].desde));
+  // Más de 45 s sin subir ya es problema aunque no haya error formal (una
+  // subida colgada): se avisa en rojo igual.
+  const fallo = claves.some((k) => pendientes[k].fallo) || ahora - masViejo > 45000;
+  if (!fallo && ahora - masViejo < 6000) return null; // subida normal: no se avisa
+  const que = claves.map((k) => NOMBRE_CLAVE[k] || k).join(", ");
+  return (
+    <div className={"af-letrero-nube" + (fallo ? " fallo" : "")} role="alert">
+      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+      <div className="flex-1 min-w-0">
+        {fallo ? (
+          <>
+            <strong>Hay cambios que NO se han guardado en la nube</strong> ({que}). Los demás no los ven todavía.
+            No cierres la app; se sigue intentando solo. Revisa tu internet.
+          </>
+        ) : (
+          <>Guardando en la nube ({que})…</>
+        )}
+      </div>
+      {fallo && (
+        <button className="af-letrero-nube-btn" onClick={onReintentar}>Reintentar</button>
+      )}
     </div>
   );
 }
@@ -11692,7 +11753,7 @@ export default function App() {
         // `aplicar` solo deja pasar lo que no esté viejo (ver lecturaVigente).
         const aplicadas = new Set();
         const aplicar = (clave, raw) => {
-          if (!lecturaVigente(clave, emitidaEn)) return;
+          if (!lecturaVigente(clave, emitidaEn) || hayPendiente(clave)) return;
           aplicarClave(clave, raw);
           aplicadas.add(clave);
           // La hora se pidió ANTES del valor: si el valor es más nuevo, el
@@ -11779,7 +11840,7 @@ export default function App() {
             if (g.ok) {
               // Se enseña solo si este aparato no tiene guardados propios en
               // camino; si los tiene, la revisión de cada 3 s lo trae.
-              if (!escriturasEnVuelo.current[clave]) {
+              if (!escriturasEnVuelo.current[clave] && !hayPendiente(clave)) {
                 aplicarClave(clave, JSON.stringify(lista));
                 baseNube.current[clave] = { raw: JSON.stringify(lista), hora: g.updatedAt };
                 if (horasVistas.current) horasVistas.current = { ...horasVistas.current, [clave]: g.updatedAt };
@@ -11833,7 +11894,7 @@ export default function App() {
       }
     };
 
-    cargarTodo(true).then(incorporarPedidosWhatsApp);
+    cargarTodo(true).then(recuperarPendientes).then(incorporarPedidosWhatsApp);
 
     // Tiempo real: si alguien más guarda desde otro dispositivo, llega un
     // aviso con SOLO el nombre de lo que cambió y se hace la misma revisión
@@ -11893,9 +11954,10 @@ export default function App() {
           return; // sin conexión: se reintenta en la ronda siguiente
         }
         if (cancelado || !horas) return;
-        // Sin referencia todavía (la carga inicial no alcanzó a leer las
-        // horas): se toma nota ahora y se compara desde la ronda siguiente.
-        if (!horasVistas.current) { horasVistas.current = horas; return; }
+        // Sin referencia todavía (no se pudieron leer las horas al abrir): se
+        // baja todo una vez. Antes aquí se daban por vistas las horas de este
+        // momento SIN bajar nada, y el aparato podía quedarse con datos viejos.
+        if (!horasVistas.current) horasVistas.current = {};
 
         const nuevasHoras = { ...horasVistas.current };
         const cambiadas = [];
@@ -11905,7 +11967,7 @@ export default function App() {
           // la respuesta traería la foto de antes y pisaría lo recién hecho
           // (el mismo candado que en el aviso de tiempo real). Su hora se
           // deja sin anotar para volver a mirarla en la ronda siguiente.
-          if (escriturasEnVuelo.current[clave]) continue;
+          if (escriturasEnVuelo.current[clave] || hayPendiente(clave)) continue;
           cambiadas.push(clave);
           nuevasHoras[clave] = horas[clave];
         }
@@ -11927,7 +11989,7 @@ export default function App() {
             if (!r) { olvidar(); return; }
             copiaLocal.guardar(clave, r.value, horas[clave]);
             leidasDeLaNube.current.add(clave);
-            if (lecturaVigente(clave, emitidaEn)) {
+            if (lecturaVigente(clave, emitidaEn) && !hayPendiente(clave)) {
               aplicarClave(clave, r.value);
               baseNube.current[clave] = { raw: r.value, hora: horas[clave] };
             } else {
@@ -12029,144 +12091,241 @@ export default function App() {
   const lecturaVigente = (clave, emitidaEn) =>
     !escriturasEnVuelo.current[clave] && emitidaEn > (guardadoEn.current[clave] || 0);
 
-  // Lo que falta por subir de cada clave: solo la versión MÁS NUEVA.
+  // Lo que falta por subir de cada clave: la versión MÁS NUEVA de este
+  // aparato que la nube todavía no confirma. Se borra SOLO cuando la nube
+  // dice que la recibió.
   const porSubir = useRef({});   // clave -> valor pendiente
-  const subiendo = useRef({});   // clave -> true mientras corre su fila
+  const subiendo = useRef({});   // clave -> la corrida que está subiendo { inicio }
+  const reintento = useRef({});  // clave -> temporizador del siguiente intento
+  const restaurados = useRef(new Set()); // claves recuperadas al abrir la app
 
-  // Guardar en la nube, UNA subida a la vez por clave.
+  // Para el letrero de pantalla: qué está sin subir, desde cuándo, y si falló.
+  const [nubePendiente, setNubePendiente] = useState({}); // clave -> { desde, fallo }
+  const marcarPendiente = (clave, fallo) =>
+    setNubePendiente((prev) => ({ ...prev, [clave]: { desde: prev[clave]?.desde || Date.now(), fallo: !!fallo } }));
+  const quitarPendiente = (clave) =>
+    setNubePendiente((prev) => { const n = { ...prev }; delete n[clave]; return n; });
+
+  const hayPendiente = (clave) => Object.prototype.hasOwnProperty.call(porSubir.current, clave);
+
+  // Apunta el cambio en el aparato ANTES de subirlo: si la subida no llega,
+  // se cierra la app o se va el internet, el cambio sigue ahí y se sube
+  // después. Lleva la versión de la nube de la que salió, para juntarlo bien.
+  const apuntarPendiente = (clave, valor) => {
+    const b = borradosAProposito.current[clave];
+    pendientesLocales.guardar(clave, {
+      value: JSON.stringify(valor),
+      base: baseNube.current[clave] || null,
+      borrados: b ? [...b] : [],
+      desde: Date.now(),
+    });
+  };
+
+  // Sube UNA versión: con condición, juntando si alguien más guardó, y con
+  // reintentos. Lanza error si no se pudo; nunca se queda esperando (cada
+  // consulta tiene tope de tiempo, ver nube.js).
+  const subirUna = async (key, valor) => {
+    let rawAGuardar = JSON.stringify(valor);
+    let guardado;
+    let fallos = 0;
+    let choques = 0;
+    const esLista = LISTAS_PROTEGIDAS.includes(key);
+    const borrados = esLista ? borradosAProposito.current[key] || new Set() : undefined;
+    // ¿Sigue siendo esta la versión más nueva de este aparato?
+    const sigueVigente = () => porSubir.current[key] === valor;
+    // Red de seguridad: en las listas principales, lo que estaba en la nube
+    // y aquí "falta" sin que nadie lo eliminara se vuelve a poner antes de
+    // subir. Nunca se sube una lista con huecos.
+    if (esLista && baseNube.current[key]) {
+      const enBase = normalizarComoPantalla(key, JSON.parse(baseNube.current[key].raw) || []);
+      const local = JSON.parse(rawAGuardar) || [];
+      const ids = new Set(local.map((x) => x.id));
+      const faltan = (enBase || []).filter((x) => !ids.has(x.id) && !borrados.has(x.id));
+      if (faltan.length) {
+        console.warn(`"${key}": ${faltan.length} sin borrar a propósito; se conservan.`);
+        rawAGuardar = JSON.stringify([...local, ...faltan]);
+        if (sigueVigente()) aplicarClave(key, rawAGuardar);
+      }
+    }
+    for (;;) {
+      try {
+        let conocida = baseNube.current[key];
+        // Sin versión conocida, NO se guarda a ciegas: primero se mira qué
+        // hay en la nube y se junta.
+        if (!conocida && nubeActiva) {
+          const horas = await almacen.horas();
+          const hora = horas && horas[key];
+          if (hora) {
+            const enNube = await almacen.get(key);
+            const junto = fusionarVersiones(null, JSON.parse(rawAGuardar), enNube ? JSON.parse(enNube.value) : undefined, borrados);
+            rawAGuardar = JSON.stringify(junto);
+            conocida = { raw: enNube ? enNube.value : "null", hora };
+            baseNube.current[key] = conocida;
+          }
+        }
+        const r = await almacen.setSi(key, rawAGuardar, conocida ? conocida.hora : null);
+        if (r.ok) {
+          guardado = { updatedAt: r.updatedAt };
+          baseNube.current[key] = { raw: rawAGuardar, hora: r.updatedAt };
+          if (borrados && borrados.size) {
+            const quedan = new Set((JSON.parse(rawAGuardar) || []).map((x) => x.id));
+            [...borrados].forEach((id) => { if (!quedan.has(id)) borrados.delete(id); });
+          }
+          break;
+        }
+        // Choque: alguien más guardó. Se baja lo de la nube y se junta.
+        if (++choques > 6) throw new Error("La lista cambió muchas veces seguidas; no se pudo juntar.");
+        const enNube = await almacen.get(key);
+        const valorNube = enNube ? JSON.parse(enNube.value) : null;
+        // La base pasa por el mismo acomodo que lo de pantalla, para que solo
+        // cuente como "cambiado" lo que de verdad se editó.
+        const valorBase = conocida ? normalizarComoPantalla(key, JSON.parse(conocida.raw)) : null;
+        let junto = fusionarVersiones(valorBase, JSON.parse(rawAGuardar), valorNube, borrados);
+        // Si se juntaron pagos de dos aparatos, lo pagado y el saldo se sacan
+        // de nuevo de la lista de pagos, que es la que manda.
+        if (key === "pedidos" && Array.isArray(junto)) junto = junto.map(recalcularPagado);
+        rawAGuardar = JSON.stringify(junto);
+        // La hora del choque es de ANTES de bajar el valor: nunca es más nueva
+        // que él; si alguien guardó en medio, se vuelve a chocar y a juntar.
+        baseNube.current[key] = { raw: enNube ? enNube.value : "null", hora: r.updatedAt };
+        // Se enseña ya lo junto (con el cambio del otro), salvo que detrás
+        // venga otra versión de este aparato: esa se junta sola.
+        if (sigueVigente()) aplicarClave(key, rawAGuardar);
+        console.warn(`"${key}" cambió en otro aparato; se juntaron los cambios.`);
+      } catch (e) {
+        if (++fallos > 2 || !sigueVigente()) throw e;
+        console.warn(`Reintentando guardar "${key}"`, e);
+        await new Promise((r) => setTimeout(r, 1500 * fallos));
+        if (!sigueVigente()) throw e;
+      }
+    }
+    guardadoEn.current[key] = Date.now();
+    // Queda también en la copia del aparato con la hora exacta de esta
+    // escritura: al volver a abrir no hay que bajarlo.
+    if (guardado && guardado.updatedAt) copiaLocal.guardar(key, rawAGuardar, guardado.updatedAt);
+    // Se anota la hora que dejó ESTE guardado para no volver a bajarse lo que
+    // uno mismo escribió.
+    if (horasVistas.current && guardado && guardado.updatedAt) {
+      horasVistas.current[key] = guardado.updatedAt;
+    }
+    return rawAGuardar;
+  };
+
+  // La fila de subida de una clave: sube la versión más nueva hasta que la
+  // nube la confirme. UNA subida a la vez por clave (pedidos pesa casi 4 MB y
+  // varias encimadas se cancelaban entre sí, 27 sep 2026).
   //
-  // Cada guardado sube la lista COMPLETA (pedidos pesa casi 4 MB). Antes cada
-  // cambio mandaba su propia subida en el instante, y en el iPad salían
-  // cuatro subidas de pedidos en 15 segundos: la base las atiende en fila
-  // sobre el mismo renglón, la última esperaba más de 8 segundos y se
-  // cancelaba ("no se pudo guardar" con internet bueno). Medido el 27 sep
-  // 2026.
-  //
-  // Ahora, si ya va una subida de esa clave, la nueva no sale: se anota como
-  // pendiente y, al terminar la que va, se sube solo la versión más nueva
-  // (que ya incluye todos los cambios de en medio, porque es la lista
-  // entera). Menos subidas, nada encimado y nada se pierde.
-  const persist = async (key, value) => {
+  // Lo que NO puede volver a pasar (5 oct 2026): la fila se quedó trabada en
+  // una subida que nunca terminó y todo lo de después se quedó en el celular
+  // sin avisar. Ahora: cada consulta tiene tope de tiempo; una corrida que
+  // lleva más de 2 minutos se da por muerta y se arranca otra; si falla, el
+  // cambio NO se tira, se queda apuntado, sale un letrero rojo y se reintenta
+  // solo cada 15 s, al volver a la app y al regresar el internet.
+  const correrSubida = async (key) => {
+    const actual = subiendo.current[key];
+    if (actual && Date.now() - actual.inicio < 120000) return; // ya hay una viva
+    const corrida = { inicio: Date.now() };
+    subiendo.current[key] = corrida;
+    clearTimeout(reintento.current[key]);
+    escriturasEnVuelo.current[key] = 1;
+    const esMia = () => subiendo.current[key] === corrida;
+    try {
+      while (hayPendiente(key) && esMia()) {
+        const valor = porSubir.current[key];
+        try {
+          const subido = await subirUna(key, valor);
+          if (!esMia()) return;
+          if (porSubir.current[key] === valor) {
+            // Confirmado por la nube: ahora sí se borra el apunte.
+            delete porSubir.current[key];
+            pendientesLocales.borrar(key);
+            quitarPendiente(key);
+            // Si venía de un cambio recuperado al abrir, se enseña ya junto.
+            if (restaurados.current.has(key)) {
+              restaurados.current.delete(key);
+              aplicarClave(key, subido);
+            }
+          }
+          // Si llegó una versión más nueva mientras tanto, la vuelta sigue.
+        } catch (e) {
+          console.error("Error guardando " + key, e);
+          if (!esMia()) return;
+          marcarPendiente(key, true);
+          reintento.current[key] = setTimeout(() => correrSubida(key), 15000);
+          return;
+        }
+      }
+    } finally {
+      if (esMia()) {
+        subiendo.current[key] = null;
+        escriturasEnVuelo.current[key] = 0;
+      }
+    }
+  };
+
+  const persist = (key, value) => {
     if (nubeActiva && !leidasDeLaNube.current.has(key)) {
       console.warn(`No se guarda "${key}": todavía no se ha leído de la nube.`);
       showToast("Todavía no se terminan de cargar los datos; no se guardó", "error");
       return;
     }
     porSubir.current[key] = value;
-    if (subiendo.current[key]) return; // la fila que ya corre lo recoge
-    subiendo.current[key] = true;
-    // El candado contra lecturas viejas queda puesto mientras haya algo de
-    // esta clave por subir o subiéndose.
-    escriturasEnVuelo.current[key] = (escriturasEnVuelo.current[key] || 0) + 1;
-    try {
-      while (Object.prototype.hasOwnProperty.call(porSubir.current, key)) {
-        const valor = porSubir.current[key];
-        delete porSubir.current[key];
-        const raw = JSON.stringify(valor);
-        try {
-          // Un tropiezo del servidor o de la red no se avisa a la primera:
-          // se reintenta dos veces con pausa. Si mientras tanto llegó una
-          // versión más nueva, se deja de insistir con esta y se sube aquella.
-          //
-          // Se guarda CON CONDICIÓN: solo si la nube sigue en la versión de la
-          // que sale lo de esta pantalla. Si otro aparato guardó en medio, se
-          // baja lo suyo, se juntan los dos cambios y se intenta de nuevo con
-          // lo junto. Sin esto el último en guardar borraba lo del otro.
-          let guardado;
-          let fallos = 0;
-          let choques = 0;
-          let rawAGuardar = raw;
-          const esLista = LISTAS_PROTEGIDAS.includes(key);
-          const borrados = esLista ? borradosAProposito.current[key] || new Set() : undefined;
-          // Red de seguridad: en las listas principales, lo que estaba en la
-          // nube y aquí "falta" sin que nadie lo eliminara se vuelve a poner
-          // antes de subir. Nunca se sube una lista con huecos.
-          if (esLista && baseNube.current[key]) {
-            const enBase = normalizarComoPantalla(key, JSON.parse(baseNube.current[key].raw) || []);
-            const local = JSON.parse(rawAGuardar) || [];
-            const ids = new Set(local.map((x) => x.id));
-            const faltan = (enBase || []).filter((x) => !ids.has(x.id) && !borrados.has(x.id));
-            if (faltan.length) {
-              console.warn(`"${key}": ${faltan.length} sin borrar a propósito; se conservan.`);
-              rawAGuardar = JSON.stringify([...local, ...faltan]);
-              if (!Object.prototype.hasOwnProperty.call(porSubir.current, key)) aplicarClave(key, rawAGuardar);
-            }
-          }
-          for (;;) {
-            try {
-              let conocida = baseNube.current[key];
-              // Sin versión conocida (no se pudo leer la hora al abrir), NO se
-              // guarda a ciegas: primero se mira qué hay y se junta.
-              if (!conocida && nubeActiva) {
-                const horas = await almacen.horas();
-                const hora = horas && horas[key];
-                if (hora) {
-                  const enNube = await almacen.get(key);
-                  const junto = fusionarVersiones(null, JSON.parse(rawAGuardar), enNube ? JSON.parse(enNube.value) : undefined, borrados);
-                  rawAGuardar = JSON.stringify(junto);
-                  conocida = { raw: enNube ? enNube.value : "null", hora };
-                  baseNube.current[key] = conocida;
-                }
-              }
-              const r = await almacen.setSi(key, rawAGuardar, conocida ? conocida.hora : null);
-              if (r.ok) {
-                guardado = { updatedAt: r.updatedAt };
-                baseNube.current[key] = { raw: rawAGuardar, hora: r.updatedAt };
-                if (borrados && borrados.size) {
-                  const quedan = new Set((JSON.parse(rawAGuardar) || []).map((x) => x.id));
-                  [...borrados].forEach((id) => { if (!quedan.has(id)) borrados.delete(id); });
-                }
-                break;
-              }
-              // Choque: alguien más guardó. Se baja lo de la nube y se junta.
-              if (++choques > 4) throw new Error("La lista cambió muchas veces seguidas; no se pudo juntar.");
-              const enNube = await almacen.get(key);
-              const valorNube = enNube ? JSON.parse(enNube.value) : null;
-              // La base pasa por el mismo acomodo que lo de pantalla, para
-              // que solo cuente como "cambiado" lo que de verdad se editó.
-              const valorBase = conocida ? normalizarComoPantalla(key, JSON.parse(conocida.raw)) : null;
-              const junto = fusionarVersiones(valorBase, JSON.parse(rawAGuardar), valorNube, borrados);
-              rawAGuardar = JSON.stringify(junto);
-              // La hora del choque es de ANTES de bajar el valor: nunca es más
-              // nueva que él, así que si alguien más guardó en medio, el
-              // siguiente intento vuelve a chocar y se vuelve a juntar.
-              baseNube.current[key] = { raw: enNube ? enNube.value : "null", hora: r.updatedAt };
-              // Se enseña ya lo junto (con el cambio del otro), salvo que
-              // detrás venga otra versión de este aparato: esa se junta sola.
-              if (!Object.prototype.hasOwnProperty.call(porSubir.current, key)) aplicarClave(key, rawAGuardar);
-              console.warn(`"${key}" cambió en otro aparato; se juntaron los cambios.`);
-            } catch (e) {
-              if (++fallos > 2 || Object.prototype.hasOwnProperty.call(porSubir.current, key)) throw e;
-              console.warn(`Reintentando guardar "${key}"`, e);
-              await new Promise((r) => setTimeout(r, 1500 * fallos));
-              if (Object.prototype.hasOwnProperty.call(porSubir.current, key)) throw e;
-            }
-          }
-          const rawGuardado = rawAGuardar;
-          guardadoEn.current[key] = Date.now();
-          // Queda también en la copia del aparato con la hora exacta de esta
-          // escritura: al volver a abrir no hay que bajarlo.
-          if (guardado && guardado.updatedAt) copiaLocal.guardar(key, rawGuardado, guardado.updatedAt);
-          // Se anota la hora que dejó ESTE guardado para no volver a bajarse
-          // lo que uno mismo escribió. Es la que devuelve el propio guardado,
-          // no una consulta aparte: si otro aparato escribió después, su hora
-          // sigue siendo distinta y se baja en la vuelta siguiente.
-          if (horasVistas.current && guardado && guardado.updatedAt) {
-            horasVistas.current[key] = guardado.updatedAt;
-          }
-        } catch (e) {
-          console.error("Error guardando " + key, e);
-          // Si ya hay una versión más nueva esperando, esa lleva la lista
-          // completa con este cambio incluido: se sigue con ella sin avisar.
-          if (!Object.prototype.hasOwnProperty.call(porSubir.current, key)) {
-            showToast("No se pudo guardar en la nube, revisa tu conexión", "error");
-          }
-        }
-      }
-    } finally {
-      subiendo.current[key] = false;
-      escriturasEnVuelo.current[key] = Math.max(0, (escriturasEnVuelo.current[key] || 1) - 1);
+    escriturasEnVuelo.current[key] = 1;
+    marcarPendiente(key, nubePendiente[key]?.fallo);
+    apuntarPendiente(key, value);
+    correrSubida(key);
+  };
+
+  // Reintentar todo lo pendiente (al volver a la app, al regresar internet,
+  // o con el botón del letrero).
+  const reintentarPendientes = () => {
+    Object.keys(porSubir.current).forEach((k) => correrSubida(k));
+  };
+  useEffect(() => {
+    const alVolver = () => { if (document.visibilityState === "visible") reintentarPendientes(); };
+    window.addEventListener("online", reintentarPendientes);
+    document.addEventListener("visibilitychange", alVolver);
+    // En compu, avisar antes de cerrar si hay algo sin subir (en el celular
+    // no se puede avisar, pero el cambio queda apuntado y se sube al volver).
+    const antesDeCerrar = (e) => {
+      if (Object.keys(porSubir.current).length) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", antesDeCerrar);
+    // Vigilante: cada 30 s se revisa lo pendiente. Si una subida se quedó
+    // colgada (más de 2 min), `correrSubida` la da por muerta y arranca otra.
+    // Sin esto, un envío colgado esperaba a que alguien hiciera OTRO cambio.
+    const vigilante = setInterval(reintentarPendientes, 30000);
+    return () => {
+      clearInterval(vigilante);
+      window.removeEventListener("online", reintentarPendientes);
+      document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener("beforeunload", antesDeCerrar);
+    };
+    // eslint-disable-next-line
+  }, []);
+
+  // Al abrir la app (ya leída la nube), se recupera lo que quedó sin subir la
+  // vez anterior y se sube juntándolo con lo que haya cambiado mientras.
+  const recuperarPendientes = async () => {
+    const guardados = await pendientesLocales.todos();
+    const claves = Object.keys(guardados).filter((k) => CLAVES_NUBE.includes(k));
+    if (!claves.length) return;
+    for (const k of claves) {
+      const reg = guardados[k];
+      if (!reg || typeof reg.value !== "string") continue;
+      if (!leidasDeLaNube.current.has(k)) continue; // se intentará al siguiente arranque
+      if (hayPendiente(k)) continue;
+      // La base es la versión de la que salió el cambio: así, al chocar con
+      // la nube actual, se junta bien y no se pisa lo que otros hicieron.
+      baseNube.current[k] = reg.base || null;
+      if (Array.isArray(reg.borrados) && reg.borrados.length) marcarBorrados(k, reg.borrados);
+      porSubir.current[k] = JSON.parse(reg.value);
+      restaurados.current.add(k);
+      escriturasEnVuelo.current[k] = 1;
+      marcarPendiente(k, false);
+      correrSubida(k);
     }
+    showToast("Se están subiendo cambios que habían quedado pendientes", "ok");
   };
 
   const guardarPedidos = (lista) => { setPedidos(lista); persist("pedidos", lista); };
@@ -13250,6 +13409,7 @@ export default function App() {
       </div>
 
       <div className="af-main">
+        <LetreroNube pendientes={nubePendiente} onReintentar={reintentarPendientes} />
         <div className="af-header">
           {view === "nuevo" ? (
             <div className="af-header-back">
@@ -14220,6 +14380,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-login .af-btn-primary:disabled { opacity: 0.5; cursor: wait; }
 
 /* Toast de confirmación */
+.af-letrero-nube {
+  position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; font-size: 13.5px; line-height: 1.35;
+  background: var(--gold-soft); color: var(--ink); border-bottom: 1px solid var(--line);
+}
+.af-letrero-nube.fallo { background: #C0392B; color: white; border-bottom: none; }
+.af-letrero-nube-btn {
+  flex-shrink: 0; border: none; border-radius: 999px; padding: 8px 14px; font-weight: 700;
+  background: white; color: #C0392B; cursor: pointer;
+}
 .af-toast {
   position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px;

@@ -10,7 +10,31 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 export const nubeActiva = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
-export const supabase = nubeActiva ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+// NINGUNA consulta a la nube puede quedarse esperando para siempre.
+//
+// En iPhone, si la app se va a segundo plano a media subida, a veces la
+// petición ni termina ni falla: se queda colgada. El 5 oct 2026 eso trabó la
+// fila de guardados del celular de Pepe: un pago que registró a las 2 pm
+// nunca salió de su celular, sin ningún aviso, y su celular dejó de recibir
+// los cambios de los demás. Con este tope, una petición que no contesta se
+// corta, cuenta como error y se reintenta.
+// Subir pedidos (casi 4 MB) por datos lentos puede tardar; por eso escribir
+// tiene más margen que leer.
+const fetchConTope = (input, init = {}) => {
+  const metodo = (init.method || "GET").toUpperCase();
+  const ms = metodo === "GET" || metodo === "HEAD" ? 45000 : 90000;
+  const control = new AbortController();
+  const tope = setTimeout(() => control.abort(new Error("La nube no contestó a tiempo")), ms);
+  if (init.signal) {
+    if (init.signal.aborted) control.abort(init.signal.reason);
+    else init.signal.addEventListener("abort", () => control.abort(init.signal.reason), { once: true });
+  }
+  return fetch(input, { ...init, signal: control.signal }).finally(() => clearTimeout(tope));
+};
+
+export const supabase = nubeActiva
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: fetchConTope } })
+  : null;
 
 /* ------------------------- Almacenamiento ------------------------- */
 // Misma interfaz que window.storage (get/set devuelven { key, value }),
@@ -142,6 +166,83 @@ const operarCopia = async (modo, accion) => {
 // se hace como si no hubiera copia y se baja de la nube.
 const conTope = (promesa, ms) =>
   Promise.race([promesa, new Promise((_, rej) => setTimeout(() => rej(new Error("copia local lenta")), ms))]);
+
+/* ------------- Cambios que todavía no llegan a la nube ------------- */
+// Cada cambio se apunta aquí ANTES de intentar subirlo, y se borra solo
+// cuando la nube confirma que lo recibió. Si la subida falla, se corta el
+// internet o se cierra la app, el cambio NO se pierde: al volver a abrir se
+// sube (juntándolo con lo que otros hayan cambiado mientras). Se guarda
+// también la versión de la nube de la que salió (`base`), que es lo que
+// permite juntarlo bien después.
+const BD_PENDIENTES = "pepe-andaluz-pendientes";
+let bdPendientes = null;
+const abrirPendientes = () => {
+  if (!bdPendientes) {
+    bdPendientes = new Promise((resolve, reject) => {
+      const pet = indexedDB.open(BD_PENDIENTES, 1);
+      pet.onupgradeneeded = () => pet.result.createObjectStore("p");
+      pet.onsuccess = () => resolve(pet.result);
+      pet.onerror = () => reject(pet.error);
+      pet.onblocked = () => reject(new Error("IndexedDB bloqueada"));
+    }).catch((e) => { bdPendientes = null; throw e; });
+  }
+  return bdPendientes;
+};
+const operarPendientes = async (modo, accion) => {
+  const bd = await abrirPendientes();
+  return new Promise((resolve, reject) => {
+    const tx = bd.transaction("p", modo);
+    const pet = accion(tx.objectStore("p"));
+    tx.oncomplete = () => resolve(pet && pet.result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+};
+
+// Por clave, las operaciones van en fila: un "borrar" (ya se subió) nunca
+// puede quedar antes de un "guardar" anterior que tardó más, o al volver a
+// abrir se re-subiría algo que ya estaba en la nube.
+const filaPendientes = {};
+const enFila = (clave, op) => {
+  const sig = (filaPendientes[clave] || Promise.resolve()).then(op, op);
+  filaPendientes[clave] = sig.catch(() => {});
+  return sig;
+};
+
+export const pendientesLocales = {
+  // registro: { value, base: {raw, hora} | null, borrados: [ids], desde }
+  guardar(clave, registro) {
+    if (!nubeActiva || typeof indexedDB === "undefined") return Promise.resolve();
+    return enFila(clave, async () => {
+      try { await conTope(operarPendientes("readwrite", (s) => s.put(registro, clave)), 5000); } catch { /* sin copia */ }
+    });
+  },
+  borrar(clave) {
+    if (typeof indexedDB === "undefined") return Promise.resolve();
+    return enFila(clave, async () => {
+      try { await conTope(operarPendientes("readwrite", (s) => s.delete(clave)), 5000); } catch { /* nada */ }
+    });
+  },
+  async todos() {
+    if (!nubeActiva || typeof indexedDB === "undefined") return {};
+    try {
+      const bd = await conTope(abrirPendientes(), 3000);
+      return await conTope(new Promise((resolve, reject) => {
+        const tx = bd.transaction("p", "readonly");
+        const st = tx.objectStore("p");
+        const salida = {};
+        const cur = st.openCursor();
+        cur.onsuccess = () => {
+          const c = cur.result;
+          if (c) { salida[c.key] = c.value; c.continue(); } else resolve(salida);
+        };
+        cur.onerror = () => reject(cur.error);
+      }), 5000);
+    } catch {
+      return {};
+    }
+  },
+};
 
 export const copiaLocal = {
   // { value, hora } o null si no hay copia o no se pudo leer.
