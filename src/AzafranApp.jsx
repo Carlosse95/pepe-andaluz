@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
-  nubeActiva, almacen, copiaLocal, pendientesLocales, suscribirAlmacen,
+  nubeActiva, almacen, copiaLocal, pendientesLocales, suscribirAlmacen, probarConexion, esperarApuntes,
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
   obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil,
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
@@ -2449,6 +2449,34 @@ function LetreroNube({ pendientes, onReintentar }) {
       </div>
       <button className="af-letrero-nube-btn" onClick={onReintentar}>Reintentar</button>
       <button className="af-letrero-nube-x" title="Ocultar" onClick={() => setOculto(Date.now())}><X size={18} /></button>
+    </div>
+  );
+}
+
+// Letrero de "esta pantalla no está al día". Si un aparato deja de poder
+// preguntarle a la nube, lo que enseña se va quedando viejo SIN que nadie lo
+// note (6 oct 2026: se cambió un cliente en la laptop y el iPad no se enteró).
+// La app primero intenta arreglarse sola; si no puede, lo dice aquí.
+function LetreroAtrasada({ atrasada, onRecargar }) {
+  const [ahora, setAhora] = useState(Date.now());
+  useEffect(() => {
+    if (!atrasada) return;
+    const t = setInterval(() => setAhora(Date.now()), 15000);
+    return () => clearInterval(t);
+  }, [atrasada]);
+  if (!atrasada) return null;
+  const min = Math.max(1, Math.round((ahora - atrasada.desde) / 60000));
+  return (
+    <div className="af-letrero-nube fallo" role="alert">
+      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+      <div className="flex-1 min-w-0">
+        {atrasada.sinInternet ? (
+          <><strong>Sin internet</strong>: lo que ves puede no tener los cambios de los demás (hace {min} min que no se actualiza).</>
+        ) : (
+          <><strong>Esta pantalla no se ha podido actualizar</strong> (hace {min} min). Toca Recargar para ver los últimos cambios.</>
+        )}
+      </div>
+      <button className="af-letrero-nube-btn" onClick={onRecargar}>Recargar</button>
     </div>
   );
 }
@@ -11491,6 +11519,10 @@ export default function App() {
   const [saludoInicioSaliendo, setSaludoInicioSaliendo] = useState(false);
 
   const [view, setView] = useState("hoy");
+  // Para saber, desde lo que corre en segundo plano, si se está capturando un
+  // pedido (ahí nunca se recarga la app sola).
+  const vistaActual = useRef(view);
+  vistaActual.current = view;
   const [formOrigen, setFormOrigen] = useState("hoy");
   // Lo que quedó a medias la última vez, si es que quedó algo.
   const [borradorPendiente, setBorradorPendiente] = useState(() => leerBorrador());
@@ -11703,6 +11735,13 @@ export default function App() {
     if (!puedeUsarDatos) return;
     let cancelado = false;
 
+    // Tope propio para cada consulta. El de nube.js solo cuenta desde que la
+    // petición SALE; si la librería de Supabase se traba antes de mandarla
+    // (6 oct 2026, el iPad), la consulta se quedaba esperando para siempre y
+    // con ella todas las revisiones siguientes.
+    const aTiempo = (promesa, ms) =>
+      Promise.race([promesa, new Promise((_, rej) => setTimeout(() => rej(new Error("La nube no contestó a tiempo")), ms))]);
+
     // mostrarPantalla=true solo la primera vez (pantalla completa "Cargando
     // pedidos..."); en las siguientes llamadas (al volver a la app) se
     // actualiza en silencio para no interrumpir lo que se esté viendo.
@@ -11720,7 +11759,8 @@ export default function App() {
       // guarda algo mientras esta carga va en camino, su hora quedará más
       // nueva que la que se anota aquí y la siguiente revisión lo va a
       // detectar. Al revés (anotar horas de después) ese cambio se perdería.
-      const horasAlSalir = await almacen.horas().catch(() => null);
+      const horasAlSalir = await aTiempo(almacen.horas(), 15000).catch(() => null);
+      if (horasAlSalir) marcarAlDia();
       // Si la copia guardada en el aparato tiene la MISMA hora que la nube,
       // es idéntica y se usa sin bajar nada. Antes cada apertura bajaba todo
       // (~5 MB con 3,500 pedidos), y eso crece con cada pedido nuevo.
@@ -11732,7 +11772,7 @@ export default function App() {
           const copia = await copiaLocal.leer(clave);
           if (copia && copia.hora === hora) return { key: clave, value: copia.value };
         }
-        const r = await almacen.get(clave);
+        const r = await aTiempo(almacen.get(clave), 60000);
         // La hora se pidió ANTES de bajar el valor, así que nunca es más
         // nueva que él: si alguien guardó en medio, la próxima vez no
         // coincidirá y se volverá a bajar. Nunca se usa una copia vieja.
@@ -11929,6 +11969,9 @@ export default function App() {
     // baja eso; casi siempre no cambió nada y no se baja nada.
     const alVolverVisible = () => {
       if (document.visibilityState !== "visible") return;
+      // El tiempo sin revisar cuenta desde que se volvió a ver la app, no desde
+      // que se dejó (en segundo plano no se revisa, y eso no es falla).
+      visibleDesde = Date.now();
       // Si todavía no hay horas con qué comparar (la carga inicial no
       // alcanzó a leerlas) sí se baja todo: es la única forma de ponerse al
       // día sin referencia.
@@ -11952,18 +11995,25 @@ export default function App() {
     // Ahora se pregunta nada más la HORA del último cambio de cada clave
     // —unos cientos de bytes— y solo se baja la que de verdad cambió. Se
     // sigue revisando cada 3 segundos, así que se siente igual de rápida.
-    let revisando = false;
+    // La revisión en curso y cuándo empezó. Una que lleva más de 70 s ya no
+    // va a contestar (cada consulta tiene tope): no se deja que bloquee a las
+    // siguientes. Antes era un sí/no y una revisión colgada las frenaba todas.
+    let revisando = null;
     const revisarCambios = async () => {
-      if (cancelado || revisando || document.visibilityState !== "visible") return;
-      revisando = true;
+      if (cancelado || document.visibilityState !== "visible") return;
+      if (revisando && Date.now() - revisando.inicio < 70000) return;
+      const mia = { inicio: Date.now() };
+      revisando = mia;
       try {
         let horas;
         try {
-          horas = await almacen.horas();
+          horas = await aTiempo(almacen.horas(), 15000);
         } catch {
           return; // sin conexión: se reintenta en la ronda siguiente
         }
         if (cancelado || !horas) return;
+        marcarAlDia();
+        mia.bajando = true;
         // Sin referencia todavía (no se pudieron leer las horas al abrir): se
         // baja todo una vez. Antes aquí se daban por vistas las horas de este
         // momento SIN bajar nada, y el aparato podía quedarse con datos viejos.
@@ -11987,7 +12037,7 @@ export default function App() {
         const emitidaEn = Date.now();
         await Promise.allSettled(
           cambiadas.map(async (clave) => {
-            const r = await almacen.get(clave).catch(() => null);
+            const r = await aTiempo(almacen.get(clave), 60000).catch(() => null);
             if (cancelado) return;
             // Si no se pudo bajar, se olvida la hora para reintentar en la
             // ronda siguiente (si nadie la cambió mientras tanto).
@@ -12013,10 +12063,47 @@ export default function App() {
           })
         );
       } finally {
-        revisando = false;
+        if (revisando === mia) revisando = null;
       }
     };
     const intervalo = setInterval(revisarCambios, 3000);
+
+    // VIGILANTE: que ningún aparato se quede viejo sin que nadie lo note.
+    // Corre cada 5 s y además con CUALQUIER toque a la pantalla. Si la app
+    // está en pantalla y lleva un rato sin lograr revisar la nube:
+    //  - a los 6 s: revisa ya (al tocar la pantalla siempre se pone al día);
+    //  - a los 40 s: mira si hay internet preguntando directo. Si lo hay, la
+    //    conexión se trabó por dentro y la app se recarga sola (sin
+    //    interrumpir nada); si no lo hay, sale un letrero que lo dice.
+    // Así lo que se ve en pantalla o está al día, o dice que no lo está.
+    let visibleDesde = Date.now();
+    let recuperando = false;
+    const sinRevisar = () => {
+      // Bajando una lista grande con internet lento (pedidos pesa 4 MB) no
+      // está trabada: la nube sí contestó y se está trayendo lo nuevo.
+      if (revisando && revisando.bajando && Date.now() - revisando.inicio < 70000) return 0;
+      return Date.now() - Math.max(ultimaRevisionOk.current, visibleDesde);
+    };
+    const vigilar = async () => {
+      if (!nubeActiva || cancelado || document.visibilityState !== "visible") return;
+      if (sinRevisar() > 6000) revisarCambios();
+      if (sinRevisar() < 40000 || recuperando) return;
+      recuperando = true;
+      try {
+        const hayRed = navigator.onLine !== false && (await probarConexion());
+        if (cancelado || sinRevisar() < 40000) return;
+        avisarAtrasada(!hayRed);
+        if (hayRed) await recargarParaDestrabar(false);
+      } finally {
+        recuperando = false;
+      }
+    };
+    const intervaloVigilante = setInterval(vigilar, 5000);
+    const alTocar = () => vigilar();
+    document.addEventListener("pointerdown", alTocar, { capture: true, passive: true });
+    window.addEventListener("focus", alTocar);
+    window.addEventListener("pageshow", alTocar);
+    window.addEventListener("online", alTocar);
 
     // Respaldo del tiempo real para el buzón de WhatsApp: se revisa cada
     // minuto por si el aviso instantáneo no llegó (misma razón que arriba).
@@ -12033,6 +12120,11 @@ export default function App() {
       document.removeEventListener("visibilitychange", alVolverVisible);
       clearInterval(intervalo);
       clearInterval(intervaloWhatsApp);
+      clearInterval(intervaloVigilante);
+      document.removeEventListener("pointerdown", alTocar, { capture: true });
+      window.removeEventListener("focus", alTocar);
+      window.removeEventListener("pageshow", alTocar);
+      window.removeEventListener("online", alTocar);
     };
     // eslint-disable-next-line
   }, [puedeUsarDatos]);
@@ -12077,6 +12169,46 @@ export default function App() {
   // Es un ref y no una variable del efecto porque `persist` —que vive fuera—
   // tiene que poder anotarla al guardar. Ver el porqué en `persist`.
   const horasVistas = useRef(null);
+
+  // Cuándo fue la última vez que este aparato SÍ logró preguntarle a la nube
+  // si había cambios. Si deja de lograrlo estando en pantalla, lo que enseña
+  // se queda viejo: la app se destraba sola o avisa (ver `vigilar`).
+  const ultimaRevisionOk = useRef(Date.now());
+  const [atrasada, setAtrasada] = useState(null); // null | { desde, sinInternet }
+  const atrasadaRef = useRef(null);
+  const marcarAlDia = () => {
+    ultimaRevisionOk.current = Date.now();
+    if (atrasadaRef.current) { atrasadaRef.current = null; setAtrasada(null); }
+  };
+  const avisarAtrasada = (sinInternet) => {
+    const a = atrasadaRef.current;
+    if (a && a.sinInternet === sinInternet) return;
+    atrasadaRef.current = { desde: ultimaRevisionOk.current, sinInternet };
+    setAtrasada(atrasadaRef.current);
+  };
+  // Recargar la app es la cura segura cuando la conexión se trabó por dentro:
+  // lo pendiente vive en el aparato y se sube al abrir (`recuperarPendientes`).
+  // `aMano`: lo pidió la persona con el botón; si no, solo se hace cuando no
+  // se interrumpe nada (ni pedido en captura, ni ventana abierta, ni algo
+  // escribiéndose) y no más de una vez cada 5 minutos.
+  const recargandoAProposito = useRef(false);
+  const recargarParaDestrabar = async (aMano) => {
+    if (!aMano) {
+      if (vistaActual.current === "nuevo") return;
+      const activo = document.activeElement;
+      if (activo && (/^(INPUT|TEXTAREA|SELECT)$/.test(activo.tagName) || activo.isContentEditable)) return;
+      if (document.querySelector(".af-modal-overlay")) return;
+      let ultima = 0;
+      try { ultima = Number(sessionStorage.getItem("pepe_recarga_destrabar") || 0); } catch { /* nada */ }
+      if (Date.now() - ultima < 5 * 60000) return;
+    }
+    await esperarApuntes();
+    try { sessionStorage.setItem("pepe_recarga_destrabar", String(Date.now())); } catch { /* nada */ }
+    // Lo pendiente ya quedó apuntado en el aparato: no hace falta la pregunta
+    // de "¿salir de la página?", que en la compu frenaría la recarga.
+    recargandoAProposito.current = true;
+    window.location.reload();
+  };
 
   // Por clave: la última versión de la NUBE de la que sale lo que hay en
   // pantalla, con su hora. Al guardar se le pide a la base que solo escriba
@@ -12318,6 +12450,7 @@ export default function App() {
     // En compu, avisar antes de cerrar si hay algo sin subir (en el celular
     // no se puede avisar, pero el cambio queda apuntado y se sube al volver).
     const antesDeCerrar = (e) => {
+      if (recargandoAProposito.current) return;
       if (Object.keys(porSubir.current).length) { e.preventDefault(); e.returnValue = ""; }
     };
     window.addEventListener("beforeunload", antesDeCerrar);
@@ -13440,6 +13573,7 @@ export default function App() {
 
       <div className="af-main">
         <LetreroNube pendientes={nubePendiente} onReintentar={reintentarPendientes} />
+        <LetreroAtrasada atrasada={atrasada} onRecargar={() => recargarParaDestrabar(true)} />
         <div className="af-header">
           {view === "nuevo" ? (
             <div className="af-header-back">

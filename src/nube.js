@@ -32,6 +32,29 @@ const fetchConTope = (input, init = {}) => {
   return fetch(input, { ...init, signal: control.signal }).finally(() => clearTimeout(tope));
 };
 
+// ¿Hay internet hasta Supabase? Pregunta DIRECTO, sin pasar por la librería
+// de Supabase. Sirve para distinguir "no hay internet" de "la librería se
+// quedó trabada": el 6 oct 2026 el iPad se quedó minutos sin preguntar nada a
+// la nube, con internet, y se destrabó solo de golpe. Cualquier respuesta
+// (aunque sea "no autorizado") prueba que la red está bien.
+export const probarConexion = async () => {
+  if (!nubeActiva) return true;
+  const control = new AbortController();
+  const tope = setTimeout(() => control.abort(), 8000);
+  try {
+    await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+      headers: { apikey: SUPABASE_ANON_KEY },
+      cache: "no-store",
+      signal: control.signal,
+    });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(tope);
+  }
+};
+
 export const supabase = nubeActiva
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: fetchConTope } })
   : null;
@@ -208,6 +231,12 @@ const enFila = (clave, op) => {
   filaPendientes[clave] = sig.catch(() => {});
   return sig;
 };
+
+// Espera a que todo lo apuntado ya esté escrito en el aparato. Se usa antes
+// de recargar la app sola: así ningún cambio se queda a medio apuntar.
+export const esperarApuntes = () =>
+  conTope(Promise.all(Object.values(filaPendientes)), 6000).catch(() => {});
+
 
 export const pendientesLocales = {
   // registro: { value, base: {raw, hora} | null, borrados: [ids], desde }
@@ -507,8 +536,16 @@ export const obtenerSesion = async () => {
   return data.session || null;
 };
 
+// El aviso se pasa a la app "en el siguiente turno" (setTimeout) y no dentro
+// del aviso mismo. La librería de Supabase ESPERA a que termine lo que se haga
+// aquí antes de soltar la sesión, y la app aquí consulta su perfil a la nube:
+// esa consulta necesita la sesión, que espera a la consulta. Es un abrazo
+// mortal que Supabase documenta, y deja TODAS las consultas del aparato
+// colgadas sin error (el iPad, 6 oct 2026). Así nunca se esperan entre sí.
 export const alCambiarSesion = (callback) => {
-  const { data } = supabase.auth.onAuthStateChange((_evento, sesion) => callback(sesion));
+  const { data } = supabase.auth.onAuthStateChange((_evento, sesion) => {
+    setTimeout(() => callback(sesion), 0);
+  });
   return () => data.subscription.unsubscribe();
 };
 
