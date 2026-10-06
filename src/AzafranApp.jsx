@@ -11224,7 +11224,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             <div className="af-envio-row">
               <span className="af-mini-label" style={{ marginBottom: 0 }}>
                 {form.entrega && form.recogerPaellera && hayPaelleraEnForm
-                  ? "Costo por viaje (se cobra al llevar y al recoger)"
+                  ? "Costo de envío (recoger cuesta lo mismo)"
                   : form.entrega
                     ? "Costo de envío"
                     : "Costo de recoger la paellera"}
@@ -11236,6 +11236,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 onChange={(v) => setForm((p) => ({ ...p, envio: String(v), costoRecoleccion: String(v) }))}
               />
             </div>
+            {form.entrega && form.recogerPaellera && hayPaelleraEnForm && (parseFloat(form.envio) || 0) > 0 && (
+              <div className="af-hint mt-2">
+                Llevar {money(parseFloat(form.envio) || 0)} + recoger la paellera {money(parseFloat(form.envio) || 0)} ={" "}
+                <strong>{money(2 * (parseFloat(form.envio) || 0))}</strong>
+              </div>
+            )}
             <div className="af-mini-label mt-2">Ubicación</div>
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
             <div className="af-mini-label mt-2">Referencias (opcional)</div>
