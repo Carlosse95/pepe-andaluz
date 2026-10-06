@@ -6110,13 +6110,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Si a un pedido le pagaron más de lo que costaba, la diferencia es propina.
   const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
 
-  // Propinas de TODO el mes del día elegido arriba (no solo ese día), para
-  // poder juntarlas y repartirlas al final del mes.
-  const mesDeDiaSel = diaSel.slice(0, 7); // "AAAA-MM"
-  const nombreMesSel = MESES[Number(mesDeDiaSel.split("-")[1]) - 1];
-  const propinaMes = pedidos
-    .filter((p) => (p.fecha || "").startsWith(mesDeDiaSel))
-    .reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
 
   return (
     <div>
@@ -6608,12 +6601,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           )}
         </div>
 
-        <div className="af-panel af-panel-propina">
-          <div className="af-panel-titulo">🎉 Propinas del mes</div>
-          <div className="af-panel-sub">{nombreMesSel} {mesDeDiaSel.split("-")[0]}</div>
-          <div className="af-propina-mes-total">{money(propinaMes)}</div>
-          <div className="af-hint">Elige un día de otro mes arriba para ver el total de ese mes.</div>
-        </div>
       </div>
 
       <div className="af-year-switch">
@@ -15188,9 +15175,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-content { max-width: 1180px; }
   .af-header, .af-content { padding-left: 48px; padding-right: 48px; }
   .af-card-grid { column-gap: 18px; }
-  /* El resumen del día es lo que más se consulta, así que se lleva la
-     columna ancha y las propinas van al lado en vez de debajo. */
-  .af-report-grid { grid-template-columns: 1.7fr 1fr; gap: 18px; }
+  /* El resumen del día va solo (el recuadro de propinas del mes se quitó). */
+  .af-report-grid { grid-template-columns: 1fr; gap: 18px; }
   /* Un formulario de una sola columna estirado a 980px se lee fatal: los
      campos cortos quedan larguísimos. Se limita a un ancho cómodo. */
   .af-form-wrap { max-width: 780px; margin: 0 auto; }
