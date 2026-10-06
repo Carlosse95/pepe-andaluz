@@ -1861,6 +1861,32 @@ const normalizarComoPantalla = (clave, valor) => {
   return valor;
 };
 
+// Lo que cambió de una lista entre la versión de la nube (`baseRaw`) y la de
+// este aparato (`localRaw`): { cambiados, borrados } para subir solo eso.
+// Devuelve null —y se sube la lista entera, como antes— si algo no es
+// seguro: elementos sin id o repetidos, si el ORDEN resultante no quedaría
+// idéntico al de aquí, o si cambió tanto que no vale la pena.
+const armarParche = (clave, baseRaw, localRaw) => {
+  try {
+    const base = normalizarComoPantalla(clave, JSON.parse(baseRaw));
+    const local = JSON.parse(localRaw);
+    if (!Array.isArray(base) || !Array.isArray(local) || !conId(base) || !conId(local)) return null;
+    const enBase = new Map(base.map((x) => [String(x.id), x]));
+    const enLocal = new Set(local.map((x) => String(x.id)));
+    if (enBase.size !== base.length || enLocal.size !== local.length) return null;
+    const cambiados = local.filter((x) => { const b = enBase.get(String(x.id)); return !b || !igual(b, x); });
+    const borrados = base.filter((x) => !enLocal.has(String(x.id))).map((x) => x.id);
+    // Así quedará en la nube: los nuevos al inicio y el resto en su lugar.
+    const nuevos = cambiados.filter((x) => !enBase.has(String(x.id))).map((x) => String(x.id));
+    const quedara = [...nuevos, ...base.filter((x) => enLocal.has(String(x.id))).map((x) => String(x.id))];
+    if (quedara.length !== local.length || quedara.some((id, i) => id !== String(local[i].id))) return null;
+    if (JSON.stringify(cambiados).length > localRaw.length / 2) return null;
+    return { cambiados, borrados };
+  } catch {
+    return null;
+  }
+};
+
 // Deja `pagado`, `saldo` y `estadoPago` de acuerdo con la lista de pagos.
 // Solo toca el pedido si no cuadra (p. ej. al juntar pagos de dos aparatos).
 const recalcularPagado = (p) => {
@@ -12092,8 +12118,11 @@ export default function App() {
       try {
         const hayRed = navigator.onLine !== false && (await probarConexion());
         if (cancelado || sinRevisar() < 40000) return;
-        avisarAtrasada(!hayRed);
+        // Con internet, se arregla sola sin avisar nada (si en este momento
+        // no se puede recargar, lo vuelve a intentar a los 5 s). Solo si de
+        // verdad no hay internet se dice, porque eso la app no lo puede arreglar.
         if (hayRed) await recargarParaDestrabar(false);
+        else avisarAtrasada(true);
       } finally {
         recuperando = false;
       }
@@ -12314,7 +12343,12 @@ export default function App() {
             baseNube.current[key] = conocida;
           }
         }
-        const r = await almacen.setSi(key, rawAGuardar, conocida ? conocida.hora : null);
+        // Si la nube está en la versión que se conoce, basta con subir lo que
+        // cambió (unos KB). Si no se puede armar con seguridad, la lista entera.
+        const parche = esLista && nubeActiva && conocida && conocida.hora ? armarParche(key, conocida.raw, rawAGuardar) : null;
+        const r = parche
+          ? await almacen.setParcheSi(key, parche, conocida.hora)
+          : await almacen.setSi(key, rawAGuardar, conocida ? conocida.hora : null);
         if (r.ok) {
           guardado = { updatedAt: r.updatedAt };
           baseNube.current[key] = { raw: rawAGuardar, hora: r.updatedAt };

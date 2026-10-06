@@ -118,6 +118,22 @@ export const almacen = {
     return { ok: !!(data && data.ok), updatedAt: data ? data.updated_at : null };
   },
 
+  // Igual que setSi, pero manda SOLO lo que cambió de una lista: los objetos
+  // cambiados o nuevos (completos) y los ids quitados. Pedidos pesa 3.9 MB y
+  // subirlo entero en cada cambio tardaba minutos en el iPad (6 oct 2026);
+  // un pedido son unos cuantos KB. La base lo aplica con la misma condición
+  // de hora, así que si alguien guardó en medio se rechaza y se junta igual.
+  async setParcheSi(key, parche, horaEsperada) {
+    const { data, error } = await supabase.rpc("guardar_parche_si", {
+      p_clave: key,
+      p_cambiados: parche.cambiados,
+      p_borrados: parche.borrados,
+      p_hora: horaEsperada,
+    });
+    if (error) throw error;
+    return { ok: !!(data && data.ok), updatedAt: data ? data.updated_at : null };
+  },
+
   // Solo la HORA del último cambio de cada clave, sin los datos. Devuelve
   // { clave: hora }.
   //
