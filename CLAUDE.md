@@ -81,7 +81,7 @@ ese celular dejó de recibir cambios). Ahora:
 - `correrSubida`: si falla, el cambio NO se tira; reintenta cada 15 s, al
   volver a la app, al regresar internet y con un vigilante cada 30 s; una
   subida de más de 2 min se da por muerta.
-- `LetreroNube`: letrero amarillo si tarda, ROJO si falló o lleva >45 s.
+- `LetreroNube`: solo sale (rojo, con X que lo oculta 5 min) si una subida falló o nada se confirmó en 90 s; el reloj se reinicia con cada confirmación.
 - Mientras una clave tiene algo sin subir, no se le aplica lo de la nube
   (se junta al subir). Al juntar, un pedido cambiado en dos aparatos se junta
   campo por campo (y los pagos por id); `recalcularPagado` cuadra el saldo.

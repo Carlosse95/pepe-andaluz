@@ -501,6 +501,16 @@ const UNIDADES_MENU = ["pieza", "kg", "litro", "ración", "bolsa", "frasco", "ch
 // ¿Este platillo se vende por kilo? Sin importar cómo se haya escrito.
 const esPorKg = (x) => String((x && x.unidad) || "").trim().toLowerCase() === "kg";
 
+// Desde 3 kg la paella va en paellera. Se pone sola al pasar de menos de 3 a 3
+// o más (y se quita al bajar de 3); entre medio se respeta lo que se marque a
+// mano en la casilla.
+const KG_PAELLERA = 3;
+const paelleraPorKilos = (antes, ahora, enPaelleraActual) => {
+  if (ahora >= KG_PAELLERA && !(antes >= KG_PAELLERA)) return true;
+  if (ahora < KG_PAELLERA && antes >= KG_PAELLERA) return false;
+  return !!enPaelleraActual;
+};
+
 const computeTotal = (items) => items.reduce((acc, it) => acc + it.subtotal, 0);
 
 // Costo de envío: solo aplica cuando el pedido es a domicilio.
@@ -2411,35 +2421,30 @@ const NOMBRE_CLAVE = {
 };
 function LetreroNube({ pendientes, onReintentar }) {
   const [ahora, setAhora] = useState(Date.now());
+  const [oculto, setOculto] = useState(0); // cuándo se ocultó (0 = visible)
   const claves = Object.keys(pendientes);
   useEffect(() => {
-    if (!claves.length) return;
-    const t = setInterval(() => setAhora(Date.now()), 1000);
+    if (!claves.length) { setOculto(0); return; }
+    const t = setInterval(() => setAhora(Date.now()), 5000);
     return () => clearInterval(t);
   }, [claves.length]);
   if (!claves.length) return null;
-  const masViejo = Math.min(...claves.map((k) => pendientes[k].desde));
-  // Más de 45 s sin subir ya es problema aunque no haya error formal (una
-  // subida colgada): se avisa en rojo igual.
-  const fallo = claves.some((k) => pendientes[k].fallo) || ahora - masViejo > 45000;
-  if (!fallo && ahora - masViejo < 6000) return null; // subida normal: no se avisa
+  // Solo se avisa si de verdad hay un problema: una subida que falló, o
+  // nada confirmado en 90 s. Subir pedidos tarda unos segundos y eso no se
+  // avisa (antes salía un letrero que asustaba sin que fallara nada).
+  const problema = claves.some((k) => pendientes[k].fallo || ahora - pendientes[k].desde > 90000);
+  if (!problema) return null;
+  // Ocultarlo con la X lo quita 5 minutos; si el problema sigue, vuelve.
+  if (oculto && ahora - oculto < 5 * 60000) return null;
   const que = claves.map((k) => NOMBRE_CLAVE[k] || k).join(", ");
   return (
-    <div className={"af-letrero-nube" + (fallo ? " fallo" : "")} role="alert">
+    <div className="af-letrero-nube fallo" role="alert">
       <AlertTriangle size={18} style={{ flexShrink: 0 }} />
       <div className="flex-1 min-w-0">
-        {fallo ? (
-          <>
-            <strong>Hay cambios que NO se han guardado en la nube</strong> ({que}). Los demás no los ven todavía.
-            No cierres la app; se sigue intentando solo. Revisa tu internet.
-          </>
-        ) : (
-          <>Guardando en la nube ({que})…</>
-        )}
+        <strong>Hay cambios que NO se han guardado en la nube</strong> ({que}). Se sigue intentando solo; no cierres la app.
       </div>
-      {fallo && (
-        <button className="af-letrero-nube-btn" onClick={onReintentar}>Reintentar</button>
-      )}
+      <button className="af-letrero-nube-btn" onClick={onReintentar}>Reintentar</button>
+      <button className="af-letrero-nube-x" title="Ocultar" onClick={() => setOculto(Date.now())}><X size={18} /></button>
     </div>
   );
 }
@@ -10729,6 +10734,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       items[items.length - 1] = {
         ...last,
         kg,
+        enPaellera: paelleraPorKilos(last.kg, kg, last.enPaellera),
         extras: conExtras,
         subtotal: calcPaellaSubtotal(kg, last.precioKg, conExtras),
       };
@@ -10747,7 +10753,11 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const updateKg = (itemId, kg) => {
     setForm((prev) => ({
       ...prev,
-      items: prev.items.map((it) => (it.id === itemId ? { ...it, kg, subtotal: calcPaellaSubtotal(kg, it.precioKg, it.extras) } : it)),
+      items: prev.items.map((it) =>
+        it.id === itemId
+          ? { ...it, kg, enPaellera: paelleraPorKilos(it.kg, kg, it.enPaellera), subtotal: calcPaellaSubtotal(kg, it.precioKg, it.extras) }
+          : it
+      ),
     }));
   };
 
@@ -11178,29 +11188,32 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
       <div className="af-field">
         <label>Entrega</label>
-        <div className="flex gap-2">
-          <button className={"af-toggle-btn" + (!form.entrega ? " active" : "")} onClick={() => setForm((p) => ({ ...p, entrega: false }))}>
+        {/* Tres opciones grandes. "Llevar y recoger" es llevar el pedido y
+            después pasar por la paellera; cuesta un viaje más (mismo precio). */}
+        <div className="af-entrega-opciones">
+          <button
+            className={"af-toggle-btn" + (!form.entrega ? " active" : "")}
+            onClick={() => setForm((p) => ({ ...p, entrega: false, recogerPaellera: false }))}
+          >
             <Store size={16} className="inline mr-1" /> Recoger
           </button>
-          <button className={"af-toggle-btn" + (form.entrega ? " active" : "")} onClick={() => setForm((p) => ({ ...p, entrega: true }))}>
+          <button
+            className={"af-toggle-btn" + (form.entrega && !form.recogerPaellera ? " active" : "")}
+            onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: false }))}
+          >
             <Truck size={16} className="inline mr-1" /> A domicilio
           </button>
+          <button
+            className={"af-toggle-btn" + (form.entrega && form.recogerPaellera ? " active" : "")}
+            onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: true, costoRecoleccion: p.envio }))}
+          >
+            <ChefHat size={16} className="inline mr-1" /> Llevar y recoger
+          </button>
         </div>
-        {/* Ir por la paellera es aparte de llevar el pedido: se puede pedir
-            uno, el otro o los dos. Solo aparece si alguna paella va en
-            paellera; si no hay paellera no hay nada que ir a buscar. */}
-        {hayPaelleraEnForm && (
-          <label className="af-check-row af-check-row-small mt-2">
-            <input
-              type="checkbox"
-              checked={!!form.recogerPaellera}
-              onChange={(e) => {
-                const si = e.target.checked;
-                setForm((p) => ({ ...p, recogerPaellera: si, costoRecoleccion: p.envio }));
-              }}
-            />
-            <span>Vamos por la paellera a su domicilio</span>
-          </label>
+        {form.entrega && form.recogerPaellera && !hayPaelleraEnForm && (
+          <div className="af-hint mt-2">
+            Ninguna paella está marcada "Va en paellera". Márcala para que se cobre ir a recogerla.
+          </div>
         )}
         {vamosAlDomicilio(form) && (
           <div className="mt-2">
@@ -12235,6 +12248,10 @@ export default function App() {
         try {
           const subido = await subirUna(key, valor);
           if (!esMia()) return;
+          // La nube confirmó algo: el reloj del letrero vuelve a empezar. Antes
+          // contaba desde el PRIMER cambio y, con varios cambios seguidos que
+          // sí se subían, avisaba de un problema que no existía.
+          if (porSubir.current[key] !== valor) setNubePendiente((prev) => ({ ...prev, [key]: { desde: Date.now(), fallo: false } }));
           if (porSubir.current[key] === valor) {
             // Confirmado por la nube: ahora sí se borra el apunte.
             delete porSubir.current[key];
@@ -14380,12 +14397,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-login .af-btn-primary:disabled { opacity: 0.5; cursor: wait; }
 
 /* Toast de confirmación */
+.af-entrega-opciones { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.af-entrega-opciones .af-toggle-btn { min-height: 52px; padding: 8px 6px; font-size: 14px; line-height: 1.2; }
+
 .af-letrero-nube {
   position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; font-size: 13.5px; line-height: 1.35;
   background: var(--gold-soft); color: var(--ink); border-bottom: 1px solid var(--line);
 }
 .af-letrero-nube.fallo { background: #C0392B; color: white; border-bottom: none; }
+.af-letrero-nube-x { flex-shrink: 0; border: none; background: none; color: white; padding: 4px; cursor: pointer; }
 .af-letrero-nube-btn {
   flex-shrink: 0; border: none; border-radius: 999px; padding: 8px 14px; font-weight: 700;
   background: white; color: #C0392B; cursor: pointer;
