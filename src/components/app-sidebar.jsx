@@ -1,5 +1,7 @@
 import * as React from "react";
-import { Plus, FilePlus, Search, ChevronsUpDown, LogOut, UserRound } from "lucide-react";
+import {
+  CirclePlus, FilePlus, Search, ChevronsUpDown, LogOut, CircleUserRound,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -37,7 +39,7 @@ export function AppSidebar({ secciones, vista, onIr, onNuevoPedido, onNuevoPresu
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton tooltip="Nuevo pedido" onClick={ir(onNuevoPedido)} className="bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground font-semibold">
-                <Plus /> <span>Nuevo pedido</span>
+                <CirclePlus /> <span>Nuevo pedido</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -95,7 +97,7 @@ export function AppSidebar({ secciones, vista, onIr, onNuevoPedido, onNuevoPresu
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={ir(onPerfil)}>
-                  <UserRound /> Mi perfil
+                  <CircleUserRound /> Mi perfil
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={onCerrarSesion}>
                   <LogOut /> Cerrar sesión

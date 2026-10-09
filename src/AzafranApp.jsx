@@ -27,12 +27,7 @@ import { Button as ButtonS } from "@/components/ui/button-shadcn";
 import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import {
-  Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
-  X, ArrowLeft, House, Truck, Store, ChefHat, Check, Minus, Trash,
-  ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, CircleArrowRight,
-  PackageSearch, MessageCircle, Copy, Wallet,
-  Upload, CircleCheck, TriangleAlert, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell,
-  ChevronUp, ChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
+  CirclePlus, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
@@ -1988,11 +1983,11 @@ function Stepper({ value, onChange, min = 1, step = 1 }) {
   return (
     <div className="flex items-center gap-2">
       <button type="button" className="af-stepper-btn" onClick={() => onChange(Math.max(min, +(value - step).toFixed(2)))}>
-        <Minus size={14} />
+        <CircleMinus size={14} />
       </button>
       <NumberField value={value} min={min} className="af-stepper-input" onChange={onChange} />
       <button type="button" className="af-stepper-btn" onClick={() => onChange(+(value + step).toFixed(2))}>
-        <Plus size={14} />
+        <CirclePlus size={14} />
       </button>
     </div>
   );
@@ -2050,7 +2045,7 @@ const ESTADO_BOTON = {
   pendiente: { corto: "Pendiente", icono: Clock },
   preparacion: { corto: "Preparando", icono: ChefHat },
   avisado: { corto: "Avisar", icono: Bell },
-  entregado: { corto: "Entregado", icono: Check },
+  entregado: { corto: "Entregado", icono: CircleCheck },
 };
 function EstadoPedidoGrupo({ estado, onChange }) {
   return (
@@ -2249,7 +2244,7 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
       <div className="af-chat">
         <div className="af-chat-head">
           <Button variant="ghost" size="icon-sm" onClick={onVolver} title="Volver a la lista">
-            <ArrowLeft size={18} />
+            <CircleArrowLeft size={18} />
           </Button>
           <div className="af-chat-head-txt">
             <div className="af-chat-head-nombre">{nombre}</div>
@@ -2525,7 +2520,7 @@ function LetreroNube({ pendientes, onReintentar }) {
         <strong>Hay cambios que NO se han guardado en la nube</strong> ({que}). Se sigue intentando solo; no cierres la app.
       </div>
       <button className="af-letrero-nube-btn" onClick={onReintentar}>Reintentar</button>
-      <button className="af-letrero-nube-x" title="Ocultar" onClick={() => setOculto(Date.now())}><X size={18} /></button>
+      <button className="af-letrero-nube-x" title="Ocultar" onClick={() => setOculto(Date.now())}><CircleX size={18} /></button>
     </div>
   );
 }
@@ -2796,7 +2791,7 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34, sinBoton = false, pe
             <DialogContent className="af-avatar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-modal-header">
                 <span>Mi perfil</span>
-                <Button variant="ghost" size="icon-sm" onClick={() => setEditando(false)}><X size={18} /></Button>
+                <Button variant="ghost" size="icon-sm" onClick={() => setEditando(false)}><CircleX size={18} /></Button>
               </div>
               <div className="af-avatar-modal-body">
                 <div className="af-avatar-preview">
@@ -2934,7 +2929,7 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
         })()}
       </div>
       <Button variant="exito" size="sm" onClick={() => setConfirmando(true)}>
-        <Check size={14} /> Devuelta
+        <CircleCheck size={14} /> Devuelta
       </Button>
       {confirmando && (
         <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmando(false))?.(); }}>
@@ -3003,7 +2998,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
     <div className={soloContenido ? "" : "mb-3"}>
       {!soloContenido && (
         <button className="af-colapsable-btn" onClick={onToggle}>
-          <ChefHat size={15} /> Producción del día {abierto ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          <ChefHat size={15} /> Producción del día {abierto ? <CircleChevronUp size={15} /> : <CircleChevronDown size={15} />}
         </button>
       )}
       {(soloContenido || abierto) && (
@@ -3187,7 +3182,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
       <div className="af-quick-row">
         <button className="af-quick-btn" onClick={onNuevoPedido}>
-          <Plus size={16} /> Nuevo pedido
+          <CirclePlus size={16} /> Nuevo pedido
         </button>
         <button className="af-quick-btn" onClick={onNuevoPresupuesto}>
           <FileText size={16} /> Nuevo presupuesto
@@ -3285,7 +3280,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                     className={cn(badgeVariants({ variant: "plain" }), "af-chip-wa-mini")}
                     onClick={() => onConfirmarTransferencia && onConfirmarTransferencia(pedido.id, abono.id)}
                   >
-                    <Check size={12} /> Ya cayó
+                    <CircleCheck size={12} /> Ya cayó
                   </button>
                 </div>
               ))}
@@ -3322,7 +3317,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                     className={cn(badgeVariants({ variant: "plain" }), "af-chip-wa-mini")}
                     onClick={() => onSaldarPedido && onSaldarPedido(pedido.id)}
                   >
-                    <Check size={12} /> Ya me pagaron
+                    <CircleCheck size={12} /> Ya me pagaron
                   </button>
                 </div>
               ))}
@@ -3382,7 +3377,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
           {entregadosHoy.length > 0 && (
             <PanelPlegable
-              icono={<Check size={15} />}
+              icono={<CircleCheck size={15} />}
               titulo="Entregados hoy"
               resumen={`${entregadosHoy.length}`}
               abierto={verEntregados}
@@ -3411,7 +3406,7 @@ function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, childr
         <span className="af-plegable-icono">{icono}</span>
         <span className="af-plegable-titulo">{titulo}</span>
         {resumen && <span className="af-plegable-resumen">{resumen}</span>}
-        <ChevronRight size={16} className={"af-plegable-flecha" + (abierto ? " abierta" : "")} />
+        <CircleChevronRight size={16} className={"af-plegable-flecha" + (abierto ? " abierta" : "")} />
       </button>
       {abierto && <div className="af-plegable-cuerpo">{children}</div>}
     </div>
@@ -3525,7 +3520,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                 title="Día anterior"
                 onClick={() => onDiaEntregados(correrDias(diaEntregados, -1))}
               >
-                <ChevronLeft size={20} />
+                <CircleChevronLeft size={20} />
               </Button>
             )}
             <DatePicker
@@ -3539,7 +3534,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                 title="Día siguiente"
                 onClick={() => onDiaEntregados(correrDias(diaEntregados, 1))}
               >
-                <ChevronRight size={20} />
+                <CircleChevronRight size={20} />
               </Button>
             )}
             {diaEntregados && (
@@ -3551,9 +3546,9 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 
           {!diaEntregados && (
             <div className="af-year-switch" style={{ marginBottom: 0 }}>
-              <Button variant="ghost" size="icon-sm" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => cambiarMes(-1)}><CircleChevronLeft size={20} /></Button>
               <span className="af-year-label" style={{ minWidth: 170 }}>{MESES[mesSel.m]} {mesSel.a}</span>
-              <Button variant="ghost" size="icon-sm" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => cambiarMes(1)}><CircleChevronRight size={20} /></Button>
             </div>
           )}
           {entregadosFiltrados.length > 0 && (
@@ -3578,7 +3573,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
           />
         ) : (
           <EmptyState
-            icon={<Check size={28} />}
+            icon={<CircleCheck size={28} />}
             title={diaEntregados ? `Sin entregados el ${fmtDateHuman(diaEntregados)}` : `Sin entregados en ${MESES[mesSel.m].toLowerCase()} ${mesSel.a}`}
             subtitle={diaEntregados ? "Elige otra fecha o toca \"Ver todos\"." : "Usa las flechas de arriba para cambiar de mes."}
           />
@@ -3687,7 +3682,7 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
         <span className="af-total">{money(presupuesto.total)}</span>
         {!presupuesto.convertido && (
           <Button variant="exito" size="sm" onClick={(e) => { e.stopPropagation(); onAceptar(presupuesto); }}>
-            <Check size={14} /> Aceptar → pedido
+            <CircleCheck size={14} /> Aceptar → pedido
           </Button>
         )}
       </div>
@@ -3865,7 +3860,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
       <div>
         {lista.length > 1 && (
           <button className="af-back-row" onClick={() => setAbiertaId(null)}>
-            <ArrowLeft size={16} /> Todos los que me deben
+            <CircleArrowLeft size={16} /> Todos los que me deben
           </button>
         )}
 
@@ -3887,7 +3882,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
           className="w-full mb-4"
           onClick={() => setFormPago({ deudaId: abierta.id, monto: "", fecha: todayISO(), nota: "", comprobante: null })}
         >
-          <Plus size={16} className="inline mr-1" /> Anotar un pago
+          <CirclePlus size={16} className="inline mr-1" /> Anotar un pago
         </Button>
 
         <div className="af-section-title">
@@ -3917,7 +3912,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                   title="Editar"
                   onClick={() => setFormPago({ deudaId: abierta.id, id: p.id, monto: String(p.monto), fecha: p.fecha, nota: p.nota || "", comprobante: p.comprobante || null })}
                 >
-                  <Pencil size={16} />
+                  <SquarePen size={16} />
                 </Button>
                 <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setPorBorrar({ tipo: "pago", deudaId: abierta.id, pago: p })}>
                   <Trash size={16} />
@@ -3932,14 +3927,14 @@ function DeudasView({ deudas, onGuardar, showToast }) {
            
             onClick={() => setFormDeuda({ id: abierta.id, quien: abierta.quien, total: String(abierta.total), nota: abierta.nota || "" })}
           >
-            <Pencil size={15} className="inline mr-1" /> Cambiar el nombre o el total
+            <SquarePen size={15} className="inline mr-1" /> Cambiar el nombre o el total
           </Button>
           <Button variant="destructive-outline" onClick={() => setPorBorrar({ tipo: "deuda", deuda: abierta })}>
             <Trash size={15} className="inline mr-1" /> Borrar todo esto
           </Button>
           {lista.length === 1 && (
             <Button variant="secondary" onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}>
-              <Plus size={15} className="inline mr-1" /> Anotar a alguien más
+              <CirclePlus size={15} className="inline mr-1" /> Anotar a alguien más
             </Button>
           )}
         </div>
@@ -3961,7 +3956,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
         className="w-full mb-4"
         onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}
       >
-        <Plus size={16} className="inline mr-1" /> Anotar quién me debe
+        <CirclePlus size={16} className="inline mr-1" /> Anotar quién me debe
       </Button>
 
       {lista.length === 0 ? (
@@ -4255,7 +4250,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
     return (
       <div>
         <div className="af-back-row" onClick={() => setNuevo(false)}>
-          <ArrowLeft size={16} /> Cancelar
+          <CircleArrowLeft size={16} /> Cancelar
         </div>
         <div className="af-section-title">Nuevo cliente</div>
         <div className="af-field">
@@ -4331,7 +4326,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
     return (
       <div>
         <div className="af-back-row" onClick={() => setDetalleId(null)}>
-          <ArrowLeft size={16} /> Todos los clientes
+          <CircleArrowLeft size={16} /> Todos los clientes
         </div>
 
         <div className="af-field">
@@ -4522,7 +4517,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
           setNuevo(true);
         }}
       >
-        <Plus size={16} className="inline mr-1" /> Nuevo cliente
+        <CirclePlus size={16} className="inline mr-1" /> Nuevo cliente
       </Button>
       {onImportarClientes && (
         <>
@@ -4677,7 +4672,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                           }))
                         }
                       >
-                        <span className="af-import-check">{importando.elegidos[c.telefono] ? <Check size={13} /> : null}</span>
+                        <span className="af-import-check">{importando.elegidos[c.telefono] ? <CircleCheck size={13} /> : null}</span>
                         <span className="flex-1 min-w-0">
                           <span className="af-import-nombre">{c.nombre}</span>
                           <span className="af-ink-soft text-sm"> · {fmtTel(c.telefono)}</span>
@@ -6302,9 +6297,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       {tab === "rentabilidad" && (
         <div>
           <div className="af-year-switch">
-            <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></Button>
+            <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><CircleChevronLeft size={20} /></Button>
             <span className="af-year-label">{anio}</span>
-            <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></Button>
+            <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><CircleChevronRight size={20} /></Button>
           </div>
 
           <div className="af-rent-resumen mb-4">
@@ -6405,7 +6400,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 onChange={(e) => setBuscarRent(e.target.value)}
               />
               {buscarRent && (
-                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarRent("")}><X size={16} /></Button>
+                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarRent("")}><CircleX size={16} /></Button>
               )}
             </div>
           )}
@@ -6431,7 +6426,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     className="af-grupo-cabecera"
                     onClick={() => setRentSecciones((prev) => ({ ...prev, [grupo.id]: !prev[grupo.id] }))}
                   >
-                    <ChevronRight size={16} className={"af-mes-flecha" + (seccionAbierta ? " abierta" : "")} />
+                    <CircleChevronRight size={16} className={"af-mes-flecha" + (seccionAbierta ? " abierta" : "")} />
                     <span className="af-mes-nombre">{grupo.label}</span>
                     <span className="af-mes-cuenta">{grupo.lista.length}</span>
                     {grupo.sinCosto > 0 && (
@@ -6513,7 +6508,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         <PackageSearch size={14} />
                         Sacar el costo con ingredientes
                         {(f.usaTanda || f.costoAuto > 0) && <span className="af-rent-desglose-chip">{money(f.costo)}/{f.unidad}</span>}
-                        <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
+                        <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? <CircleChevronUp size={14} /> : <CircleChevronDown size={14} />}</span>
                       </button>
 
                       {rentAbierta[f.clave] && (
@@ -6686,7 +6681,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                           })}
 
                           <button className="af-rent-add-ing" onClick={() => agregarIngredienteReceta(f)}>
-                            <Plus size={14} /> Agregar ingrediente
+                            <CirclePlus size={14} /> Agregar ingrediente
                           </button>
 
                           <div className="af-rent-tanda-fila">
@@ -6784,9 +6779,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       </div>
 
       <div className="af-year-switch">
-        <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></Button>
+        <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><CircleChevronLeft size={20} /></Button>
         <span className="af-year-label">{anio}</span>
-        <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></Button>
+        <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><CircleChevronRight size={20} /></Button>
       </div>
 
       <Card className="af-year-total-card mb-5">
@@ -6819,7 +6814,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       <div className="af-encabezado-accion">
         <div className="af-section-title" style={{ margin: 0 }}>Registro de libreta</div>
         <button className="af-btn-accion" onClick={() => setVerLibreta((v) => !v)}>
-          {verLibreta ? <><X size={15} /> Cerrar</> : <><Pencil size={15} /> Capturar meses viejos</>}
+          {verLibreta ? <><CircleX size={15} /> Cerrar</> : <><SquarePen size={15} /> Capturar meses viejos</>}
         </button>
       </div>
 
@@ -7001,9 +6996,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       {tab === "finanzas" && (
       <div>
         <div className="af-year-switch">
-          <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><CircleChevronLeft size={20} /></Button>
           <span className="af-year-label">{anio}</span>
-          <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><CircleChevronRight size={20} /></Button>
         </div>
 
         {/* Aquí iba un resumen del año —Entró / Salió / Quedó, con una barra
@@ -7052,7 +7047,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             className={"af-btn-accion" + (abrirGasto ? "" : " af-btn-verde")}
             onClick={() => setAbrirGasto((v) => !v)}
           >
-            {abrirGasto ? <><X size={15} /> Cerrar</> : <><Plus size={15} /> Agregar gasto</>}
+            {abrirGasto ? <><CircleX size={15} /> Cerrar</> : <><CirclePlus size={15} /> Agregar gasto</>}
           </button>
         </div>
 
@@ -7360,14 +7355,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 onChange={(e) => setDiaGasto(e.target.value)}
               />
               {diaGasto && (
-                <Button variant="ghost" size="icon-sm" title="Quitar el día" onClick={() => setDiaGasto("")}><X size={16} /></Button>
+                <Button variant="ghost" size="icon-sm" title="Quitar el día" onClick={() => setDiaGasto("")}><CircleX size={16} /></Button>
               )}
             </div>
           </label>
 
           {cuantosFiltros > 0 && (
             <button className="af-btn-quitar-filtros" onClick={limpiarFiltros} title="Quitar todos los filtros">
-              <X size={15} /> Quitar filtros
+              <CircleX size={15} /> Quitar filtros
             </button>
           )}
           {/* Los tipos que se inventaron y ya no se quieren. Solo se pueden
@@ -7550,7 +7545,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <span className="af-gasto-acciones">
                     {esAdmin && (
                       <>
-                        <Button variant="ghost" size="icon-sm" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></Button>
+                        <Button variant="ghost" size="icon-sm" title="Editar" onClick={() => abrirEdicionGasto(g)}><SquarePen size={16} /></Button>
                         <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash size={16} /></Button>
                       </>
                     )}
@@ -7574,7 +7569,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         <div className="af-encabezado-accion">
           <div className="af-section-title" style={{ margin: 0 }}>Gastos fijos del mes</div>
           <button className="af-btn-accion" onClick={() => setAbrirFijos((v) => !v)}>
-            {abrirFijos ? <><X size={15} /> Cerrar</> : <><Pencil size={15} /> Revisar</>}
+            {abrirFijos ? <><CircleX size={15} /> Cerrar</> : <><SquarePen size={15} /> Revisar</>}
           </button>
         </div>
 
@@ -7628,7 +7623,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         title="Cambiar"
                         onClick={() => setDraftFijo({ ...f, ambito: ambitoDe(f), porDia: f.porDia || 0, monto: f.monto ? String(f.monto) : "" })}
                       >
-                        <Pencil size={16} />
+                        <SquarePen size={16} />
                       </Button>
                       <Button variant="ghost" size="icon-sm" title="Quitar" onClick={() => quitarFijo(f.id)}>
                         <Trash size={16} />
@@ -7751,7 +7746,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               className="w-full"
               onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", porDia: 0, monto: "", dia: 1 })}
             >
-              <Plus size={16} className="inline mr-1" /> Agregar gasto fijo
+              <CirclePlus size={16} className="inline mr-1" /> Agregar gasto fijo
             </Button>
           )}
         </Card>
@@ -7892,7 +7887,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </div>
                   )}
                 </div>
-                <Button variant="ghost" size="icon-sm" onClick={() => setViendoTicket(null)}><X size={18} /></Button>
+                <Button variant="ghost" size="icon-sm" onClick={() => setViendoTicket(null)}><CircleX size={18} /></Button>
               </div>
 
               {/* Todo lo que hace falta para pedir la factura, junto a la foto:
@@ -8440,7 +8435,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
   const fichaDelMenu = (g, it, i) => {
     const cerrar = (
       <Button variant="ghost" size="icon-sm" title="Cerrar" onClick={() => setPlatilloAbierto(null)}>
-        <ChevronRight size={16} className="af-mes-flecha abierta" />
+        <CircleChevronRight size={16} className="af-mes-flecha abierta" />
       </Button>
     );
     const propsArrastre = g.acomodar
@@ -8755,7 +8750,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <Input placeholder="18 dígitos de CLABE o 16 de tarjeta" value={(draft.pago || {}).clabe || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), clabe: e.target.value } })} />
             </div>
             <Button className="w-full" onClick={guardar}>
-              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos de pago"}
+              {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar datos de pago"}
             </Button>
           </Card>
 
@@ -8802,7 +8797,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <p className="af-ink-soft text-xs mt-1">G01 es Adquisición de mercancías.</p>
             </div>
             <Button className="w-full" onClick={guardar}>
-              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos fiscales"}
+              {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar datos fiscales"}
             </Button>
           </Card>
 
@@ -8850,7 +8845,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               );
             })}
             <Button className="w-full mt-3" onClick={guardar}>
-              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar el menú"}
+              {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar el menú"}
             </Button>
           </Card>
 
@@ -8894,7 +8889,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <Button className="w-full" onClick={guardar}>
-              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar dónde recoger"}
+              {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar dónde recoger"}
             </Button>
           </Card>
 
@@ -9016,7 +9011,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <Button className="w-full" onClick={guardar}>
-              {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar mensajes"}
+              {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar mensajes"}
             </Button>
           </Card>
 
@@ -9111,7 +9106,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 onChange={(e) => setBuscarMenu(e.target.value)}
               />
               {buscarMenu && (
-                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarMenu("")}><X size={16} /></Button>
+                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarMenu("")}><CircleX size={16} /></Button>
               )}
             </div>
           )}
@@ -9128,7 +9123,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     className="af-grupo-cabecera"
                     onClick={() => setGruposMenuAbiertos((prev) => ({ ...prev, [g.id]: !prev[g.id] }))}
                   >
-                    <ChevronRight size={16} className={"af-mes-flecha" + (abierto ? " abierta" : "")} />
+                    <CircleChevronRight size={16} className={"af-mes-flecha" + (abierto ? " abierta" : "")} />
                     <span className="af-mes-nombre">{g.label}</span>
                     <span className="af-mes-cuenta">{g.items.length}</span>
                   </button>
@@ -9140,15 +9135,15 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                         <div key={it.id} className="af-ing-row af-menu-row af-acomodar-row">
                           <span className="af-ing-row-nombre">{it.nombre || "Sin nombre"}</span>
                           <button className="af-acomodar-btn" title="Subir" disabled={pos === 0} onClick={() => moverEnGrupo(g, pos, -1)}>
-                            <ChevronUp size={20} />
+                            <CircleChevronUp size={20} />
                           </button>
                           <button className="af-acomodar-btn" title="Bajar" disabled={pos === g.items.length - 1} onClick={() => moverEnGrupo(g, pos, 1)}>
-                            <ChevronDown size={20} />
+                            <CircleChevronDown size={20} />
                           </button>
                         </div>
                       ))}
                       <Button className="w-full mb-3" onClick={() => { setAcomodandoGrupo(null); guardar(); }}>
-                        <Check size={16} className="inline mr-1" /> Listo
+                        <CircleCheck size={16} className="inline mr-1" /> Listo
                       </Button>
                     </>
                   )}
@@ -9181,7 +9176,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                           >
                             <span className="af-ing-row-nombre">{it.nombre || "Sin nombre"}</span>
                             <span className="af-ing-row-meta">{g.metaDe(it)}</span>
-                            <ChevronRight size={15} className="af-mes-flecha" />
+                            <CircleChevronRight size={15} className="af-mes-flecha" />
                           </div>
                         )
                       )}
@@ -9189,7 +9184,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                         className="af-add-card af-add-card-row"
                         onClick={() => agregarAlMenu(g.lista, g.nuevo, g.id)}
                       >
-                        <Plus size={18} />
+                        <CirclePlus size={18} />
                         <span>{g.textoAgregar}</span>
                       </button>
                     </>
@@ -9419,7 +9414,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 onChange={(e) => setBuscarIng(e.target.value)}
               />
               {buscarIng && (
-                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarIng("")}><X size={16} /></Button>
+                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarIng("")}><CircleX size={16} /></Button>
               )}
             </div>
           )}
@@ -9458,7 +9453,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       style={{ "--color-fam": colorFamilia(g.id) }}
                       onClick={() => setFamiliasAbiertas((prev) => ({ ...prev, [g.id]: !prev[g.id] }))}
                     >
-                      <ChevronRight size={16} className={"af-mes-flecha" + (grupoAbierto ? " abierta" : "")} />
+                      <CircleChevronRight size={16} className={"af-mes-flecha" + (grupoAbierto ? " abierta" : "")} />
                       <span className="af-mes-nombre">{g.label}</span>
                       <span className="af-mes-cuenta">{g.items.length}</span>
                       {faltantes > 0 && (
@@ -9504,7 +9499,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     <span className="af-ing-row-meta">
                       {ligados === 0 ? "sin ligar" : `en ${ligados} ${ligados === 1 ? "platillo" : "platillos"}`}
                     </span>
-                    <ChevronRight size={15} className="af-mes-flecha" />
+                    <CircleChevronRight size={15} className="af-mes-flecha" />
                   </button>
                 );
               }
@@ -9519,7 +9514,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       onChange={(e) => setIng({ nombre: e.target.value })}
                     />
                     <Button variant="ghost" size="icon-sm" title="Cerrar" onClick={() => setIngAbierto(null)}>
-                      <ChevronRight size={16} className="af-mes-flecha abierta" />
+                      <CircleChevronRight size={16} className="af-mes-flecha abierta" />
                     </Button>
                     <Button variant="ghost" size="icon-sm" onClick={() => setDraft({ ...draft, ingredientes: draft.ingredientes.filter((_, xi) => xi !== i) })}>
                       <Trash size={15} />
@@ -9678,13 +9673,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                             }));
                           }}
                         >
-                          <X size={14} />
+                          <CircleX size={14} />
                         </Button>
                       </div>
                     ));
                   })()}
                   <Button variant="link" size="auto" className="w-full mt-1" onClick={() => setEligiendoPara(ing.id)}>
-                    <Plus size={14} className="inline mr-1" /> Agregar paella o platillo
+                    <CirclePlus size={14} className="inline mr-1" /> Agregar paella o platillo
                   </Button>
                   <label className="af-check-row af-check-row-small mt-2">
                     <Checkbox checked={!!ing.avisarProduccion} onCheckedChange={(v) => setIng({ avisarProduccion: v === true })} />
@@ -9711,7 +9706,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 setBuscarIng("");
               }}
             >
-              <Plus size={20} />
+              <CirclePlus size={20} />
               <span>Añadir ingrediente</span>
             </button>
           </div>
@@ -9869,7 +9864,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 })
               }
             >
-              <Plus size={20} />
+              <CirclePlus size={20} />
               <span>Añadir envase</span>
             </button>
           </div>
@@ -9958,7 +9953,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 })
               }
             >
-              <Plus size={20} />
+              <CirclePlus size={20} />
               <span>Añadir paellera</span>
             </button>
           </div>
@@ -9972,7 +9967,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           dejarlo. Menú y Datos sí siguen siendo del administrador. */}
       {(tab === "inventario" || (tab !== "datos" && tab !== "usuarios" && esAdmin)) && (
         <Button className="w-full mt-5" onClick={guardar}>
-          {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
+          {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
         </Button>
       )}
 
@@ -10185,7 +10180,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
       <DialogContent className="af-modal">
         <div className="af-modal-header">
           <span>Agregar ítem</span>
-          <Button variant="ghost" size="icon-sm" onClick={onClose}><X size={18} /></Button>
+          <Button variant="ghost" size="icon-sm" onClick={onClose}><CircleX size={18} /></Button>
         </div>
         {preciosDeOtroDia && (
           <div className="af-precio-de-otro-dia">
@@ -10270,7 +10265,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                           ) : (
                             <>
                               <span className="af-total">{money(p.precio)}</span>
-                              <button className="af-picker-add-btn" onClick={() => agregarAlCarrito(p)}><Plus size={16} /></button>
+                              <button className="af-picker-add-btn" onClick={() => agregarAlCarrito(p)}><CirclePlus size={16} /></button>
                             </>
                           )}
                         </div>
@@ -10280,13 +10275,13 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                 </div>
               ))}
               <button className="af-add-card af-add-card-row" onClick={abrirNuevo}>
-                <Plus size={16} /> <span>Ingresar nuevo producto</span>
+                <CirclePlus size={16} /> <span>Ingresar nuevo producto</span>
               </button>
             </div>
           </div>
 
           <div className={"af-modal-detail-pane" + (mostrarDetalle ? "" : " af-pane-hide-mobile")}>
-            <button className="af-picker-back-btn" onClick={volver}><ArrowLeft size={15} /> Volver al catálogo</button>
+            <button className="af-picker-back-btn" onClick={volver}><CircleArrowLeft size={15} /> Volver al catálogo</button>
             {editando ? (
               <div className="af-picker-form">
                 <div className="af-section-title">{editando === "nuevo" ? "Nuevo producto" : "Editar producto"}</div>
@@ -10333,7 +10328,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                           <div className="af-extra-wrap">
                             <Button variant="link" size="auto" className="af-extra-btn"
                               onClick={() => setExtrasAbiertoEn(extrasAbiertoEn === producto.id ? null : producto.id)}>
-                              <Plus size={13} className="inline mr-1" /> Extra
+                              <CirclePlus size={13} className="inline mr-1" /> Extra
                             </Button>
                             {extrasAbiertoEn === producto.id && (
                               <>
@@ -10347,10 +10342,10 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                                         <span className="af-extra-menu-nombre">{ex.nombre}</span>
                                         <span className="af-ink-soft">{money(ex.precio)}</span>
                                         <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
-                                          onClick={() => cambiarExtraCarrito(producto.id, ex, -1)}><Minus size={12} /></button>
+                                          onClick={() => cambiarExtraCarrito(producto.id, ex, -1)}><CircleMinus size={12} /></button>
                                         <span className="af-extra-menu-cuenta">{puestos}</span>
                                         <button className="af-extra-mini-btn" title="Agregar uno"
-                                          onClick={() => cambiarExtraCarrito(producto.id, ex, 1)}><Plus size={12} /></button>
+                                          onClick={() => cambiarExtraCarrito(producto.id, ex, 1)}><CirclePlus size={12} /></button>
                                       </div>
                                     );
                                   })}
@@ -10365,17 +10360,17 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                             <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
                             <button className="af-extra-mini-btn" title="Quitar uno"
                               onClick={() => cambiarExtraCarrito(producto.id, { id: e.extraId, nombre: e.nombre, precio: e.precio }, -1)}>
-                              <Minus size={12} />
+                              <CircleMinus size={12} />
                             </button>
                             <button className="af-extra-mini-btn" title="Agregar uno"
                               onClick={() => cambiarExtraCarrito(producto.id, { id: e.extraId, nombre: e.nombre, precio: e.precio }, 1)}>
-                              <Plus size={12} />
+                              <CirclePlus size={12} />
                             </button>
                           </div>
                         ))}
                       </div>
                       <span className="af-total">{money(subtotalDe(producto, cantidad, extras))}</span>
-                      <Button variant="ghost" size="icon-sm" onClick={() => quitarDelCarrito(producto.id)}><X size={14} /></Button>
+                      <Button variant="ghost" size="icon-sm" onClick={() => quitarDelCarrito(producto.id)}><CircleX size={14} /></Button>
                     </div>
                   ))}
                 </div>
@@ -10396,7 +10391,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
         <div className="af-modal-footer">
           <Button variant="link" size="auto" onClick={onClose}>Cancelar</Button>
           <Button disabled={itemsCarrito.length === 0} onClick={confirmarTodo}>
-            <Plus size={16} className="inline mr-1" />
+            <CirclePlus size={16} className="inline mr-1" />
             {itemsCarrito.length > 0 ? `Agregar ${itemsCarrito.length} ${itemsCarrito.length === 1 ? "ítem" : "ítems"}` : "Agregar ítem"}
           </Button>
         </div>
@@ -11055,7 +11050,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               title="Un día antes"
               onClick={() => setForm((p) => ({ ...p, fecha: moverFechaISO(p.fecha, -1) }))}
             >
-              <ChevronLeft size={18} />
+              <CircleChevronLeft size={18} />
             </button>
             <DatePicker
               value={form.fecha}
@@ -11067,7 +11062,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               title="Un día después"
               onClick={() => setForm((p) => ({ ...p, fecha: moverFechaISO(p.fecha, 1) }))}
             >
-              <ChevronRight size={18} />
+              <CircleChevronRight size={18} />
             </button>
           </div>
           {/* Con una fecha que no es hoy, se dice en letras y se deja la
@@ -11141,7 +11136,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   ))}
                 </div>
                 <div className="af-combo-new" onClick={() => { setMostrarNuevo(true); setMostrarClientes(false); }}>
-                  <Plus size={15} /> Crear cliente nuevo
+                  <CirclePlus size={15} /> Crear cliente nuevo
                 </div>
               </div>
             )}
@@ -11216,7 +11211,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   {it.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
                     <div className="af-extra-wrap">
                       <Button variant="link" size="auto" className="af-extra-btn" onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
-                        <Plus size={13} className="inline mr-1" /> Extra
+                        <CirclePlus size={13} className="inline mr-1" /> Extra
                       </Button>
                       {extrasAbierto === it.id && (
                         <>
@@ -11232,10 +11227,10 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                                   <span className="af-extra-menu-nombre">{ex.nombre}</span>
                                   <span className="af-ink-soft">{money(ex.precio)}</span>
                                   <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
-                                    onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><Minus size={12} /></button>
+                                    onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><CircleMinus size={12} /></button>
                                   <span className="af-extra-menu-cuenta">{puestos}</span>
                                   <button className="af-extra-mini-btn" title="Agregar uno"
-                                    onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><Plus size={12} /></button>
+                                    onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><CirclePlus size={12} /></button>
                                 </div>
                               );
                             })}
@@ -11248,8 +11243,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   {it.tipo === "paella" && (it.extras || []).map((e) => (
                     <div key={e.id} className="af-extra-line">
                       <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
-                      <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><Minus size={12} /></button>
-                      <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><Plus size={12} /></button>
+                      <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><CircleMinus size={12} /></button>
+                      <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><CirclePlus size={12} /></button>
                     </div>
                   ))}
                   {/* También en presupuestos: el cliente decide desde ahí si la
@@ -11276,7 +11271,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       </div>
                     ) : (
                       <Button variant="link" size="auto" className="af-extra-btn" onClick={() => setNotaAbierta(it.id)}>
-                        <Plus size={13} className="inline mr-1" /> Nota
+                        <CirclePlus size={13} className="inline mr-1" /> Nota
                       </Button>
                     )
                   )}
@@ -11288,13 +11283,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   onChange={(v) => (it.tipo === "paella" ? updateKg(it.id, v) : updateCantidad(it.id, v))}
                 />
                 <span className="af-items-col-total">{money(it.subtotal)}</span>
-                <Button variant="ghost" size="icon-sm" className="ml-1" onClick={() => removeItem(it.id)}><X size={16} /></Button>
+                <Button variant="ghost" size="icon-sm" className="ml-1" onClick={() => removeItem(it.id)}><CircleX size={16} /></Button>
               </div>
             ))}
           </div>
         )}
         <button className="af-add-item-btn mt-2" onClick={() => setMostrarPicker(true)}>
-          <Plus size={16} /> Agregar ítem
+          <CirclePlus size={16} /> Agregar ítem
         </button>
         {form.items.length > 0 && (
           <>
@@ -11425,7 +11420,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   <div key={a.id} className="af-abono-row">
                     <span className={"af-metodo-tag af-metodo-tag-" + a.metodo}>{METODO_PAGO_LABEL[a.metodo] || a.metodo}</span>
                     <span className="af-abono-monto">{money(a.monto)}</span>
-                    <Button variant="ghost" size="icon-sm" onClick={() => quitarAbono(a.id)}><X size={14} /></Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => quitarAbono(a.id)}><CircleX size={14} /></Button>
                   </div>
                 ))}
               </div>
@@ -13719,7 +13714,7 @@ export default function App() {
         <div className="af-header">
           {view === "nuevo" ? (
             <div className="af-header-back">
-              <Button variant="ghost" size="icon-sm" onClick={cancelarForm}><ArrowLeft size={20} /></Button>
+              <Button variant="ghost" size="icon-sm" onClick={cancelarForm}><CircleArrowLeft size={20} /></Button>
               <span className="af-header-title">
                 {formModo === "presupuesto"
                   ? (form.pedidoId ? "Editar presupuesto" : "Nuevo presupuesto")
