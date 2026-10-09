@@ -46,6 +46,10 @@ export default {
   			oro: 'hsl(var(--oro) / <alpha-value>)',
   			azafran: 'hsl(var(--azafran) / <alpha-value>)',
   			pimenton: 'hsl(var(--pimenton) / <alpha-value>)',
+  			exito: { DEFAULT: 'hsl(var(--exito) / <alpha-value>)', fuerte: 'hsl(var(--exito-fuerte) / <alpha-value>)' },
+  			aviso: { DEFAULT: 'hsl(var(--aviso) / <alpha-value>)', fuerte: 'hsl(var(--aviso-fuerte) / <alpha-value>)' },
+  			error: { DEFAULT: 'hsl(var(--error) / <alpha-value>)', fuerte: 'hsl(var(--error-fuerte) / <alpha-value>)' },
+  			info: 'hsl(var(--info) / <alpha-value>)',
   			sidebar: {
   				DEFAULT: 'hsl(var(--sidebar-background) / <alpha-value>)',
   				foreground: 'hsl(var(--sidebar-foreground) / <alpha-value>)',
@@ -121,11 +125,11 @@ export default {
   			]
   		},
   		borderRadius: {
-  			sm: 'var(--radius-sm)',
-  			md: 'var(--radius-md)',
-  			lg: 'var(--radius-lg)',
-  			xl: 'var(--radius-lg)',
-  			full: 'var(--radius-full)'
+  			sm: 'calc(var(--radius) - 4px)',
+  			md: 'calc(var(--radius) - 2px)',
+  			lg: 'var(--radius)',
+  			xl: 'calc(var(--radius) + 4px)',
+  			full: '9999px'
   		},
   		keyframes: {
   			'accordion-down': {

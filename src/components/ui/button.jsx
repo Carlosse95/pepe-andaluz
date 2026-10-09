@@ -3,38 +3,33 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-// Botón de shadcn/ui con la paleta de Pepe El Andaluz.
-// Variantes:
-//   default      higo negro (acción principal)
-//   secondary    lavanda (acción secundaria)
-//   outline      borde, fondo blanco
-//   ghost        sin fondo (íconos de barra, acciones discretas)
-//   link         solo texto en higo
-//   destructive  pimentón lleno (borrar definitivo)
-//   destructive-outline  borde pimentón (eliminar/cancelar con cuidado)
-//   exito        verde de "pagado"/confirmar
-// Tamaños: default (alto de campo, 46px), sm, lg, icon, icon-sm, auto (sin alto
-// ni relleno, para botones de texto dentro de una línea).
+// Botón ORIGINAL de shadcn/ui (new-york). Además de sus variantes de fábrica
+// (default, destructive, outline, secondary, ghost, link) trae tres que usa la
+// app, hechas con el mismo estilo:
+//   destructive-outline  borde de error (eliminar con cuidado)
+//   exito                verde de "pagado"/confirmar
+// y dos tamaños: icon-sm (botones de solo ícono chicos) y auto (botones de
+// texto dentro de una línea, sin alto ni relleno).
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-display text-sm font-bold transition-[background-color,color,box-shadow,transform,opacity] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.97] cursor-pointer [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground shadow-[0_3px_10px_-3px_hsl(var(--higo)/0.4)] hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        outline: "border border-border bg-card text-foreground hover:bg-accent",
-        ghost: "text-foreground hover:bg-accent",
-        link: "text-primary font-semibold underline-offset-4 hover:underline",
+        default: "bg-primary text-primary-foreground shadow hover:bg-primary/90",
         destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-        "destructive-outline": "border border-destructive bg-transparent text-destructive hover:bg-destructive/10",
-        exito: "bg-[#1FA971] text-white hover:bg-[#1FA971]/90",
+        outline: "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+        "destructive-outline": "border border-destructive/50 bg-background text-destructive shadow-sm hover:bg-destructive/10",
+        exito: "bg-exito text-white shadow-sm hover:bg-exito/90",
       },
       size: {
-        default: "min-h-[var(--alto-campo)] px-4 py-2",
-        sm: "min-h-9 rounded-md px-3 text-xs",
-        lg: "min-h-12 px-6 text-base",
-        icon: "h-10 w-10 rounded-md",
-        "icon-sm": "h-8 w-8 rounded-md",
+        default: "h-9 px-4 py-2",
+        sm: "h-8 rounded-md px-3 text-xs",
+        lg: "h-10 rounded-md px-8",
+        icon: "h-9 w-9",
+        "icon-sm": "h-8 w-8",
         auto: "h-auto p-0",
       },
     },
