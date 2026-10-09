@@ -24,12 +24,8 @@ export function AppSidebar({ secciones, vista, onIr, onNuevoPedido, onNuevoPresu
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" tooltip="Pepe El Andaluz" onClick={ir(() => onIr("hoy"))} className="hover:bg-transparent active:bg-transparent">
+            <SidebarMenuButton size="lg" tooltip="Pepe El Andaluz" aria-label="Pepe El Andaluz — ir a Hoy" onClick={ir(() => onIr("hoy"))} className="h-auto justify-center py-2 hover:bg-transparent active:bg-transparent group-data-[collapsible=icon]:!p-0">
               <div className="af-logo-mark af-logo-barra shrink-0" />
-              <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
-                <span className="truncate font-display text-sm font-bold">Pepe El Andaluz</span>
-                <span className="truncate text-2xs opacity-70">Paellas y más</span>
-              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

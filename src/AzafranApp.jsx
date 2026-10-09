@@ -7,6 +7,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Card } from "@/components/ui/card";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogConfirmacion } from "@/components/ui/alert-dialog";
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -2823,8 +2824,8 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
         <Check size={14} /> Devuelta
       </Button>
       {confirmando && (
-        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmando(false))?.(); }}>
-          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmando(false))?.(); }}>
+          <AlertDialogConfirmacion>
             <div className="af-alerta-icon"><ChefHat size={26} /></div>
             <div className="af-alerta-titulo">¿Marcar paellera devuelta?</div>
             <p className="af-alerta-texto">
@@ -2837,8 +2838,8 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
               Sí, ya se devolvió
             </Button>
             <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmando(false)}>Cancelar</Button>
-          </DialogContent>
-        </Dialog>
+          </AlertDialogConfirmacion>
+        </AlertDialog>
       )}
     </Card>
   );
@@ -4003,8 +4004,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
         )}
 
         {porBorrar && (
-          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
-            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
+            <AlertDialogConfirmacion>
               <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
               <div className="af-alerta-titulo">
                 {porBorrar.tipo === "deuda" ? "¿Borrar esta deuda?" : "¿Borrar este pago?"}
@@ -4016,8 +4017,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <Button variant="destructive-outline" className="w-full" onClick={borrar}>Sí, bórralo</Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Mejor no</Button>
-            </DialogContent>
-          </Dialog>
+            </AlertDialogConfirmacion>
+          </AlertDialog>
         )}
       </>
     );
@@ -4309,8 +4310,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         </Button>
 
         {confirmBorrar && (
-          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmBorrar(null))?.(); }}>
-            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmBorrar(null))?.(); }}>
+            <AlertDialogConfirmacion>
               <div className="af-alerta-icon"><Trash size={26} /></div>
               <div className="af-alerta-titulo">¿Borrar a {confirmBorrar.cliente.nombre}?</div>
 
@@ -4354,8 +4355,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                 Sí, bórralo
               </Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmBorrar(null)}>Mejor no</Button>
-            </DialogContent>
-          </Dialog>
+            </AlertDialogConfirmacion>
+          </AlertDialog>
         )}
       </div>
     );
@@ -7753,8 +7754,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         )}
 
         {confirmarBorrarGasto && (
-          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarBorrarGasto(null))?.(); }}>
-            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarBorrarGasto(null))?.(); }}>
+            <AlertDialogConfirmacion>
               <div className="af-alerta-icon"><Trash size={26} /></div>
               <div className="af-alerta-titulo">¿Borrar este gasto?</div>
               <p className="af-alerta-texto">
@@ -7769,8 +7770,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 Sí, bórralo
               </Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarBorrarGasto(null)}>Mejor no</Button>
-            </DialogContent>
-          </Dialog>
+            </AlertDialogConfirmacion>
+          </AlertDialog>
         )}
 
         {/* La foto del ticket, con lo que se le leyó al lado: así se compara
@@ -7866,8 +7867,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {/* Marcar facturado saca la compra de pendientes, así que conviene
             preguntar: se cambia desde una lista y es fácil darle sin querer. */}
         {confirmarFactura && (
-          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFactura(null))?.(); }}>
-            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFactura(null))?.(); }}>
+            <AlertDialogConfirmacion>
               <div className="af-alerta-icon"><Receipt size={26} /></div>
               <div className="af-alerta-titulo">¿Ya la facturaste?</div>
               <p className="af-alerta-texto">
@@ -7885,8 +7886,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 Sí, ya la facturé
               </Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFactura(null)}>Todavía no</Button>
-            </DialogContent>
-          </Dialog>
+            </AlertDialogConfirmacion>
+          </AlertDialog>
         )}
 
         {/* Último recurso si el navegador no deja copiar: se muestra el texto
@@ -7911,8 +7912,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {/* Aviso antes de guardar algo que parece ya estar apuntado. */}
         {posibleDuplicado && (
-          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPosibleDuplicado(null))?.(); }}>
-            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setPosibleDuplicado(null))?.(); }}>
+            <AlertDialogConfirmacion>
               <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
               <div className="af-alerta-titulo">¿No lo apuntaste ya?</div>
               <div className="af-alerta-texto mb-3">
@@ -7936,8 +7937,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               >
                 Sí es otro, guárdalo
               </Button>
-            </DialogContent>
-          </Dialog>
+            </AlertDialogConfirmacion>
+          </AlertDialog>
         )}
 
         {gastoEditando && (
@@ -9933,8 +9934,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       })()}
 
       {porBorrar && (
-        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
-          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
+          <AlertDialogConfirmacion>
             <div className="af-alerta-icon"><Trash size={26} /></div>
             <div className="af-alerta-titulo">¿Quitar {porBorrar.que}?</div>
             <p className="af-alerta-texto">
@@ -9948,8 +9949,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               Sí, quitarlo
             </Button>
             <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Cancelar</Button>
-          </DialogContent>
-        </Dialog>
+          </AlertDialogConfirmacion>
+        </AlertDialog>
       )}
     </div>
   );
@@ -13724,8 +13725,8 @@ export default function App() {
       {/* Confirmar el día y la hora del pedido nuevo. Solo eso, en grande: es
           lo que se quiere revisar, y cualquier otro dato distraería. */}
       {confirmarFecha && (
-        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFecha(null))?.(); }}>
-          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFecha(null))?.(); }}>
+          <AlertDialogConfirmacion>
             <div className="af-alerta-icon"><CalendarDays size={26} /></div>
             <div className="af-alerta-titulo">¿Es para este día y hora?</div>
             <div className={"af-confirma-relativo" + (confirmarFecha.fecha < todayISO() ? " pasado" : "")}>
@@ -13743,15 +13744,15 @@ export default function App() {
             <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFecha(null)}>
               No, lo cambio
             </Button>
-          </DialogContent>
-        </Dialog>
+          </AlertDialogConfirmacion>
+        </AlertDialog>
       )}
 
       {/* No alcanza lo que está hecho. Se avisa con números claros y se deja
           seguir: el pedido es real aunque haya que ponerse a cocinar. */}
       {faltaHechas && faltaHechas.length > 0 && (
-        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setFaltaHechas(null))?.(); }}>
-          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setFaltaHechas(null))?.(); }}>
+          <AlertDialogConfirmacion>
             <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
             <div className="af-alerta-titulo">No alcanza lo que hay hecho</div>
             <div className="af-alerta-texto mb-3">
@@ -13780,13 +13781,13 @@ export default function App() {
             >
               Las voy a hacer, guárdalo
             </Button>
-          </DialogContent>
-        </Dialog>
+          </AlertDialogConfirmacion>
+        </AlertDialog>
       )}
 
       {borradorPendiente && view !== "nuevo" && (
-        <Dialog open onOpenChange={() => {}}>
-          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center" onEscapeKeyDown={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
+        <AlertDialog open onOpenChange={() => {}}>
+          <AlertDialogConfirmacion onEscapeKeyDown={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
             <div className="af-alerta-icon"><StickyNote size={26} /></div>
             <div className="af-alerta-titulo">Se quedó algo a medias</div>
             <p className="af-alerta-texto">
@@ -13816,8 +13817,8 @@ export default function App() {
             >
               Descartarlo
             </Button>
-          </DialogContent>
-        </Dialog>
+          </AlertDialogConfirmacion>
+        </AlertDialog>
       )}
 
       <AvisoPendienteModal
@@ -13917,7 +13918,7 @@ const AZAFRAN_CSS = `
 .af-logo-sidebar { width: 150px; background-color: var(--bg); margin-bottom: 22px; }
 .af-logo-topbar { width: 118px; flex-shrink: 0; }
 /* Logo en la barra lateral: grande abierta, chico cuando se encoge a íconos. */
-.af-logo-barra { width: 76px; background-color: hsl(var(--higo)); }
+.af-logo-barra { width: 132px; background-color: hsl(var(--higo)); -webkit-mask-position: center; mask-position: center; }
 [data-collapsible=icon] .af-logo-barra { width: 30px; }
 
 .af-sidebar { display: none; }
