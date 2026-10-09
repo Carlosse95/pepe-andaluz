@@ -26,6 +26,7 @@ import {
 import { Button as ButtonS } from "@/components/ui/button-shadcn";
 import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
+import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
   CirclePlus, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
@@ -10291,9 +10292,9 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                 </div>
                 <div className="af-field">
                   <Label>Categoría</Label>
-                  <Combobox value={draftProducto.categoria} onChange={(e) => setDraftProducto({ ...draftProducto, categoria: e.target.value })}>
-                    {CATEGORIAS_ITEM.map((c) => (<option key={c.id} value={c.id}>{c.label}</option>))}
-                  </Combobox>
+                  <NativeSelectS envoltura="w-full" value={draftProducto.categoria} onChange={(e) => setDraftProducto({ ...draftProducto, categoria: e.target.value })}>
+                    {CATEGORIAS_ITEM.map((c) => (<NativeSelectOption key={c.id} value={c.id}>{c.label}</NativeSelectOption>))}
+                  </NativeSelectS>
                 </div>
                 {draftProducto.categoria !== "paella" && (
                   <div className="af-field">
