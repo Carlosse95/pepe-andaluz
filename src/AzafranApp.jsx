@@ -2039,6 +2039,25 @@ function StatPill({ label, value, warn }) {
   );
 }
 
+// Estado del pedido con el Native Select ORIGINAL de shadcn: en iPhone/iPad
+// abre el selector del sistema.
+function EstadoPedidoSelect({ estado, onChange }) {
+  return (
+    <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+      <NativeSelectS
+        size="sm"
+        aria-label="Estado del pedido"
+        value={estado}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {ESTADOS_PEDIDO.map((e) => (
+          <NativeSelectOption key={e.id} value={e.id}>{e.label}</NativeSelectOption>
+        ))}
+      </NativeSelectS>
+    </div>
+  );
+}
+
 function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoWhatsApp, avisoPendiente, mensajes }) {
   const itemsPaellera = pedido.items.filter((it) => it.tipo === "paella" && it.enPaellera);
   const hayPaellera = itemsPaellera.length > 0;
