@@ -2712,7 +2712,7 @@ const leerImagenComoAvatar = (file) =>
 // El modal se monta con un portal a document.body porque el topbar usa
 // backdrop-filter, y eso crea un "containing block" para position:fixed que
 // rompe el centrado (el modal quedaba pegado arriba, dentro del topbar).
-function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
+function AvatarButton({ nombre, foto, onGuardar, size = 34, sinBoton = false, pedirAbrir = 0 }) {
   const [editando, setEditando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -2725,6 +2725,9 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
     setNombreDraft(nombre);
     setEditando(true);
   };
+
+  // El menú del usuario en la barra lateral abre esta misma ventana.
+  useEffect(() => { if (pedirAbrir) abrir(); /* eslint-disable-next-line */ }, [pedirAbrir]);
 
   const onArchivo = async (e) => {
     const file = e.target.files?.[0];
@@ -2752,9 +2755,11 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
 
   return (
     <div className="af-avatar-wrap">
-      <button className="af-avatar-btn" style={{ width: size, height: size }} onClick={abrir} title="Mi perfil">
-        {foto ? <img src={foto} alt="" className="af-avatar-img" /> : <span className="af-avatar-fallback">{inicial}</span>}
-      </button>
+      {!sinBoton && (
+        <button className="af-avatar-btn" style={{ width: size, height: size }} onClick={abrir} title="Mi perfil">
+          {foto ? <img src={foto} alt="" className="af-avatar-img" /> : <span className="af-avatar-fallback">{inicial}</span>}
+        </button>
+      )}
       {editando && (
         <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setEditando(false))?.(); }}>
             <DialogContent className="af-avatar-modal" overlayClassName="af-modal-overlay-center">
@@ -3011,8 +3016,6 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
   const total = pedidosHoy.reduce((a, p) => a + p.total, 0);
   // Solo lo que falta cobrar de HOY (lo de otros días se ve en Agenda).
   const porCobrarHoy = pedidosHoy.reduce((a, p) => a + (p.saldo || 0), 0);
-  const h = new Date().getHours();
-  const saludo = h < 13 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
 
   // En "Hoy" solo se trabaja lo que falta: los entregados se guardan colapsados.
   const activosHoy = pedidosHoy.filter((p) => (p.estado || "pendiente") !== "entregado");
@@ -3062,12 +3065,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
   return (
     <div>
-      <div className="af-greeting-panel">
-        <div className="af-greeting">{saludo}{nombre ? `, ${nombre}` : ""}</div>
-        <div className="af-today-date">{fmtDateHuman(todayISO())}</div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 my-4">
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <StatPill label="Pedidos hoy" value={pedidosHoy.length} />
         <StatPill label="Total del día" value={money(total)} />
         <StatPill label="Por cobrar hoy" value={money(porCobrarHoy)} warn={porCobrarHoy > 0} />
@@ -11559,6 +11557,8 @@ export default function App() {
   const [saludoInicioSaliendo, setSaludoInicioSaliendo] = useState(false);
 
   const [view, setView] = useState("hoy");
+  // Cada vez que sube, se abre "Mi perfil" (desde el menú de la barra lateral).
+  const [pedirPerfil, setPedirPerfil] = useState(0);
   // Para saber, desde lo que corre en segundo plano, si se está capturando un
   // pedido (ahí nunca se recarga la app sola).
   const vistaActual = useRef(view);
@@ -13602,7 +13602,7 @@ export default function App() {
         onNuevoPresupuesto={() => goToNuevoPresupuesto()}
         onBuscar={() => irAVista("buscar")}
         usuario={{ nombre: nombreUsuario, email: perfil?.email || "", foto: fotoUsuario }}
-        onPerfil={() => document.querySelector(".af-header .af-avatar-btn")?.click()}
+        onPerfil={() => setPedirPerfil((n) => n + 1)}
         onCerrarSesion={cerrarSesion}
       />
       <SidebarInset className="af-main">
@@ -13623,25 +13623,10 @@ export default function App() {
           ) : (
             <div className="af-header-row">
               <SidebarTrigger className="af-sidebar-trigger -ml-1 shrink-0" />
-              {view === "hoy" ? (
-                <div>
-                  <div className="af-header-brand af-logo-mark af-logo-header" />
-                  <span className="af-header-title-desktop">Hoy</span>
-                </div>
-              ) : (
-                <span className="af-header-title-plain">{titulos[view]}</span>
-              )}
+              <span className="af-header-title-plain">{titulos[view]}</span>
               <div className="flex items-center gap-2 ml-auto">
-                {view !== "buscar" && (
-                  <Button variant="ghost" size="icon-sm" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
-                    <Search size={20} />
-                  </Button>
-                )}
-                {/* La campana vivía SOLO en la barra de pantalla ancha, así que
-                    en el celular —que es donde se trabaja— no existía y sus
-                    avisos no los veía nadie. */}
                 {campana}
-                <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} size={30} />
+                <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} sinBoton pedirAbrir={pedirPerfil} />
               </div>
             </div>
           )}
@@ -13716,13 +13701,6 @@ export default function App() {
             barra de abajo y casi no se usaba. Cada pantalla tiene su propio
             botón de "Nuevo…", que además dice qué hace. */}
 
-        {view !== "nuevo" && (
-          <div className="af-nav">
-            {navItems.map((n) => (
-              <NavButton key={n.key} active={view === n.key} icon={n.icon} label={n.label} badge={n.badge} onClick={() => irAVista(n.key)} />
-            ))}
-          </div>
-        )}
 
         {hayNuevaVersion && (
           <button
@@ -13980,7 +13958,7 @@ const AZAFRAN_CSS = `
 .af-borrar-pendiente { text-align: left; font-size: var(--text-sm); line-height: 1.5; color: #b91c1c; background: color-mix(in srgb, #dc2626 10%, transparent); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 14px; }
 .af-borrar-pendiente ul { margin: 4px 0 0; padding-left: 18px; }
 
-.af-content { flex: 1; padding: 16px 16px 100px; overflow-y: auto; }
+.af-content { flex: 1; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); overflow-y: auto; }
 
 .af-greeting { font-family: 'Space Grotesk', sans-serif; font-size: var(--text-2xl); font-weight: 700; }
 .af-today-date { color: var(--ink-soft); font-size: var(--text-sm); margin-top: 2px; }
