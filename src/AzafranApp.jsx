@@ -15,6 +15,16 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+// Piezas ORIGINALES de shadcn (sin el estilo de la app), por ahora solo en
+// "Mi perfil". Llevan la S para no confundirse con las adaptadas.
+import {
+  Dialog as DialogS, DialogContent as DialogSContent, DialogHeader as DialogSHeader, DialogFooter as DialogSFooter,
+  DialogTitle as DialogSTitle, DialogDescription as DialogSDescription, DialogClose as DialogSClose,
+} from "@/components/ui/dialog-shadcn";
+import { Button as ButtonS } from "@/components/ui/button-shadcn";
+import { Input as InputS } from "@/components/ui/input-shadcn";
+import { Label as LabelS } from "@/components/ui/label-shadcn";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, House, Truck, Store, ChefHat, Check, Minus, Trash,
@@ -2812,6 +2822,89 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34, sinBoton = false, pe
           </Dialog>
       )}
     </div>
+  );
+}
+
+// "Mi perfil" con el Dialog ORIGINAL de shadcn (y su botón, campo y etiqueta
+// originales). Se abre desde el usuario de la barra lateral.
+function PerfilDialog({ abierto, onCerrar, nombre, email, foto, onGuardar }) {
+  const [fotoDraft, setFotoDraft] = useState(foto);
+  const [nombreDraft, setNombreDraft] = useState(nombre);
+  const [subiendo, setSubiendo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  // Cada vez que se abre, parte de lo que hay guardado.
+  useEffect(() => {
+    if (abierto) { setFotoDraft(foto); setNombreDraft(nombre); }
+    // eslint-disable-next-line
+  }, [abierto]);
+  const inicial = (nombreDraft || nombre || "U").trim().charAt(0).toUpperCase() || "U";
+
+  const onArchivo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSubiendo(true);
+    try {
+      setFotoDraft(await leerImagenComoAvatar(file));
+    } catch {
+      // Si la imagen no se pudo leer, se queda la de antes.
+    } finally {
+      setSubiendo(false);
+    }
+  };
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      await onGuardar({ foto: fotoDraft, nombre: nombreDraft.trim() });
+      onCerrar();
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <DialogS open={abierto} onOpenChange={(o) => { if (!o) onCerrar(); }}>
+      <DialogSContent className="sm:max-w-[425px]">
+        <DialogSHeader>
+          <DialogSTitle>Mi perfil</DialogSTitle>
+          <DialogSDescription>Cambia tu foto y tu nombre. Así te ven los demás en la app.</DialogSDescription>
+        </DialogSHeader>
+        <div className="grid gap-4 py-2">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-16 w-16">
+              {fotoDraft && <AvatarImage src={fotoDraft} alt="" />}
+              <AvatarFallback className="text-lg">{inicial}</AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col items-start gap-2">
+              <ButtonS variant="outline" size="sm" asChild>
+                <label className="cursor-pointer">
+                  {subiendo ? "Subiendo…" : "Cambiar foto"}
+                  <input type="file" accept="image/*" className="hidden" onChange={onArchivo} disabled={subiendo} />
+                </label>
+              </ButtonS>
+              {fotoDraft && (
+                <ButtonS variant="ghost" size="sm" onClick={() => setFotoDraft(null)}>Quitar foto</ButtonS>
+              )}
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <LabelS htmlFor="perfil-nombre">Nombre</LabelS>
+            <InputS id="perfil-nombre" placeholder="Tu nombre" value={nombreDraft} onChange={(e) => setNombreDraft(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <LabelS htmlFor="perfil-correo">Correo</LabelS>
+            <InputS id="perfil-correo" value={email || ""} disabled />
+          </div>
+        </div>
+        <DialogSFooter>
+          <DialogSClose asChild>
+            <ButtonS variant="outline">Cancelar</ButtonS>
+          </DialogSClose>
+          <ButtonS onClick={guardar} disabled={guardando || subiendo}>
+            {guardando ? "Guardando…" : "Guardar cambios"}
+          </ButtonS>
+        </DialogSFooter>
+      </DialogSContent>
+    </DialogS>
   );
 }
 
@@ -11564,8 +11657,8 @@ export default function App() {
   const [saludoInicioSaliendo, setSaludoInicioSaliendo] = useState(false);
 
   const [view, setView] = useState("hoy");
-  // Cada vez que sube, se abre "Mi perfil" (desde el menú de la barra lateral).
-  const [pedirPerfil, setPedirPerfil] = useState(0);
+  // "Mi perfil" se abre desde el menú del usuario en la barra lateral.
+  const [perfilAbierto, setPerfilAbierto] = useState(false);
   // Para saber, desde lo que corre en segundo plano, si se está capturando un
   // pedido (ahí nunca se recarga la app sola).
   const vistaActual = useRef(view);
@@ -13609,8 +13702,16 @@ export default function App() {
         onNuevoPresupuesto={() => goToNuevoPresupuesto()}
         onBuscar={() => irAVista("buscar")}
         usuario={{ nombre: nombreUsuario, email: perfil?.email || "", foto: fotoUsuario }}
-        onPerfil={() => setPedirPerfil((n) => n + 1)}
+        onPerfil={() => setPerfilAbierto(true)}
         onCerrarSesion={cerrarSesion}
+      />
+      <PerfilDialog
+        abierto={perfilAbierto}
+        onCerrar={() => setPerfilAbierto(false)}
+        nombre={nombreUsuario}
+        email={perfil?.email || ""}
+        foto={fotoUsuario}
+        onGuardar={guardarPerfilPersonal}
       />
       <SidebarInset className="af-main">
         <LetreroNube pendientes={nubePendiente} onReintentar={reintentarPendientes} />
@@ -13633,7 +13734,7 @@ export default function App() {
               <span className="af-header-title-plain">{titulos[view]}</span>
               <div className="flex items-center gap-2 ml-auto">
                 {campana}
-                <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} sinBoton pedirAbrir={pedirPerfil} />
+                
               </div>
             </div>
           )}
