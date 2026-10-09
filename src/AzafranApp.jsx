@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SwitchVista } from "@/components/ui/switch";
 import { Ayuda } from "@/components/ayuda";
@@ -2539,16 +2541,6 @@ function LetreroAtrasada({ atrasada, onRecargar }) {
         )}
       </div>
       <button className="af-letrero-nube-btn" onClick={onRecargar}>Recargar</button>
-    </div>
-  );
-}
-
-function Toast({ toast }) {
-  if (!toast) return null;
-  return (
-    <div className={"af-toast" + (toast.tipo === "error" ? " af-toast-error" : "")}>
-      {toast.tipo === "error" ? <TriangleAlert size={16} /> : <CircleCheck size={16} />}
-      <span>{toast.msg}</span>
     </div>
   );
 }
@@ -11593,6 +11585,9 @@ function useNuevaVersion() {
 export default function App() {
   const [cargando, setCargando] = useState(true);
   const [pedidos, setPedidos] = useState([]);
+  // Los pedidos de este momento, para comparar contra lo que llega de la nube.
+  const pedidosRef = useRef([]);
+  pedidosRef.current = pedidos;
   const [clientes, setClientes] = useState([]);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [historico, setHistorico] = useState({});
@@ -11615,6 +11610,8 @@ export default function App() {
   const [saludoInicioSaliendo, setSaludoInicioSaliendo] = useState(false);
 
   const [view, setView] = useState("hoy");
+  const yoRef = useRef({ nombre: "", email: "" });
+  const irAEditarRef = useRef(null);
   // "Mi perfil" se abre desde el menú del usuario en la barra lateral.
   const [perfilAbierto, setPerfilAbierto] = useState(false);
   // Para saber, desde lo que corre en segundo plano, si se está capturando un
@@ -11633,7 +11630,6 @@ export default function App() {
   const [agendaTab, setAgendaTab] = useState("pendientes");
   const [agendaDia, setAgendaDia] = useState("");
   const [error, setError] = useState("");
-  const [toast, setToast] = useState(null);
   const hayNuevaVersion = useNuevaVersion();
 
   // El color de la barra de Safari (y de lo que asoma arriba al deslizar) va
@@ -11696,9 +11692,10 @@ export default function App() {
   const [perfil, setPerfil] = useState(null);
   const [cargandoSesion, setCargandoSesion] = useState(nubeActiva);
 
+  // Avisos cortos (Toast de shadcn: Sonner).
   const showToast = (msg, tipo = "ok") => {
-    setToast({ msg, tipo, id: Date.now() });
-    setTimeout(() => setToast((t) => (t && Date.now() - t.id >= 2400 ? null : t)), 2600);
+    if (tipo === "error") toast.error(msg);
+    else toast.success(msg);
   };
 
 
@@ -12166,6 +12163,9 @@ export default function App() {
             copiaLocal.guardar(clave, r.value, horas[clave]);
             leidasDeLaNube.current.add(clave);
             if (lecturaVigente(clave, emitidaEn) && !hayPendiente(clave)) {
+              if (clave === "pedidos") {
+                try { avisarCambiosDePedidos(pedidosRef.current, normalizarComoPantalla("pedidos", JSON.parse(r.value) || [])); } catch { /* el aviso nunca detiene la actualización */ }
+              }
               aplicarClave(clave, r.value);
               baseNube.current[clave] = { raw: r.value, hora: horas[clave] };
             } else {
@@ -12615,7 +12615,28 @@ export default function App() {
     showToast("Se están subiendo cambios que habían quedado pendientes", "ok");
   };
 
-  const guardarPedidos = (lista) => { setPedidos(lista); persist("pedidos", lista); };
+  // Cada pedido que cambia (y cada pago nuevo) lleva quién y cuándo. Con eso
+  // los avisos de los demás aparatos dicen "Papá registró un pago…".
+  const firmarCambios = (lista) => {
+    const antes = new Map((pedidosRef.current || []).map((p) => [p.id, p]));
+    const yo = yoRef.current;
+    const ahora = Date.now();
+    return lista.map((p) => {
+      const v = antes.get(p.id);
+      if (v === p || (v && igual(v, p))) return p;
+      const pagosAntes = new Set(((v && v.abonos) || []).map((a) => a.id));
+      const abonos = (p.abonos || []).map((a) =>
+        pagosAntes.has(a.id) || a.registradoPor ? a : { ...a, registradoPor: yo.nombre, registradoPorEmail: yo.email, registradoEn: ahora }
+      );
+      return { ...p, abonos, actualizadoPor: yo.nombre, actualizadoPorEmail: yo.email, actualizadoEn: ahora };
+    });
+  };
+  const guardarPedidos = (lista) => {
+    const firmada = firmarCambios(lista);
+    pedidosRef.current = firmada;
+    setPedidos(firmada);
+    persist("pedidos", firmada);
+  };
   // Lo que el pedido pide y no está hecho, para el aviso de antes de guardar.
   const [faltaHechas, setFaltaHechas] = useState(null);
   // El día y la hora del pedido nuevo, para confirmarlos antes de guardar.
@@ -12660,6 +12681,9 @@ export default function App() {
   const fotoUsuario = typeof entradaAvatar === "string" ? entradaAvatar : (entradaAvatar?.foto || null);
   const nombrePersonalizado = typeof entradaAvatar === "object" && entradaAvatar?.nombre ? entradaAvatar.nombre.trim() : "";
   const nombreUsuario = nombrePersonalizado || (perfil?.nombre || "").trim() || (perfil?.email ? perfil.email.split("@")[0] : "");
+  // Quién está usando este aparato: se firma en cada cambio de pedido y de
+  // pago, y sirve para no avisarle a uno de sus propios cambios.
+  yoRef.current = { nombre: nombreUsuario, email: perfil?.email || "" };
 
   const guardarPerfilPersonal = ({ foto, nombre }) => {
     const actual = avatares?.[claveAvatar];
@@ -13086,6 +13110,57 @@ export default function App() {
     setView("nuevo");
   };
 
+  // Aviso (Toast) de lo que cambió OTRO aparato en los pedidos: nuevo, pago,
+  // estado, cambio o borrado. Los cambios de uno mismo no se avisan. Si
+  // llegan muchos juntos van en un solo aviso. Tocar "Ver" abre el pedido.
+  const avisarCambiosDePedidos = (antes, despues) => {
+    if (!antes || !antes.length || !despues) return;
+    const yo = yoRef.current.email;
+    const mapaAntes = new Map(antes.map((p) => [p.id, p]));
+    const avisos = [];
+    for (const p of despues) {
+      const v = mapaAntes.get(p.id);
+      if (v && (v === p || igual(v, p))) continue;
+      if (yo && p.actualizadoPorEmail === yo) continue;
+      const quien = p.actualizadoPor;
+      const cliente = p.clienteNombre || "un cliente";
+      if (!v) {
+        avisos.push({ p, icono: <CirclePlus className="size-4" />, texto: `${quien ? quien + " agregó un" : "Nuevo"} pedido de ${cliente}`, detalle: p.fecha ? `Para el ${fmtDateHuman(p.fecha)}` : undefined });
+        continue;
+      }
+      const pagosAntes = new Set((v.abonos || []).map((a) => a.id));
+      const pagosNuevos = (p.abonos || []).filter((a) => !pagosAntes.has(a.id));
+      if (pagosNuevos.length) {
+        const total = pagosNuevos.reduce((a, x) => a + (parseFloat(x.monto) || 0), 0);
+        const por = pagosNuevos[0].registradoPor || quien;
+        avisos.push({ p, icono: <Banknote className="size-4" />, texto: `${por ? por + " registró" : "Se registró"} un pago de ${money(total)}`, detalle: `Pedido de ${cliente}` });
+        continue;
+      }
+      if ((v.estado || "pendiente") !== (p.estado || "pendiente")) {
+        avisos.push({ p, icono: <ChefHat className="size-4" />, texto: `Pedido de ${cliente}: ${ESTADO_LABEL[p.estado || "pendiente"]}`, detalle: quien ? `Lo cambió ${quien}` : undefined });
+        continue;
+      }
+      avisos.push({ p, icono: <SquarePen className="size-4" />, texto: `${quien ? quien + " cambió" : "Cambió"} el pedido de ${cliente}` });
+    }
+    const quedan = new Set(despues.map((p) => p.id));
+    for (const v of antes) {
+      if (!quedan.has(v.id)) avisos.push({ p: null, icono: <Trash className="size-4" />, texto: `Se borró el pedido de ${v.clienteNombre || "un cliente"}` });
+    }
+    if (!avisos.length) return;
+    if (avisos.length > 3) {
+      toast(`${avisos.length} cambios en pedidos`, { description: avisos.slice(0, 3).map((a) => a.texto).join(" · ") + "…", duration: 6000 });
+      return;
+    }
+    avisos.forEach((a) =>
+      toast(a.texto, {
+        icon: a.icono,
+        description: a.detalle,
+        duration: 6000,
+        action: a.p ? { label: "Ver", onClick: () => irAEditarRef.current?.(a.p) } : undefined,
+      })
+    );
+  };
+
   const irAEditar = (pedido) => {
     setForm({
       pedidoId: pedido.id,
@@ -13116,6 +13191,8 @@ export default function App() {
     setError("");
     setView("nuevo");
   };
+
+  irAEditarRef.current = irAEditar;
 
   const irAEditarPresupuesto = (presupuesto) => {
     setForm({
@@ -13795,7 +13872,7 @@ export default function App() {
           </button>
         )}
 
-        <Toast toast={toast} />
+        <Toaster position="top-center" offset={16} />
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
         <CobroEntregaModal
           cobro={cobroModal}
@@ -14641,17 +14718,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   flex-shrink: 0; border: none; border-radius: var(--radius-full); padding: 8px 16px; font-weight: 700;
   background: white; color: hsl(var(--error)); cursor: pointer;
 }
-.af-toast {
-  position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px;
-  background: var(--ink); color: hsl(var(--card)); font-size: var(--text-sm); font-weight: 600;
-  padding: 12px 16px; border-radius: var(--radius-full); z-index: 80;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); white-space: nowrap;
-  animation: af-toast-in 0.22s ease-out;
-}
-.af-toast-error { background: var(--wine); color: white; }
-@keyframes af-toast-in { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-@media (min-width: 700px) { .af-toast { bottom: 32px; } }
 
 /* Botones de acción del formulario (WhatsApp, duplicar) */
 .af-btn-wa { background: hsl(var(--exito) / 0.12); color: hsl(var(--exito-fuerte)); font-weight: 700; border: none; border-radius: var(--radius-md); padding: 12px; font-size: var(--text-sm); font-family: var(--fuente-titulos); cursor: pointer; }
