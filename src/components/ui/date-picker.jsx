@@ -4,7 +4,6 @@ import { format } from "date-fns";
 import { es as esFechas } from "date-fns/locale";
 import { es } from "react-day-picker/locale";
 import { cn } from "@/lib/utils";
-import { campoClases } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -30,12 +29,18 @@ function DatePicker({ value, onChange, placeholder = "Elegir día", className, d
         <button
           type="button"
           disabled={disabled}
-          className={cn(campoClases, "items-center justify-between gap-2 text-left", !fecha && "text-muted-foreground", className)}
+          className={cn(
+            // Estilo original del Date Picker de shadcn (botón "outline").
+            // "af-input" queda solo como gancho de acomodo (anchos por pantalla).
+            "af-input inline-flex h-9 w-full min-w-0 items-center justify-start gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-left text-sm font-normal shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+            !fecha && "text-muted-foreground",
+            className
+          )}
         >
+          <CalendarDays className="size-4 shrink-0 opacity-60" />
           <span className="truncate first-letter:uppercase">
             {fecha ? format(fecha, "EEE d 'de' MMM yyyy", { locale: esFechas }) : placeholder}
           </span>
-          <CalendarDays className="size-4 shrink-0 opacity-60" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="z-[70] w-auto p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>

@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { NativeSelect } from "@/components/ui/native-select";
 import { Card } from "@/components/ui/card";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -13,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Combobox } from "@/components/ui/combobox";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -7000,7 +7000,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </Button>
               </div>
             ) : (
-              <NativeSelect
+              <Combobox
                
                 value={nuevoGasto.tienda || ""}
                 onChange={(e) => {
@@ -7020,7 +7020,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     escribir una nueva, la misma acaba con cuatro nombres y los
                     reportes la cuentan cuatro veces. */}
                 {esAdmin && <option value="__otra__">Otra tienda…</option>}
-              </NativeSelect>
+              </Combobox>
             )}
           </div>
           <div className="af-field af-ticket-campo">
@@ -7141,7 +7141,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
           <div className="af-field">
             <Label>Categoría</Label>
-            <NativeSelect
+            <Combobox
              
               value={nuevoGasto.categoria}
               onChange={(e) => {
@@ -7153,7 +7153,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               {/* Inventar tipos es solo del administrador: si cada quien puede,
                   la lista se llena de cosas que no van y ya no se entiende. */}
               {esAdmin && <option value="__nueva__">Otro tipo…</option>}
-            </NativeSelect>
+            </Combobox>
           </div>
           <div className="af-field">
             <Label>Descripción (opcional)</Label>
@@ -7212,18 +7212,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               obligan a abrirlas para saber qué filtran. */}
           <label className="af-filtro">
             <span className="af-mini-label">Bolsa</span>
-            <NativeSelect value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
+            <Combobox value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
               <option value="todos">Todo</option>
               {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
-            </NativeSelect>
+            </Combobox>
           </label>
 
           <label className="af-filtro">
             <span className="af-mini-label">Tipo</span>
-            <NativeSelect value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+            <Combobox value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
               <option value="todos">Todos</option>
               {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
-            </NativeSelect>
+            </Combobox>
           </label>
 
           {/* Por tienda. El filtro ya existía por dentro —y hasta se contaba
@@ -7232,7 +7232,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {opcionesTienda.length > 1 && (
             <label className="af-filtro af-filtro-tienda">
               <span className="af-mini-label">Tienda</span>
-              <NativeSelect value={filtroTienda} onChange={(e) => setFiltroTienda(e.target.value)}>
+              <Combobox value={filtroTienda} onChange={(e) => setFiltroTienda(e.target.value)}>
                 <option value="todas">Todas</option>
                 {opcionesTienda.map((t) => (
                   // El nombre se recorta: un select se estira hasta su opción
@@ -7243,16 +7243,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     {t.nombre.length > 16 ? t.nombre.slice(0, 16).trimEnd() + "…" : t.nombre}
                   </option>
                 ))}
-              </NativeSelect>
+              </Combobox>
             </label>
           )}
 
           <label className="af-filtro">
             <span className="af-mini-label">Factura</span>
-            <NativeSelect value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
+            <Combobox value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
               <option value="todos">Todas</option>
               {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
-            </NativeSelect>
+            </Combobox>
           </label>
 
           {/* Un día concreto, en vez del buscador de texto. Para encontrar
@@ -7406,56 +7406,51 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   {/* La categoría se cambia aquí mismo, sin abrir a editar:
                       casi siempre es lo único que se corrige. */}
                   <span className="af-gasto-celda">
-                    <select
-                      className="af-select-color"
-                      style={{ "--color-cat": colorCategoria(g.categoria) }}
+                    <Combobox compacto
                       value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"}
                       disabled={!esAdmin}
                       onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}
                     >
                       {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
-                    </select>
+                    </Combobox>
                   </span>
 
                   {/* De qué bolsa salió. Antes solo se marcaba la de casa, así
                       que al ver las dos juntas no quedaba claro si lo que no
                       decía nada era del negocio o era un olvido. */}
                   <span className="af-gasto-celda">
-                    <select
-                      className={"af-select-bolsa " + (esDelNegocio(g) ? "negocio" : "casa")}
+                    <Combobox compacto
                       value={esDelNegocio(g) ? "negocio" : "familia"}
                       disabled={!esAdmin}
                       onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}
                     >
                       {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
-                    </select>
+                    </Combobox>
                   </span>
 
                   {/* Si se repite solo cada mes. Marcarlo aquí crea la regla,
                       que es lo que antes había que capturar en otra sección. */}
                   <span className="af-gasto-celda">
-                    <select
-                      className={"af-select-fijo " + (g.esFijo ? "si" : "no")}
+                    <Combobox compacto
                       value={g.esFijo ? "si" : "no"}
                       disabled={!esAdmin}
                       onChange={(e) => cambiarFijo(g, e.target.value === "si")}
                     >
                       <option value="no">Suelto</option>
                       <option value="si">Cada mes</option>
-                    </select>
+                    </Combobox>
                   </span>
 
                   <span className="af-gasto-monto af-col-monto">{money(g.monto)}</span>
 
                   <span className="af-gasto-celda">
-                    <select
-                      className={"af-select-estado " + estadoFacturaDe(g)}
+                    <Combobox compacto
                       value={estadoFacturaDe(g)}
                       disabled={!esAdmin}
                       onChange={(e) => cambiarEstadoFactura(g, e.target.value)}
                     >
                       {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
-                    </select>
+                    </Combobox>
                   </span>
 
                   <span className="af-gasto-acciones">
@@ -7584,13 +7579,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
               <div className="af-field">
                 <Label>Categoría</Label>
-                <NativeSelect
+                <Combobox
                  
                   value={draftFijo.categoria}
                   onChange={(e) => setDraftFijo({ ...draftFijo, categoria: e.target.value })}
                 >
                   {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
-                </NativeSelect>
+                </Combobox>
               </div>
               {/* Hay gastos que se piensan al día aunque se apunten una vez al
                   mes, como los cigarros. Se captura el diario y la app hace la
@@ -7981,7 +7976,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   diferencia y en los reportes contaban como dos cosas. */}
               <div className="af-field">
                 <Label>¿En qué tienda?</Label>
-                <NativeSelect
+                <Combobox
                  
                   value={gastoEditando.tienda || ""}
                   onChange={(e) => setGastoEditando({ ...gastoEditando, tienda: e.target.value })}
@@ -7991,24 +7986,24 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   {gastoEditando.tienda && !tiendasParaElegir.some((x) => x === gastoEditando.tienda) && (
                     <option value={gastoEditando.tienda}>{gastoEditando.tienda}</option>
                   )}
-                </NativeSelect>
+                </Combobox>
               </div>
               <div className="af-field">
                 <Label>Categoría</Label>
-                <NativeSelect value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
+                <Combobox value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
                   {categoriasEnUso.map((c) => <option key={c} value={c}>{c}</option>)}
-                </NativeSelect>
+                </Combobox>
               </div>
               <div className="af-field">
                 <Label>Descripción (opcional)</Label>
-                <NativeSelect
+                <Combobox
                  
                   value={nombresUsados.includes(gastoEditando.descripcion) ? gastoEditando.descripcion : "__otra__"}
                   onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value === "__otra__" ? "" : e.target.value })}
                 >
                   <option value="__otra__">Escribirla…</option>
                   {nombresUsados.map((x) => <option key={x} value={x}>{x}</option>)}
-                </NativeSelect>
+                </Combobox>
                 {!nombresUsados.includes(gastoEditando.descripcion) && (
                   <Input
                     className="mt-2"
@@ -8466,7 +8461,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           </Button>
         </div>
         <div className="af-mini-label mt-1">¿Cómo se vende?</div>
-        <NativeSelect
+        <Combobox
          
           value={ex.unidad || "pieza"}
           onChange={(e) => {
@@ -8482,9 +8477,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {ex.unidad && !UNIDADES_MENU.includes(ex.unidad) && (
             <option value={ex.unidad}>{ex.unidad} (como estaba)</option>
           )}
-        </NativeSelect>
+        </Combobox>
         <div className="af-mini-label mt-1">¿En qué sección va?</div>
-        <NativeSelect
+        <Combobox
          
           value={ex.categoria || "platillo"}
           onChange={(e) => {
@@ -8495,7 +8490,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {CATEGORIAS_ITEM.filter((c) => c.id !== "paella").map((c) => (
             <option key={c.id} value={c.id}>{c.label}</option>
           ))}
-        </NativeSelect>
+        </Combobox>
         <div className="af-menu-card-row">
           <NumberField
             value={ex.precio}
@@ -8535,7 +8530,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
         </div>
         <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
-        <NativeSelect
+        <Combobox
          
           value={ex.empaqueTipo || "ninguno"}
           onChange={(e) => {
@@ -8546,9 +8541,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           <option value="ninguno">Sin envase</option>
           <option value="pieza">Un envase por cada unidad</option>
           <option value="rango">Según el total de piezas (rangos en Envases desechables)</option>
-        </NativeSelect>
+        </Combobox>
         {ex.empaqueTipo === "pieza" && (
-          <NativeSelect
+          <Combobox
            
             value={ex.empaqueEnvaseId || ""}
             onChange={(e) => {
@@ -8558,7 +8553,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           >
             <option value="">Elige el envase...</option>
             {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
-          </NativeSelect>
+          </Combobox>
         )}
         {ex.empaqueTipo === "rango" && (
           <div className="af-hint">
@@ -9173,7 +9168,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       {posiblesDuenos.length > 0 && (
                         <label className="af-field">
                           <span className="af-mini-label">¿De qué cuenta sale?</span>
-                          <NativeSelect
+                          <Combobox
                            
                             value={ex.cuentaCon || ""}
                             // Al pasarse a una cuenta compartida se le borra
@@ -9194,13 +9189,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                             {posiblesDuenos.map((o) => (
                               <option key={o.id} value={o.id}>De la de {o.nombre}</option>
                             ))}
-                          </NativeSelect>
+                          </Combobox>
                         </label>
                       )}
                       {!comparte && (
                         <label className="af-field">
                           <span className="af-mini-label">¿En qué lo cuentas?</span>
-                          <NativeSelect
+                          <Combobox
                            
                             value={unidad}
                             onChange={(e) => setEx({ unidadInventario: e.target.value })}
@@ -9208,7 +9203,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                             {UNIDADES_HECHAS.filter((u) => u.id !== "raciones" || paquete > 1).map((u) => (
                               <option key={u.id} value={u.id}>{u.label}</option>
                             ))}
-                          </NativeSelect>
+                          </Combobox>
                           {paquete > 1 && (
                             <p className="af-ink-soft text-xs mt-1">
                               Se vende de {paquete} en {paquete}, así que cada venta descuenta{" "}
@@ -9287,7 +9282,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {(draft.extras || []).some((e) => !e.llevaInventario) && (
             <label className="af-field mb-4">
               <span className="af-mini-label">Llevar la cuenta de otro platillo</span>
-              <NativeSelect
+              <Combobox
                
                 value=""
                 onChange={(e) => {
@@ -9307,7 +9302,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 {(draft.extras || []).filter((x) => !x.llevaInventario).map((x) => (
                   <option key={x.id} value={x.id}>{x.nombre}</option>
                 ))}
-              </NativeSelect>
+              </Combobox>
               <p className="af-ink-soft text-xs mt-1">
                 Para quitar uno de la lista, apaga su interruptor: el número se guarda por si lo vuelves a encender.
               </p>
@@ -9438,23 +9433,23 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   </div>
 
                   <div className="af-mini-label">¿Qué tipo de ingrediente es?</div>
-                  <NativeSelect
+                  <Combobox
                     className="w-full mb-2"
                     value={familiaDeIngrediente(ing)}
                     onChange={(e) => setIng({ familia: e.target.value })}
                   >
                     {FAMILIAS_ING.map((f) => (<option key={f.id} value={f.id}>{f.label}</option>))}
-                  </NativeSelect>
+                  </Combobox>
 
                   <div className="af-mini-label">¿Cómo lo compras?</div>
                   <div className="af-menu-card-row">
-                    <NativeSelect
+                    <Combobox
                       className="flex-1"
                       value={PRESENTACIONES.includes(ing.presentacionNombre) ? ing.presentacionNombre : "paquete"}
                       onChange={(e) => setIng({ presentacionNombre: e.target.value })}
                     >
                       {PRESENTACIONES.map((p) => (<option key={p} value={p}>{p}</option>))}
-                    </NativeSelect>
+                    </Combobox>
                     <span className="af-price-suffix">de</span>
                     <NumberField
                       value={ing.presentacionCantidad}
@@ -9462,13 +9457,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       className="af-input af-menu-kgrange"
                       onChange={(v) => setIng({ presentacionCantidad: v })}
                     />
-                    <NativeSelect
+                    <Combobox
                       className="flex-1"
                       value={ing.presentacionUnidad}
                       onChange={(e) => setIng({ presentacionUnidad: e.target.value })}
                     >
                       {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
-                    </NativeSelect>
+                    </Combobox>
                   </div>
 
                   {/* Con este precio, la rentabilidad de cada paella sale sola
@@ -9505,13 +9500,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
                   <div className="af-menu-card-row">
                     <span className="af-mini-label" style={{ marginBottom: 0 }}>Por kilo de paella uso</span>
-                    <NativeSelect
+                    <Combobox
                       className="flex-1"
                       value={ing.usoUnidad}
                       onChange={(e) => setIng({ usoUnidad: e.target.value })}
                     >
                       {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
-                    </NativeSelect>
+                    </Combobox>
                   </div>
 
                   {/* Lo que se tira al limpiarlo. De un kilo de camarón con
@@ -9683,9 +9678,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   )}
 
                   <div className="af-mini-label">Se usa para</div>
-                  <NativeSelect className="mb-2" value={d.unidad} onChange={(e) => setD({ unidad: e.target.value })}>
+                  <Combobox className="mb-2" value={d.unidad} onChange={(e) => setD({ unidad: e.target.value })}>
                     {UNIDADES_ENVASE.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
-                  </NativeSelect>
+                  </Combobox>
                   <div className="af-ambito-switch mb-2">
                     <Toggle
                       variant="segmento" pressed={!d.exacto}
@@ -10207,9 +10202,9 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                 </div>
                 <div className="af-field">
                   <Label>Categoría</Label>
-                  <NativeSelect value={draftProducto.categoria} onChange={(e) => setDraftProducto({ ...draftProducto, categoria: e.target.value })}>
+                  <Combobox value={draftProducto.categoria} onChange={(e) => setDraftProducto({ ...draftProducto, categoria: e.target.value })}>
                     {CATEGORIAS_ITEM.map((c) => (<option key={c.id} value={c.id}>{c.label}</option>))}
-                  </NativeSelect>
+                  </Combobox>
                 </div>
                 {draftProducto.categoria !== "paella" && (
                   <div className="af-field">
