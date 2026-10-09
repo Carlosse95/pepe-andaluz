@@ -15454,35 +15454,42 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-header-row { justify-content: flex-start; }
 
 /* ==================================================================
-   ESTILO ORIGINAL DE SHADCN para lo que todavía es de la app.
+   ESTILO MAIA DE SHADCN (el redondeado) para lo que todavía es de la app.
    Va al final a propósito: le gana a las reglas viejas de arriba.
    ================================================================== */
-/* Ventanas (Dialog / AlertDialog / hoja de Agregar ítem) */
-.af-modal-overlay { background: rgb(0 0 0 / 0.8); }
+/* Ventanas (Dialog / AlertDialog / hoja de Agregar ítem): esquinas de 32px,
+   orilla finita en vez de borde, fondo oscuro con un poco de desenfoque. */
+.af-modal-overlay { background: rgb(0 0 0 / 0.8); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .af-alerta-modal, .af-editar-modal, .af-avatar-modal, .af-ticket-modal {
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  background: hsl(var(--popover)); color: hsl(var(--popover-foreground));
+  border: none; border-radius: var(--radius-xl);
+  box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.05), 0 25px 50px -12px rgb(0 0 0 / 0.25);
 }
-.af-alerta-modal { width: 100%; max-width: 32rem; padding: 24px; text-align: left; }
-.af-editar-modal { max-width: 32rem; width: 100%; padding: 24px; }
-.af-alerta-icon { width: 40px; height: 40px; margin: 0 0 16px; border-radius: var(--radius); background: hsl(var(--muted)); color: hsl(var(--foreground)); }
-.af-alerta-icon svg { width: 20px; height: 20px; }
-.af-alerta-titulo { font-family: inherit; font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; margin-bottom: 8px; }
+.af-alerta-modal { width: 100%; max-width: 28rem; padding: 24px; text-align: center; }
+.af-editar-modal { max-width: 28rem; width: 100%; padding: 24px; }
+.af-alerta-icon { width: 64px; height: 64px; margin: 0 auto 8px; border-radius: 9999px; background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.af-alerta-icon svg { width: 32px; height: 32px; }
+.af-alerta-titulo { font-family: inherit; font-size: var(--text-lg); font-weight: 600; line-height: 1.25; margin-bottom: 8px; }
 .af-alerta-texto { font-size: var(--text-sm); color: hsl(var(--muted-foreground)); margin-bottom: 24px; }
-.af-modal-form .af-alerta-titulo { text-align: left; }
-.af-modal { background: hsl(var(--background)); border: 1px solid hsl(var(--border)); }
-.af-modal-header { font-family: inherit; font-size: var(--text-lg); font-weight: 600; background: hsl(var(--background)); }
-.af-modal-footer { background: hsl(var(--background)); }
-/* Tarjetas (Card): borde, sombra suave y esquina de 12px */
-.af-card { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) + 4px); box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); }
-.af-card.cursor-pointer:hover { transform: none; border-color: hsl(var(--border)); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
-.af-stat-pill { border-radius: calc(var(--radius) + 4px); border-color: hsl(var(--border)); box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); }
-.af-quick-btn { border-radius: var(--radius-md); border-color: hsl(var(--input)); font-weight: 500; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); color: hsl(var(--foreground)); }
+.af-modal-form .af-alerta-titulo { text-align: center; }
+.af-modal { background: hsl(var(--popover)); border: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+.af-modal-header { font-family: inherit; font-size: var(--text-lg); font-weight: 600; background: hsl(var(--popover)); }
+.af-modal-footer { background: hsl(var(--popover)); }
+@media (min-width: 700px) { .af-modal { border-radius: var(--radius-xl); } }
+/* Tarjetas (Card): esquina de 16px y orilla finita, sin sombra. */
+.af-card { background: hsl(var(--card)); border: none; border-radius: var(--radius-lg); box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.1); }
+.af-card.cursor-pointer:hover { transform: none; box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.18); }
+.af-stat-pill { border: none; border-radius: var(--radius-lg); box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.1); }
+/* Botones grandes de Hoy (Nuevo pedido / presupuesto): como el botón outline de Maia. */
+.af-quick-btn { border-radius: var(--radius-xl); border: 1px solid hsl(var(--border)); background: hsl(var(--input) / 0.3); font-weight: 500; box-shadow: none; color: hsl(var(--foreground)); }
 /* Etiquetas de campo y títulos de sección como en shadcn (sin mayúsculas) */
 .af-field label { font-family: inherit; font-size: var(--text-sm); font-weight: 500; text-transform: none; letter-spacing: 0; color: hsl(var(--foreground)); line-height: 1; }
 .af-section-title { font-family: inherit; font-size: var(--text-sm); font-weight: 600; text-transform: none; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
 .af-mini-label { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--text-xs); }
+/* Buscador de cliente: como un campo de Maia (píldora con relleno suave). */
+.af-combo-trigger { height: 36px; min-height: 36px; padding: 0 12px; border-radius: var(--radius-xl); border: 1px solid hsl(var(--input)); background: hsl(var(--input) / 0.3); font-size: var(--text-sm); }
+/* Opciones de entrega: el texto puede bajar a dos renglones dentro de la píldora. */
+.af-entrega-opciones > button { white-space: normal; height: auto; min-height: 52px; text-align: center; line-height: 1.2; }
 /* Tabla de gastos (Table de shadcn): ancho mínimo para deslizar en celular;
    en iPad de pie se esconde "Cada mes" (la que menos se toca). */
 .af-tabla-scroll table.af-tabla-gastos { min-width: 820px; }

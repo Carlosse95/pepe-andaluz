@@ -64,12 +64,13 @@
     --text-2xl: 1.5rem;     /* 24px */
     --text-3xl: 2rem;       /* 32px: números grandes */
 
-    /* Redondeos del estilo original de shadcn (radio base 0.5rem):
-       chico 4px, mediano 6px (botones y campos), grande 12px (tarjetas). */
-    --radius: 0.5rem;
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: calc(var(--radius) + 4px);
+    /* Redondeos del estilo MAIA de shadcn (el redondeado): píldora para
+       botones y campos, 16px tarjetas y menús, 32px ventanas. */
+    --radius: 0.75rem;
+    --radius-sm: 0.5rem;    /* 8px: piezas chicas */
+    --radius-md: 0.75rem;   /* 12px: renglones y cajitas */
+    --radius-lg: 1rem;      /* 16px: tarjetas y menús */
+    --radius-xl: 2rem;      /* 32px: ventanas */
     --radius-full: 9999px;
     /* Barra lateral (sidebar de shadcn) en colores de marca: lavanda con
        higo negro; lo elegido en higo con letra blanca. */

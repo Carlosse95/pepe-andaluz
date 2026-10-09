@@ -32,7 +32,7 @@ function DatePicker({ value, onChange, placeholder = "Elegir día", className, d
           className={cn(
             // Estilo original del Date Picker de shadcn (botón "outline").
             // "af-input" queda solo como gancho de acomodo (anchos por pantalla).
-            "af-input inline-flex h-9 w-full min-w-0 items-center justify-start gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-left text-sm font-normal shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+            "af-input inline-flex h-9 w-full min-w-0 items-center justify-start gap-2 whitespace-nowrap rounded-[2rem] border border-input bg-input/30 px-3 py-2 text-left text-sm font-normal transition-colors hover:bg-input/50 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
             !fecha && "text-muted-foreground",
             className
           )}

@@ -7,19 +7,19 @@ import { cn } from "@/lib/utils";
 //   neutral (información), marca (lavanda), oro (aviso), exito, plain (sin
 //   color: lo pone su className).
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-[2rem] border border-transparent px-2 py-0.5 text-xs font-medium transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>svg]:pointer-events-none [&>svg]:size-3",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
-        secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive: "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
-        outline: "text-foreground",
-        neutral: "border-transparent bg-info/10 text-info",
-        marca: "border-transparent bg-secondary text-secondary-foreground",
-        oro: "border-transparent bg-aviso/15 text-aviso-fuerte",
-        exito: "border-transparent bg-exito/15 text-exito-fuerte",
-        plain: "border-transparent",
+        default: "bg-primary text-primary-foreground",
+        secondary: "bg-secondary text-secondary-foreground",
+        destructive: "bg-destructive/10 text-destructive",
+        outline: "border-border bg-input/30 text-foreground",
+        neutral: "bg-info/10 text-info",
+        marca: "bg-secondary text-secondary-foreground",
+        oro: "bg-aviso/15 text-aviso-fuerte",
+        exito: "bg-exito/15 text-exito-fuerte",
+        plain: "",
       },
     },
     defaultVariants: { variant: "plain" },

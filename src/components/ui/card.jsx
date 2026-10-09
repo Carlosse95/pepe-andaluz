@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 // Tarjeta ORIGINAL de shadcn/ui. "af-card" se conserva solo como gancho de
 // acomodo de cada pantalla.
 const Card = React.forwardRef(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("af-card rounded-xl border bg-card text-card-foreground shadow", className)} {...props} />
+  <div ref={ref} className={cn("af-card overflow-hidden rounded-2xl bg-card text-card-foreground ring-1 ring-foreground/10", className)} {...props} />
 ));
 Card.displayName = "Card";
 

@@ -52,7 +52,7 @@ function Combobox({ value, onChange, children, className, style, disabled, place
           className={cn(
             // Estilo original de shadcn (botón "outline" del ejemplo de Combobox).
             // "af-input" queda solo como gancho de acomodo (anchos por pantalla).
-            "af-input inline-flex w-full min-w-0 items-center justify-between gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm font-normal shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+            "af-input inline-flex w-full min-w-0 items-center justify-between gap-2 whitespace-nowrap rounded-[2rem] border border-input bg-input/30 px-3 py-2 text-sm font-normal transition-colors hover:bg-input/50 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
             compacto ? "h-8 w-auto px-2 text-xs" : "h-9",
             !elegido && "text-muted-foreground",
             className
