@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Ayuda } from "@/components/ayuda";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -7431,7 +7432,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <div className="af-tabla-pista">
             <CircleArrowRight size={14} /> Desliza la tabla de lado para ver todo
           </div>
-          <div className="af-tabla-scroll mb-4">
+          <ScrollArea type="auto" horizontal className="af-tabla-scroll mb-4 rounded-md border" viewportClassName="max-h-[min(62vh,620px)]">
           <div className="af-tabla-gastos">
             {/* Los títulos de las columnas, para no adivinar qué es cada cosa.
                 Solo donde hay ancho: en el celular los renglones se apilan y
@@ -7542,7 +7543,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
             </div>
           </div>
-          </div>
+          </ScrollArea>
           </>
         )}
 
@@ -15147,11 +15148,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    Alto de sobra a propósito: un marco chico en el celular se lleva el dedo
    —uno quiere bajar la página y baja la lista—; alto, el dedo casi siempre
    cae fuera y adentro solo cuando de verdad se está revisando la tabla. */
-.af-tabla-scroll {
-  overflow: auto; -webkit-overflow-scrolling: touch;
-  max-height: min(62vh, 620px);
-  border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface);
-}
+.af-tabla-scroll { background: var(--surface); } /* ScrollArea de shadcn: el desliz, el alto y las barras los pone el componente */
 .af-tabla-scroll .af-tabla-gastos { min-width: 940px; margin-bottom: 0; border: none; border-radius: 0; overflow: visible; }
 
 /* En la laptop y en el iPad la tabla CABE: solo se sube y se baja, nunca se
