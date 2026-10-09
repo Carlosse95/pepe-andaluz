@@ -52,6 +52,16 @@
     --radius-lg: 1.25rem;   /* 20px: tarjetas y ventanas */
     --radius-full: 9999px;  /* píldoras y círculos */
     --radius: var(--radius-md);
+    /* Barra lateral (sidebar de shadcn) en colores de marca: lavanda con
+       higo negro; lo elegido en higo con letra blanca. */
+    --sidebar-background: var(--lavanda);
+    --sidebar-foreground: var(--higo);
+    --sidebar-primary: var(--higo);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 225 100% 92%;
+    --sidebar-accent-foreground: var(--higo);
+    --sidebar-border: 225 55% 78%;
+    --sidebar-ring: var(--higo);
   }
 }
 

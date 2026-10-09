@@ -10,6 +10,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, House, Truck, Store, ChefHat, Check, Minus, Trash,
@@ -13591,33 +13593,19 @@ export default function App() {
     <div className="af-app">
       <style>{AZAFRAN_CSS}</style>
 
-      <div className="af-topbar">
-        <div className="af-logo-mark af-logo-topbar" />
-        <nav className="af-topbar-nav" ref={navRef}>
-          {navItems.map((n) => (
-            <button
-              key={n.key}
-              ref={view === n.key ? botonActivoRef : null}
-              className={"af-topbar-link" + (view === n.key ? " active" : "")}
-              onClick={() => irAVista(n.key)}
-            >
-              {n.label}
-              {n.badge > 0 && <span className="af-badge af-badge-topbar">{n.badge > 9 ? "9+" : n.badge}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="af-topbar-right">
-          {view !== "buscar" && (
-            <Button variant="ghost" size="icon-sm" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
-              <Search size={18} />
-            </Button>
-          )}
-          {campana}
-          <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} />
-        </div>
-      </div>
-
-      <div className="af-main">
+      <SidebarProvider className="af-con-sidebar">
+      <AppSidebar
+        secciones={navItems.map((n) => ({ key: n.key, label: n.label, icono: n.icon, badge: n.badge }))}
+        vista={view}
+        onIr={irAVista}
+        onNuevoPedido={() => goToNuevoPedido()}
+        onNuevoPresupuesto={() => goToNuevoPresupuesto()}
+        onBuscar={() => irAVista("buscar")}
+        usuario={{ nombre: nombreUsuario, email: perfil?.email || "", foto: fotoUsuario }}
+        onPerfil={() => document.querySelector(".af-header .af-avatar-btn")?.click()}
+        onCerrarSesion={cerrarSesion}
+      />
+      <SidebarInset className="af-main">
         <LetreroNube pendientes={nubePendiente} onReintentar={reintentarPendientes} />
         <LetreroAtrasada atrasada={atrasada} onRecargar={() => recargarParaDestrabar(true)} />
         <div className="af-header">
@@ -13634,6 +13622,7 @@ export default function App() {
             </div>
           ) : (
             <div className="af-header-row">
+              <SidebarTrigger className="af-sidebar-trigger -ml-1 shrink-0" />
               {view === "hoy" ? (
                 <div>
                   <div className="af-header-brand af-logo-mark af-logo-header" />
@@ -13642,7 +13631,7 @@ export default function App() {
               ) : (
                 <span className="af-header-title-plain">{titulos[view]}</span>
               )}
-              <div className="flex items-center gap-2 af-only-mobile">
+              <div className="flex items-center gap-2 ml-auto">
                 {view !== "buscar" && (
                   <Button variant="ghost" size="icon-sm" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
                     <Search size={20} />
@@ -13860,7 +13849,8 @@ export default function App() {
           subiendo={subiendoRecibo}
           onCerrar={() => setAvisoModal(null)}
         />
-      </div>
+      </SidebarInset>
+      </SidebarProvider>
     </div>
   );
 }
@@ -13948,6 +13938,9 @@ const AZAFRAN_CSS = `
 .af-logo-header { width: 128px; }
 .af-logo-sidebar { width: 150px; background-color: var(--bg); margin-bottom: 22px; }
 .af-logo-topbar { width: 118px; flex-shrink: 0; }
+/* Logo en la barra lateral: grande abierta, chico cuando se encoge a íconos. */
+.af-logo-barra { width: 76px; background-color: hsl(var(--higo)); }
+[data-collapsible=icon] .af-logo-barra { width: 30px; }
 
 .af-sidebar { display: none; }
 .af-topbar { display: none; }
@@ -15403,4 +15396,13 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-topbar-link:hover { color: var(--ink); background: var(--wine-soft); transform: scale(1.05); position: relative; z-index: 1; }
 }
 
+
+/* ---- Prueba del sidebar (sidebar-07 de shadcn) ---- */
+/* Con la barra lateral, el encabezado se queda pegado arriba en iPad/compu
+   con su fondo, y el título va junto al botón que abre/cierra la barra. */
+@media (min-width: 700px) {
+  .af-con-sidebar .af-header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding-top: 12px; padding-bottom: 12px; }
+  .af-con-sidebar .af-header-row > div:first-of-type { display: flex; align-items: center; }
+}
+.af-header-row { justify-content: flex-start; }
 `;
