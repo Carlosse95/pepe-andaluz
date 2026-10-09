@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Card } from "@/components/ui/card";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
@@ -2537,8 +2537,8 @@ function Toast({ toast }) {
 function AlertaFranjaModal({ alerta, onCerrar }) {
   if (!alerta) return null;
   return (
-    <div className="af-modal-overlay af-modal-overlay-center" onClick={onCerrar}>
-      <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onOpenChange={(abierto) => { if (!abierto) (onCerrar)?.(); }}>
+      <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
         <div className="af-alerta-icon"><AlertTriangle size={26} /></div>
         <div className="af-alerta-titulo">Muchas paellas a la vez</div>
         <p className="af-alerta-texto">
@@ -2546,8 +2546,8 @@ function AlertaFranjaModal({ alerta, onCerrar }) {
           Revisa que alcancen a prepararse a tiempo.
         </p>
         <Button className="w-full" onClick={onCerrar}>Entendido</Button>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2569,8 +2569,8 @@ function CobroEntregaModal({ cobro, onElegir, onCerrar }) {
   if (!cobro) return null;
   const { pedido, faltante } = cobro;
   return (
-    <div className="af-modal-overlay af-modal-overlay-center" onClick={onCerrar}>
-      <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onOpenChange={(abierto) => { if (!abierto) (onCerrar)?.(); }}>
+      <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
         <div className="af-alerta-icon"><Wallet size={26} /></div>
         <div className="af-alerta-titulo">¿Cómo quedó el pago?</div>
         <p className="af-alerta-texto">
@@ -2589,8 +2589,8 @@ function CobroEntregaModal({ cobro, onElegir, onCerrar }) {
           Si eligió transferencia, el pedido queda apuntado como cobrado pero marcado
           <strong> por confirmar</strong>, y sale en Hoy hasta que veas el dinero en el banco.
         </p>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2614,8 +2614,8 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
   // cambió desde el guardado anterior, así que siempre es noticia nueva.
   const yaSeMando = dineroNuevo || tipo === "cambio" ? null : (pedido.avisosEnviados || {})[tipo];
   return (
-    <div className="af-modal-overlay af-modal-overlay-center" onClick={subiendo ? undefined : onCerrar}>
-      <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onOpenChange={(abierto) => { if (!abierto) (subiendo ? undefined : onCerrar)?.(); }}>
+      <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
         <div className="af-alerta-icon"><MessageCircle size={26} /></div>
         <div className="af-alerta-titulo">{TITULO_AVISO[tipo] || "Pedido actualizado"}</div>
         <p className="af-alerta-texto">
@@ -2661,8 +2661,8 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
             donde no se pueden compartir archivos, va como liga.
           </p>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2750,15 +2750,9 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
       <button className="af-avatar-btn" style={{ width: size, height: size }} onClick={abrir} title="Mi perfil">
         {foto ? <img src={foto} alt="" className="af-avatar-img" /> : <span className="af-avatar-fallback">{inicial}</span>}
       </button>
-      {editando && createPortal(
-        // Los colores (--surface, --wine, etc.) se definen en .af-app, y un
-        // portal a document.body queda fuera de ese árbol; sin envolverlo
-        // aquí el modal pierde todas las variables y sale transparente.
-        // display:contents evita que este div afecte el layout (el .af-app
-        // original ya trae su propio flex/min-height).
-        <div className="af-app" style={{ display: "contents" }}>
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setEditando(false)}>
-            <div className="af-avatar-modal" onClick={(e) => e.stopPropagation()}>
+      {editando && (
+        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setEditando(false))?.(); }}>
+            <DialogContent className="af-avatar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-modal-header">
                 <span>Mi perfil</span>
                 <Button variant="ghost" size="icon-sm" onClick={() => setEditando(false)}><X size={18} /></Button>
@@ -2784,10 +2778,8 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
                   {guardando ? "Guardando..." : "Guardar"}
                 </Button>
               </div>
-            </div>
-          </div>
-        </div>,
-        document.body
+            </DialogContent>
+          </Dialog>
       )}
     </div>
   );
@@ -2821,8 +2813,8 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
         <Check size={14} /> Devuelta
       </Button>
       {confirmando && (
-        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmando(false)}>
-          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmando(false))?.(); }}>
+          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
             <div className="af-alerta-icon"><ChefHat size={26} /></div>
             <div className="af-alerta-titulo">¿Marcar paellera devuelta?</div>
             <p className="af-alerta-texto">
@@ -2835,8 +2827,8 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
               Sí, ya se devolvió
             </Button>
             <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmando(false)}>Cancelar</Button>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </Card>
   );
@@ -3895,8 +3887,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
     return (
       <>
         {formDeuda && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setFormDeuda(null)}>
-            <div className="af-alerta-modal af-modal-form" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setFormDeuda(null))?.(); }}>
+            <DialogContent className="af-alerta-modal af-modal-form" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo">{formDeuda.id ? "Cambiar los datos" : "¿Quién te debe?"}</div>
               <div className="af-field">
                 <label>Nombre</label>
@@ -3929,13 +3921,13 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <Button className="w-full mt-2" onClick={guardarDeuda}>Guardar</Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setFormDeuda(null)}>Cancelar</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {formPago && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setFormPago(null)}>
-            <div className="af-alerta-modal af-modal-form" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setFormPago(null))?.(); }}>
+            <DialogContent className="af-alerta-modal af-modal-form" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo">{formPago.id ? "Cambiar el pago" : "¿Cuánto te pagó?"}</div>
               <div className="af-field">
                 <label>Cantidad</label>
@@ -3988,13 +3980,13 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <Button className="w-full mt-2" disabled={subiendo} onClick={guardarPago}>Guardar</Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setFormPago(null)}>Cancelar</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {viendo && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setViendo(null)}>
-            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setViendo(null))?.(); }}>
+            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo">{money(viendo.pago.monto)}</div>
               <div className="af-alerta-texto mb-3">{fmtDateHuman(viendo.pago.fecha)}</div>
               {viendo.cargando ? (
@@ -4003,13 +3995,13 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                 <img src={viendo.url} alt="Comprobante" className="af-comprobante-foto" />
               )}
               <Button className="w-full mt-3" onClick={() => setViendo(null)}>Cerrar</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {porBorrar && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setPorBorrar(null)}>
-            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
+            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
               <div className="af-alerta-titulo">
                 {porBorrar.tipo === "deuda" ? "¿Borrar esta deuda?" : "¿Borrar este pago?"}
@@ -4021,8 +4013,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <Button variant="destructive-outline" className="w-full" onClick={borrar}>Sí, bórralo</Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Mejor no</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
       </>
     );
@@ -4314,8 +4306,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         </Button>
 
         {confirmBorrar && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmBorrar(null)}>
-            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmBorrar(null))?.(); }}>
+            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-icon"><Trash2 size={26} /></div>
               <div className="af-alerta-titulo">¿Borrar a {confirmBorrar.cliente.nombre}?</div>
 
@@ -4359,8 +4351,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                 Sí, bórralo
               </Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmBorrar(null)}>Mejor no</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     );
@@ -4529,8 +4521,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         const repetidos = importando.lista.length - nuevos.length;
         const cuantosElegidos = nuevos.filter((c) => importando.elegidos[c.telefono]).length;
         return (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setImportando(null)}>
-            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setImportando(null))?.(); }}>
+            <DialogContent className="af-editar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo mb-2">Contactos del archivo</div>
               {importando.lista.length === 0 ? (
                 <p className="af-ink-soft text-sm mb-3">
@@ -4596,8 +4588,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                 {cuantosElegidos > 0 ? `Agregar ${cuantosElegidos}` : "Agregar"}
               </Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setImportando(null)}>Cancelar</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         );
       })()}
     </div>
@@ -7725,8 +7717,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {/* Quitar los tipos que se inventaron y ya no se quieren. */}
         {borrandoTipos && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setBorrandoTipos(false)}>
-            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setBorrandoTipos(false))?.(); }}>
+            <DialogContent className="af-editar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-section-title" style={{ marginTop: 0 }}>Tipos que agregaste</div>
               <p className="af-ink-soft text-sm mb-3">
                 Los seis de siempre no se pueden quitar. Uno que ya tiene gastos tampoco: primero
@@ -7753,13 +7745,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 })
               )}
               <Button variant="secondary" className="w-full mt-3" onClick={() => setBorrandoTipos(false)}>Listo</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {confirmarBorrarGasto && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmarBorrarGasto(null)}>
-            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarBorrarGasto(null))?.(); }}>
+            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-icon"><Trash2 size={26} /></div>
               <div className="af-alerta-titulo">¿Borrar este gasto?</div>
               <p className="af-alerta-texto">
@@ -7774,15 +7766,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 Sí, bórralo
               </Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarBorrarGasto(null)}>Mejor no</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {/* La foto del ticket, con lo que se le leyó al lado: así se compara
             el número contra el papel sin salir de la app. */}
         {viendoTicket && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setViendoTicket(null)}>
-            <div className="af-ticket-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setViendoTicket(null))?.(); }}>
+            <DialogContent className="af-ticket-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-ticket-cab">
                 <div className="min-w-0">
                   <div className="af-ticket-titulo">
@@ -7864,15 +7856,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <img src={viendoTicket.url} alt="Foto del ticket" />
                 )}
               </div>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {/* Marcar facturado saca la compra de pendientes, así que conviene
             preguntar: se cambia desde una lista y es fácil darle sin querer. */}
         {confirmarFactura && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmarFactura(null)}>
-            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFactura(null))?.(); }}>
+            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-icon"><Receipt size={26} /></div>
               <div className="af-alerta-titulo">¿Ya la facturaste?</div>
               <p className="af-alerta-texto">
@@ -7890,15 +7882,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 Sí, ya la facturé
               </Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFactura(null)}>Todavía no</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {/* Último recurso si el navegador no deja copiar: se muestra el texto
             ya seleccionado para copiarlo a mano. */}
         {datosParaCopiar && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setDatosParaCopiar(null)}>
-            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setDatosParaCopiar(null))?.(); }}>
+            <DialogContent className="af-editar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo mb-2">Cópialo desde aquí</div>
               <p className="af-ink-soft text-sm mb-3">Tu navegador no dejó copiar solo. Selecciónalo y cópialo.</p>
               <Textarea
@@ -7910,14 +7902,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 autoFocus
               />
               <Button className="w-full mt-3" onClick={() => setDatosParaCopiar(null)}>Listo</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {/* Aviso antes de guardar algo que parece ya estar apuntado. */}
         {posibleDuplicado && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setPosibleDuplicado(null)}>
-            <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPosibleDuplicado(null))?.(); }}>
+            <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
               <div className="af-alerta-titulo">¿No lo apuntaste ya?</div>
               <div className="af-alerta-texto mb-3">
@@ -7941,13 +7933,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               >
                 Sí es otro, guárdalo
               </Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {gastoEditando && (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setGastoEditando(null)}>
-            <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setGastoEditando(null))?.(); }}>
+            <DialogContent className="af-editar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo mb-3">Editar gasto</div>
               <div className="af-field">
                 <label>¿De dónde sale?</label>
@@ -8015,8 +8007,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
               <Button className="w-full" onClick={guardarEdicionGasto} disabled={!gastoEditando.monto}>Guardar cambios</Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setGastoEditando(null)}>Cancelar</Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
       )}
@@ -9908,8 +9900,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
         };
         let grupoAnterior = null;
         return (
-          <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setEligiendoPara(null)}>
-            <div className="af-alerta-modal af-modal-lista" onClick={(e) => e.stopPropagation()}>
+          <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setEligiendoPara(null))?.(); }}>
+            <DialogContent className="af-alerta-modal af-modal-lista" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo">¿En qué se usa {ing.nombre || "este ingrediente"}?</div>
               <p className="af-ink-soft text-sm mb-2">Marca todo lo que lo lleve.</p>
               <div className="af-lista-scroll">
@@ -9933,14 +9925,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <Button className="w-full mt-2" onClick={() => setEligiendoPara(null)}>
                 Listo
               </Button>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         );
       })()}
 
       {porBorrar && (
-        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setPorBorrar(null)}>
-          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
+          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
             <div className="af-alerta-icon"><Trash2 size={26} /></div>
             <div className="af-alerta-titulo">¿Quitar {porBorrar.que}?</div>
             <p className="af-alerta-texto">
@@ -9954,8 +9946,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               Sí, quitarlo
             </Button>
             <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Cancelar</Button>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
@@ -10084,8 +10076,8 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
   };
 
   return (
-    <div className="af-modal-overlay" onClick={onClose}>
-      <div className="af-modal" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onOpenChange={(abierto) => { if (!abierto) (onClose)?.(); }}>
+      <DialogContent className="af-modal">
         <div className="af-modal-header">
           <span>Agregar ítem</span>
           <Button variant="ghost" size="icon-sm" onClick={onClose}><X size={18} /></Button>
@@ -10303,8 +10295,8 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
             {itemsCarrito.length > 0 ? `Agregar ${itemsCarrito.length} ${itemsCarrito.length === 1 ? "ítem" : "ítems"}` : "Agregar ítem"}
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -13763,8 +13755,8 @@ export default function App() {
       {/* Confirmar el día y la hora del pedido nuevo. Solo eso, en grande: es
           lo que se quiere revisar, y cualquier otro dato distraería. */}
       {confirmarFecha && (
-        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmarFecha(null)}>
-          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFecha(null))?.(); }}>
+          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
             <div className="af-alerta-icon"><CalendarDays size={26} /></div>
             <div className="af-alerta-titulo">¿Es para este día y hora?</div>
             <div className={"af-confirma-relativo" + (confirmarFecha.fecha < todayISO() ? " pasado" : "")}>
@@ -13782,15 +13774,15 @@ export default function App() {
             <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFecha(null)}>
               No, lo cambio
             </Button>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* No alcanza lo que está hecho. Se avisa con números claros y se deja
           seguir: el pedido es real aunque haya que ponerse a cocinar. */}
       {faltaHechas && faltaHechas.length > 0 && (
-        <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setFaltaHechas(null)}>
-          <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
+        <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setFaltaHechas(null))?.(); }}>
+          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
             <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
             <div className="af-alerta-titulo">No alcanza lo que hay hecho</div>
             <div className="af-alerta-texto mb-3">
@@ -13819,13 +13811,13 @@ export default function App() {
             >
               Las voy a hacer, guárdalo
             </Button>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {borradorPendiente && view !== "nuevo" && (
-        <div className="af-modal-overlay af-modal-overlay-center">
-          <div className="af-alerta-modal">
+        <Dialog open onOpenChange={() => {}}>
+          <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center" onEscapeKeyDown={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
             <div className="af-alerta-icon"><StickyNote size={26} /></div>
             <div className="af-alerta-titulo">Se quedó algo a medias</div>
             <p className="af-alerta-texto">
@@ -13855,8 +13847,8 @@ export default function App() {
             >
               Descartarlo
             </Button>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       <AvisoPendienteModal

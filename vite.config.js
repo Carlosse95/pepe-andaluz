@@ -20,6 +20,8 @@ export default defineConfig({
         codeSplitting: {
           groups: [
             { name: 'react', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 30 },
+            // Los componentes de shadcn (Radix) y sus ayudantes, en su propio archivo.
+            { name: 'ui', test: /[\\/]node_modules[\\/](@radix-ui|react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar|aria-hidden|detect-node-es|get-nonce|tslib|tailwind-merge|class-variance-authority)[\\/]/, priority: 25 },
             { name: 'nube', test: /[\\/]node_modules[\\/]@supabase[\\/]/, priority: 20 },
             // recharts y lo que arrastra (los d3-* son suyos, para los ejes y
             // las escalas). Si algo se escapa de la lista no se rompe nada:

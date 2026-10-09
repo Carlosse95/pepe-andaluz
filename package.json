@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.2.0",
     "@radix-ui/react-slot": "^1.4.0",
     "@supabase/supabase-js": "^2.110.5",
     "class-variance-authority": "^0.7.1",
