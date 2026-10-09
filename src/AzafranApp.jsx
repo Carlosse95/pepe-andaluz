@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogConfirmacion } from "@/components/ui/alert-dial
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -19,7 +20,7 @@ import {
   ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, CircleArrowRight,
   PackageSearch, MessageCircle, Copy, Wallet,
   Upload, CircleCheck, TriangleAlert, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell,
-  ChevronUp, ChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper,
+  ChevronUp, ChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
@@ -2031,18 +2032,36 @@ function StatPill({ label, value, warn }) {
   );
 }
 
-function EstadoPedidoSelect({ estado, onChange }) {
+// El estado del pedido con un toque (ButtonGroup de shadcn). Antes era una
+// lista desplegable: dos toques y había que leer las opciones.
+const ESTADO_BOTON = {
+  pendiente: { corto: "Pendiente", icono: Clock },
+  preparacion: { corto: "Preparando", icono: ChefHat },
+  avisado: { corto: "Avisar", icono: Bell },
+  entregado: { corto: "Entregado", icono: Check },
+};
+function EstadoPedidoGrupo({ estado, onChange }) {
   return (
-    <select
-      className={"af-estado-select af-estado-" + estado}
-      value={estado}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {ESTADOS_PEDIDO.map((e) => (
-        <option key={e.id} value={e.id}>{e.label}</option>
-      ))}
-    </select>
+    <ButtonGroup className="af-estado-grupo w-full mt-3" aria-label="Estado del pedido" onClick={(e) => e.stopPropagation()}>
+      {ESTADOS_PEDIDO.map((e) => {
+        const { corto, icono: Icono } = ESTADO_BOTON[e.id];
+        const activo = estado === e.id;
+        return (
+          <Button
+            key={e.id}
+            variant="outline"
+            size="sm"
+            aria-pressed={activo}
+            data-state={activo ? "on" : "off"}
+            className={"flex-1 min-w-0 h-auto min-h-[52px] flex-col gap-0.5 px-0.5 py-1.5 text-2xs font-semibold tracking-tight af-estado-" + e.id}
+            onClick={() => { if (!activo) onChange(e.id); }}
+          >
+            <Icono size={16} />
+            <span className="max-w-full truncate">{corto}</span>
+          </Button>
+        );
+      })}
+    </ButtonGroup>
   );
 }
 
@@ -2079,12 +2098,11 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
           </div>
           {showFecha && <div className="af-fecha-sub">{fmtDateHuman(pedido.fecha)}</div>}
         </div>
-        {onCambiarEstado ? (
-          <EstadoPedidoSelect estado={estado} onChange={(v) => onCambiarEstado(pedido.id, v)} />
-        ) : (
+        {!onCambiarEstado && (
           <span className={"af-badge af-estado-badge af-estado-" + estado}>{ESTADO_LABEL[estado]}</span>
         )}
       </div>
+      {onCambiarEstado && <EstadoPedidoGrupo estado={estado} onChange={(v) => onCambiarEstado(pedido.id, v)} />}
 
       {avisoPendiente && onEnviarAvisoWhatsApp && pedido.clienteTelefono && (
         <button
@@ -14071,6 +14089,12 @@ const AZAFRAN_CSS = `
 .af-estado-avisado { background: var(--azul-soft); color: var(--azul); }
 .af-estado-entregado { background: var(--olive-soft); color: var(--olive); }
 
+/* Grupo de estado: el de ahora lleva el color de su estado; los demás, neutros. */
+.af-estado-grupo > button[data-state=off] { background: var(--surface); color: var(--ink-soft); }
+.af-estado-grupo > button[data-state=on].af-estado-pendiente { background: var(--neutral-soft); color: var(--ink); border-color: var(--line); }
+.af-estado-grupo > button[data-state=on].af-estado-preparacion { background: var(--gold); color: #fff; border-color: var(--gold); }
+.af-estado-grupo > button[data-state=on].af-estado-avisado { background: var(--azul); color: #fff; border-color: var(--azul); }
+.af-estado-grupo > button[data-state=on].af-estado-entregado { background: var(--olive); color: #fff; border-color: var(--olive); }
 .af-estado-select {
   border: none; border-radius: var(--radius-full); padding: 6px 26px 6px 12px; font-size: var(--text-xs); font-weight: 700;
   font-family: 'Inter', sans-serif; cursor: pointer; appearance: none;
@@ -15247,7 +15271,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-chart-legend { display: flex; gap: 16px; justify-content: center; margin-top: 4px; font-size: var(--text-xs); color: var(--ink-soft); }
 .af-legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
 
-.af-card-grid { display: grid; grid-template-columns: 1fr; row-gap: 0; }
+.af-card-grid { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0; }
 
 .af-ink-soft { color: var(--ink-soft); }
 .af-only-mobile { display: flex; }
@@ -15304,7 +15328,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   /* En tablet ya hay ancho de sobra: si estas rejillas se quedan en una sola
      columna, cada tarjeta se estira a lo ancho de la pantalla y se ve
      desproporcionada (un mes o un dato suelto ocupando 760px). */
-  .af-card-grid { grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  .af-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
   .af-kpi-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
   .af-rent-cifras { grid-template-columns: 1fr 1fr 1fr; }
 }
@@ -15331,7 +15355,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
      en un monitor de 27" los renglones no queden imposibles de recorrer. */
   .af-content { max-width: 1560px; }
   .af-header, .af-content { padding-left: 56px; padding-right: 56px; }
-  .af-card-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .af-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .af-kpi-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
