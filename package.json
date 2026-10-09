@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "revisar": "node scripts/revisar-espacios.mjs && oxlint -c .oxlintrc.json -A all -D no-undef -D react/jsx-no-undef src"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.24",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.4.19",
+    "oxlint": "^1.87.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "tailwindcss-animate": "^1.0.7",

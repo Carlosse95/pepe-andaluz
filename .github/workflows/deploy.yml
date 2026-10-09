@@ -26,6 +26,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Antes de publicar: espacios en la escala de 4 px y ningún nombre sin definir.
+      - run: npm run revisar
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
