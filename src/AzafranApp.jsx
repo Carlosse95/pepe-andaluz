@@ -10,7 +10,6 @@ import { AlertDialog, AlertDialogConfirmacion } from "@/components/ui/alert-dial
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { ButtonGroup } from "@/components/ui/button-group";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
 import { Ayuda } from "@/components/ayuda";
@@ -2040,39 +2039,6 @@ function StatPill({ label, value, warn }) {
   );
 }
 
-// El estado del pedido con un toque (ButtonGroup de shadcn). Antes era una
-// lista desplegable: dos toques y había que leer las opciones.
-const ESTADO_BOTON = {
-  pendiente: { corto: "Pendiente", icono: Clock },
-  preparacion: { corto: "Preparando", icono: ChefHat },
-  avisado: { corto: "Avisar", icono: Bell },
-  entregado: { corto: "Entregado", icono: CircleCheck },
-};
-function EstadoPedidoGrupo({ estado, onChange }) {
-  return (
-    <ButtonGroup className="af-estado-grupo w-full mt-3" aria-label="Estado del pedido" onClick={(e) => e.stopPropagation()}>
-      {ESTADOS_PEDIDO.map((e) => {
-        const { corto, icono: Icono } = ESTADO_BOTON[e.id];
-        const activo = estado === e.id;
-        return (
-          <Button
-            key={e.id}
-            variant="outline"
-            size="sm"
-            aria-pressed={activo}
-            data-state={activo ? "on" : "off"}
-            className={"flex-1 min-w-0 h-auto min-h-[52px] flex-col gap-0.5 px-0.5 py-1.5 text-2xs font-semibold tracking-tight af-estado-" + e.id}
-            onClick={() => { if (!activo) onChange(e.id); }}
-          >
-            <Icono size={16} />
-            <span className="max-w-full truncate">{corto}</span>
-          </Button>
-        );
-      })}
-    </ButtonGroup>
-  );
-}
-
 function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoWhatsApp, avisoPendiente, mensajes }) {
   const itemsPaellera = pedido.items.filter((it) => it.tipo === "paella" && it.enPaellera);
   const hayPaellera = itemsPaellera.length > 0;
@@ -2106,11 +2072,12 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
           </div>
           {showFecha && <div className="af-fecha-sub">{fmtDateHuman(pedido.fecha)}</div>}
         </div>
-        {!onCambiarEstado && (
+        {onCambiarEstado ? (
+          <EstadoPedidoSelect estado={estado} onChange={(v) => onCambiarEstado(pedido.id, v)} />
+        ) : (
           <span className={"af-badge af-estado-badge af-estado-" + estado}>{ESTADO_LABEL[estado]}</span>
         )}
       </div>
-      {onCambiarEstado && <EstadoPedidoGrupo estado={estado} onChange={(v) => onCambiarEstado(pedido.id, v)} />}
 
       {avisoPendiente && onEnviarAvisoWhatsApp && pedido.clienteTelefono && (
         <button
