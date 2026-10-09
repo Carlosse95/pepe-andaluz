@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SwitchVista } from "@/components/ui/switch";
 import { Ayuda } from "@/components/ayuda";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -7433,56 +7435,39 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <CircleArrowRight size={14} /> Desliza la tabla de lado para ver todo
           </div>
           <ScrollArea type="auto" horizontal className="af-tabla-scroll mb-4 w-full min-w-0 max-w-full rounded-md border" viewportClassName="max-h-[min(62vh,620px)]">
-          <div className="af-tabla-gastos">
-            {/* Los títulos de las columnas, para no adivinar qué es cada cosa.
-                Solo donde hay ancho: en el celular los renglones se apilan y
-                los títulos estorbarían. */}
-            <div className="af-gasto-encabezado">
-              <span>Fecha</span>
-              <span>En qué</span>
-              <span className="af-col-control">Tipo</span>
-              <span className="af-col-control">Bolsa</span>
-              <span className="af-col-control">Cada mes</span>
-              <span className="af-col-monto">Monto</span>
-              <span className="af-col-control">Factura</span>
-              <span />
-            </div>
-
-            {/* Todos los gastos, dentro de un marco que se desplaza por su
-                cuenta y con el encabezado fijo arriba.
-                Antes la lista se alargaba con un botón "Ver más". Se cambió
-                porque revisando las cuentas se pasa el rato subiendo y
-                bajando, y había que picarle cada 25 gastos.
-                El marco se llevaba el dedo en el celular —uno quería bajar la
-                página y bajaba la lista—, así que se le dejó alto de sobra:
-                el dedo casi siempre cae fuera, y adentro solo cuando de
-                verdad se está revisando la tabla. */}
-            <div className="af-tabla-cuerpo">
-            {gastosFiltrados.map((g) => (
-                <div key={g.id} className="af-gasto-fila">
-                  <span className="af-gasto-fecha">{fmtDiaCorto(g.fecha)}</span>
-
-                  <span className="af-gasto-que">
-                    <span className="af-gasto-que-linea">
-                      <span className="af-gasto-titulo">{g.tienda || g.descripcion || g.categoria}</span>
-                      {/* La foto se abre desde aquí, pegada al nombre. Estaba
-                          con el lápiz y el bote, pero solo aparecía cuando el
-                          gasto traía foto: los otros dos se recorrían de un
-                          renglón a otro y la columna entera bailaba. Aquí no
-                          mueve nada, y de paso el par de botones cabe con
-                          aire, que en el iPad los tres no cabían. */}
+          <Table sinMarco className="af-tabla-gastos">
+            {/* Los títulos de las columnas se quedan fijos arriba al bajar. */}
+            <TableHeader className="sticky top-0 z-10 bg-background">
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>En qué</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Bolsa</TableHead>
+                <TableHead className="af-col-cadames">Cada mes</TableHead>
+                <TableHead className="text-right">Monto</TableHead>
+                <TableHead>Factura</TableHead>
+                <TableHead><span className="sr-only">Acciones</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {gastosFiltrados.map((g) => (
+                <TableRow key={g.id}>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">{fmtDiaCorto(g.fecha)}</TableCell>
+                  <TableCell className="min-w-[10rem]">
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium">{g.tienda || g.descripcion || g.categoria}</span>
+                      {/* La foto del ticket se abre desde aquí, pegada al nombre. */}
                       {g.ticket && (
-                        <Button variant="ghost" size="icon-sm" className="af-gasto-ticket" title="Ver el ticket" onClick={() => abrirTicket(g)}>
+                        <Button variant="ghost" size="icon-sm" title="Ver el ticket" onClick={() => abrirTicket(g)}>
                           <Receipt size={15} />
                         </Button>
                       )}
-                    </span>
-                    {g.tienda && g.descripcion && <span className="af-gasto-sub">{g.descripcion}</span>}
-                  </span>
-
-                  {/* La categoría se cambia aquí mismo, sin abrir a editar:
-                      casi siempre es lo único que se corrige. */}
-                  <span className="af-gasto-celda">
+                    </div>
+                    {g.tienda && g.descripcion && <div className="text-xs text-muted-foreground">{g.descripcion}</div>}
+                  </TableCell>
+                  {/* Tipo, bolsa, cada mes y factura se cambian aquí mismo,
+                      sin abrir a editar: casi siempre es lo único que se corrige. */}
+                  <TableCell>
                     <Combobox compacto
                       value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"}
                       disabled={!esAdmin}
@@ -7490,12 +7475,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     >
                       {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
                     </Combobox>
-                  </span>
-
-                  {/* De qué bolsa salió. Antes solo se marcaba la de casa, así
-                      que al ver las dos juntas no quedaba claro si lo que no
-                      decía nada era del negocio o era un olvido. */}
-                  <span className="af-gasto-celda">
+                  </TableCell>
+                  <TableCell>
                     <Combobox compacto
                       value={esDelNegocio(g) ? "negocio" : "familia"}
                       disabled={!esAdmin}
@@ -7503,11 +7484,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     >
                       {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
                     </Combobox>
-                  </span>
-
-                  {/* Si se repite solo cada mes. Marcarlo aquí crea la regla,
-                      que es lo que antes había que capturar en otra sección. */}
-                  <span className="af-gasto-celda">
+                  </TableCell>
+                  <TableCell className="af-col-cadames">
                     <Combobox compacto
                       value={g.esFijo ? "si" : "no"}
                       disabled={!esAdmin}
@@ -7516,11 +7494,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       <option value="no">Suelto</option>
                       <option value="si">Cada mes</option>
                     </Combobox>
-                  </span>
-
-                  <span className="af-gasto-monto af-col-monto">{money(g.monto)}</span>
-
-                  <span className="af-gasto-celda">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-medium">{money(g.monto)}</TableCell>
+                  <TableCell>
                     <Combobox compacto
                       value={estadoFacturaDe(g)}
                       disabled={!esAdmin}
@@ -7528,21 +7504,19 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     >
                       {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
                     </Combobox>
-                  </span>
-
-                  <span className="af-gasto-acciones">
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right">
                     {esAdmin && (
                       <>
                         <Button variant="ghost" size="icon-sm" title="Editar" onClick={() => abrirEdicionGasto(g)}><SquarePen size={16} /></Button>
                         <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash size={16} /></Button>
                       </>
                     )}
-                  </span>
-                </div>
+                  </TableCell>
+                </TableRow>
               ))}
-
-            </div>
-          </div>
+            </TableBody>
+          </Table>
           </ScrollArea>
           </>
         )}
@@ -8828,7 +8802,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 >
                   <span className="af-toggle-nombre">{n.label}</span>
                   <span className="af-toggle-estado">{visible ? "Se ve" : "Escondido"}</span>
-                  <span className="af-toggle-switch" />
+                  <SwitchVista checked={visible} />
                 </button>
               );
             })}
@@ -9235,7 +9209,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     <span className="af-toggle-estado">
                       {hay < 0 ? `debes ${-hay} ${diUnidad(hay, unidad)}` : `${hay} ${diUnidad(hay, unidad)}`}
                     </span>
-                    <span className="af-toggle-switch" />
+                    <SwitchVista checked={lleva} />
                   </button>
                   {lleva && (
                     <div className="af-hecho-campos">
@@ -11245,9 +11219,10 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   )}
                   {modo === "pedido" && (
                     notaAbierta === it.id ? (
-                      <Input
+                      <Textarea
                         autoFocus
-                        className="af-input-small mt-1"
+                        rows={2}
+                        className="mt-1"
                         placeholder="Ej. sin chícharos, sin ejotes..."
                         value={it.nota || ""}
                         onChange={(e) => updateNotaItem(it.id, e.target.value)}
@@ -15508,4 +15483,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-field label { font-family: inherit; font-size: var(--text-sm); font-weight: 500; text-transform: none; letter-spacing: 0; color: hsl(var(--foreground)); line-height: 1; }
 .af-section-title { font-family: inherit; font-size: var(--text-sm); font-weight: 600; text-transform: none; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
 .af-mini-label { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--text-xs); }
+/* Tabla de gastos (Table de shadcn): ancho mínimo para deslizar en celular;
+   en iPad de pie se esconde "Cada mes" (la que menos se toca). */
+.af-tabla-scroll table.af-tabla-gastos { min-width: 820px; }
+@media (min-width: 730px) and (max-width: 1023px) {
+  .af-tabla-scroll table.af-tabla-gastos { min-width: 0; }
+  .af-tabla-gastos .af-col-cadames { display: none; }
+}
+@media (min-width: 1024px) { .af-tabla-scroll table.af-tabla-gastos { min-width: 0; } }
 `;
