@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Card } from "@/components/ui/card";
+import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
@@ -1905,6 +1912,14 @@ const sumaAbonos = (abonos) => (abonos || []).reduce((a, x) => a + (parseFloat(x
 
 // Input numérico con memoria propia: se puede borrar y escribir libremente
 // mientras se edita, y solo se valida/redondea al salir del campo.
+// Campo de shadcn (Input) cuando la clase trae "af-input"; si no, input simple
+// (algunas tablas usan su propio estilo compacto).
+const CampoBase = React.forwardRef(({ className, ...props }, ref) =>
+  /\baf-input\b/.test(className || "")
+    ? <Input ref={ref} className={className.replace(/\baf-input\b/g, "").trim()} {...props} />
+    : <input ref={ref} className={className} {...props} />
+);
+
 function NumberField({ value, onChange, min, className, disabled }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
@@ -1917,7 +1932,7 @@ function NumberField({ value, onChange, min, className, disabled }) {
   };
 
   return (
-    <input
+    <CampoBase
       type="text"
       inputMode="decimal"
       className={className}
@@ -1937,7 +1952,7 @@ function TextoField({ value, onChange, className, placeholder, list }) {
   const [text, setText] = useState(value || "");
   useEffect(() => { setText(value || ""); }, [value]);
   return (
-    <input
+    <CampoBase
       type="text"
       className={className}
       placeholder={placeholder}
@@ -1978,8 +1993,8 @@ function UbicacionField({ value, onChange, placeholder }) {
   };
   return (
     <div className="af-ubic-row">
-      <input
-        className="af-input"
+      <Input
+       
         value={value}
         placeholder={placeholder || "Pega aquí el link de ubicación"}
         onChange={(e) => onChange(e.target.value)}
@@ -2040,7 +2055,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
   // entregados (listas distintas) y React la desmonta y monta de nuevo,
   // perdiendo cualquier estado propio antes de que el botón llegue a mostrarse.
   return (
-    <div className="af-card af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
+    <Card className="af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-baseline gap-2 flex-wrap">
@@ -2051,9 +2066,9 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
                 una persona, para que nadie lo dé por confirmado de más ni se
                 confunda al verlo aparecer solo. */}
             {esPedidoDeIA(pedido) && (
-              <span className="af-chip af-chip-ia" title="Lo apuntó el asistente de WhatsApp; conviene confirmarlo con el cliente">
+              <Chip variant="plain" className="af-chip-ia" title="Lo apuntó el asistente de WhatsApp; conviene confirmarlo con el cliente">
                 <MessageCircle size={11} /> Por WhatsApp
-              </span>
+              </Chip>
             )}
           </div>
           {showFecha && <div className="af-fecha-sub">{fmtDateHuman(pedido.fecha)}</div>}
@@ -2092,9 +2107,9 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
                 : null;
             if (!destino) {
               return (
-                <span className="af-chip af-chip-domicilio">
+                <Chip variant="marca">
                   <Truck size={12} /> A domicilio
-                </span>
+                </Chip>
               );
             }
             return (
@@ -2102,7 +2117,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
                 href={destino}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="af-chip af-chip-domicilio"
+                className={cn(badgeVariants({ variant: "marca" }))}
                 onClick={(e) => e.stopPropagation()}
                 title="Abrir en el mapa"
               >
@@ -2111,15 +2126,15 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
             );
           })()
         ) : (
-          <span className="af-chip af-chip-neutral">
+          <Chip variant="neutral">
             <Store size={12} /> Recoger
-          </span>
+          </Chip>
         )}
         {hayPaellera && (
-          <span className={"af-chip " + (todasDevueltas ? "af-chip-olive" : "af-chip-gold")}>
+          <Chip variant={todasDevueltas ? "exito" : "oro"}>
             <ChefHat size={12} /> {todasDevueltas ? "Paellera devuelta" : itemsPaellera.length > 1 ? `${itemsPaellera.length} paelleras` : "Paellera"}
             {!todasDevueltas && pedido.recogerPaellera ? " · vamos por ella" : ""}
-          </span>
+          </Chip>
         )}
         {/* "Ya llegué", para tocarlo desde la calle. Va pegado al chip del
             mapa porque ese es el orden real de quien entrega: abrir el mapa,
@@ -2133,7 +2148,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
             href={`https://wa.me/${telWhatsApp(pedido.clienteTelefono)}?text=${encodeURIComponent(mensajeLlegue(pedido, mensajes))}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="af-chip af-chip-llegue"
+            className={cn(badgeVariants({ variant: "plain" }), "af-chip-llegue")}
             onClick={(e) => e.stopPropagation()}
             title="Avisarle al cliente que ya estás afuera"
           >
@@ -2164,7 +2179,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
         <span className="af-total">{money(pedido.total)}</span>
         {pedido.saldo > 0 && <span className="af-saldo">Saldo {money(pedido.saldo)}</span>}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -2197,14 +2212,14 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
     return (
       <div className="af-chat">
         <div className="af-chat-head">
-          <button className="af-icon-btn" onClick={onVolver} title="Volver a la lista">
+          <Button variant="ghost" size="icon-sm" onClick={onVolver} title="Volver a la lista">
             <ArrowLeft size={18} />
-          </button>
+          </Button>
           <div className="af-chat-head-txt">
             <div className="af-chat-head-nombre">{nombre}</div>
             <div className="af-chat-head-tel">{fmtTel(abierta.telefono)}</div>
           </div>
-          <a className="af-icon-btn" href={`tel:+${abierta.telefono}`} title="Marcarle">
+          <a className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))} href={`tel:+${abierta.telefono}`} title="Marcarle">
             <MessageCircle size={18} />
           </a>
         </div>
@@ -2318,7 +2333,7 @@ function CampoConSugerencias({ value, onChange, sugerencias = [], className = "a
 
   return (
     <div className="af-sug-wrap" ref={contenedorRef}>
-      <input
+      <CampoBase
         className={className}
         value={value || ""}
         placeholder={placeholder}
@@ -2394,24 +2409,24 @@ function LoginView({ onEntrar }) {
         <div className="af-login-sub">Inicia sesión para ver los pedidos</div>
         <div className="af-field">
           <label>Correo</label>
-          <input
-            className="af-input" type="email" autoComplete="username" placeholder="tu@correo.com"
+          <Input
+            type="email" autoComplete="username" placeholder="tu@correo.com"
             value={email} onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && entrar()}
           />
         </div>
         <div className="af-field">
           <label>Contraseña</label>
-          <input
-            className="af-input" type="password" autoComplete="current-password" placeholder="••••••••"
+          <Input
+            type="password" autoComplete="current-password" placeholder="••••••••"
             value={password} onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && entrar()}
           />
         </div>
         {errorLogin && <div className="af-error">{errorLogin}</div>}
-        <button className="af-btn-primary w-full" onClick={entrar} disabled={entrando}>
+        <Button className="w-full" onClick={entrar} disabled={entrando}>
           {entrando ? "Entrando..." : "Entrar"}
-        </button>
+        </Button>
         <div className="af-hint mt-3" style={{ textAlign: "center" }}>
           ¿Sin cuenta? Pídele al administrador que te dé de alta.
         </div>
@@ -2430,7 +2445,7 @@ function CuentaBloqueadaView({ onSalir }) {
         <p className="af-ink-soft text-sm mb-4">
           Tu usuario existe pero está desactivado. Pídele al administrador que lo active.
         </p>
-        <button className="af-btn-secondary w-full" onClick={onSalir}>Salir</button>
+        <Button variant="secondary" className="w-full" onClick={onSalir}>Salir</Button>
       </div>
     </div>
   );
@@ -2530,7 +2545,7 @@ function AlertaFranjaModal({ alerta, onCerrar }) {
           Ya son <strong>{alerta.total} paellas</strong> cerca de las {fmtHora12(alerta.hora)} del {fmtDateHuman(alerta.fecha)}.
           Revisa que alcancen a prepararse a tiempo.
         </p>
-        <button className="af-btn-primary w-full" onClick={onCerrar}>Entendido</button>
+        <Button className="w-full" onClick={onCerrar}>Entendido</Button>
       </div>
     </div>
   );
@@ -2561,15 +2576,15 @@ function CobroEntregaModal({ cobro, onElegir, onCerrar }) {
         <p className="af-alerta-texto">
           <strong>{pedido.clienteNombre}</strong> debía <strong>{money(faltante)}</strong>.
         </p>
-        <button className="af-btn-primary w-full" onClick={() => onElegir("efectivo")}>
+        <Button className="w-full" onClick={() => onElegir("efectivo")}>
           Pagó en efectivo
-        </button>
-        <button className="af-btn-secondary w-full mt-2" onClick={() => onElegir("transferencia")}>
+        </Button>
+        <Button variant="secondary" className="w-full mt-2" onClick={() => onElegir("transferencia")}>
           Dice que transfirió — confirmar después
-        </button>
-        <button className="af-btn-secondary w-full mt-2" onClick={() => onElegir("nada")}>
+        </Button>
+        <Button variant="secondary" className="w-full mt-2" onClick={() => onElegir("nada")}>
           Todavía no paga
-        </button>
+        </Button>
         <p className="af-ink-soft text-xs mt-3">
           Si eligió transferencia, el pedido queda apuntado como cobrado pero marcado
           <strong> por confirmar</strong>, y sale en Hoy hasta que veas el dinero en el banco.
@@ -2617,27 +2632,29 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
           </div>
         )}
         {quedoSaldado && (
-          <button className="af-btn-primary w-full" disabled={subiendo} onClick={onEnviarConRecibo}>
+          <Button className="w-full" disabled={subiendo} onClick={onEnviarConRecibo}>
             {subiendo
               ? "Preparando el recibo…"
               : <><Receipt size={15} className="inline mr-1" /> Enviar con su recibo</>}
-          </button>
+          </Button>
         )}
-        <button
-          className={quedoSaldado || yaSeMando ? "af-btn-secondary w-full mt-2" : "af-btn-primary w-full"}
+        <Button
+          variant={quedoSaldado || yaSeMando ? "secondary" : "default"}
+          className={quedoSaldado || yaSeMando ? "w-full mt-2" : "w-full"}
           disabled={subiendo}
           onClick={onEnviar}
         >
           <MessageCircle size={15} className="inline mr-1" />
           {yaSeMando ? "Mandarlo otra vez" : quedoSaldado ? "Solo el mensaje" : "Enviar por WhatsApp"}
-        </button>
-        <button
-          className={yaSeMando ? "af-btn-primary w-full mt-2" : "af-btn-secondary w-full mt-2"}
+        </Button>
+        <Button
+          variant={yaSeMando ? "default" : "secondary"}
+          className="w-full mt-2"
           disabled={subiendo}
           onClick={onCerrar}
         >
           {yaSeMando ? "No, ya se enteró" : "Ahora no"}
-        </button>
+        </Button>
         {quedoSaldado && (
           <p className="af-ink-soft text-xs mt-3">
             Le llega el PDF con su mensaje, en una sola cosa. En la computadora,
@@ -2744,28 +2761,28 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
             <div className="af-avatar-modal" onClick={(e) => e.stopPropagation()}>
               <div className="af-modal-header">
                 <span>Mi perfil</span>
-                <button className="af-icon-btn" onClick={() => setEditando(false)}><X size={18} /></button>
+                <Button variant="ghost" size="icon-sm" onClick={() => setEditando(false)}><X size={18} /></Button>
               </div>
               <div className="af-avatar-modal-body">
                 <div className="af-avatar-preview">
                   {fotoDraft ? <img src={fotoDraft} alt="" /> : <span>{(nombreDraft || "U")[0]?.toUpperCase() || "U"}</span>}
                 </div>
-                <label className="af-btn-secondary w-full text-center mb-2" style={{ display: "block", cursor: "pointer" }}>
+                <label className={cn(buttonVariants({ variant: "secondary" }), "w-full text-center mb-2")} style={{ display: "block", cursor: "pointer" }}>
                   {subiendo ? "Subiendo..." : "Cambiar foto"}
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={onArchivo} disabled={subiendo} />
                 </label>
                 {fotoDraft && (
-                  <button className="af-btn-ghost w-full mb-3" onClick={() => setFotoDraft(null)}>
+                  <Button variant="link" size="auto" className="w-full mb-3" onClick={() => setFotoDraft(null)}>
                     Quitar foto
-                  </button>
+                  </Button>
                 )}
                 <div className="af-field">
                   <label>Nombre</label>
-                  <input className="af-input" placeholder="Tu nombre" value={nombreDraft} onChange={(e) => setNombreDraft(e.target.value)} />
+                  <Input placeholder="Tu nombre" value={nombreDraft} onChange={(e) => setNombreDraft(e.target.value)} />
                 </div>
-                <button className="af-btn-primary w-full" onClick={guardar} disabled={guardando}>
+                <Button className="w-full" onClick={guardar} disabled={guardando}>
                   {guardando ? "Guardando..." : "Guardar"}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -2781,7 +2798,7 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
   // (pantalla chica, dedos rápidos) y ya no hay forma fácil de deshacerlo.
   const [confirmando, setConfirmando] = useState(false);
   return (
-    <div className="af-card af-paellera-row p-3 mb-2">
+    <Card className="af-paellera-row p-3 mb-2">
       <div>
         <div className="af-cliente-nombre">{item.clienteNombre} <span className="af-ink-soft text-sm">· {item.paellaNombre}</span></div>
         <div className="af-fecha-sub">{fmtDateHuman(item.fecha)} · {item.hora}</div>
@@ -2792,17 +2809,17 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
               ? `https://maps.google.com/?q=${encodeURIComponent(item.direccion.trim())}`
               : null;
           return destino ? (
-            <a href={destino} target="_blank" rel="noopener noreferrer" className="af-chip af-chip-domicilio mt-1" onClick={(e) => e.stopPropagation()}>
+            <a href={destino} target="_blank" rel="noopener noreferrer" className={cn(badgeVariants({ variant: "marca" }), "mt-1")} onClick={(e) => e.stopPropagation()}>
               <MapPin size={12} /> Vamos por ella · Ver mapa
             </a>
           ) : (
-            <span className="af-chip af-chip-domicilio mt-1"><Truck size={12} /> Vamos por ella</span>
+            <Chip variant="marca" className="mt-1"><Truck size={12} /> Vamos por ella</Chip>
           );
         })()}
       </div>
-      <button className="af-btn-chip" onClick={() => setConfirmando(true)}>
+      <Button variant="exito" size="sm" onClick={() => setConfirmando(true)}>
         <Check size={14} /> Devuelta
-      </button>
+      </Button>
       {confirmando && (
         <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmando(false)}>
           <div className="af-alerta-modal" onClick={(e) => e.stopPropagation()}>
@@ -2811,17 +2828,17 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
             <p className="af-alerta-texto">
               {item.clienteNombre} · {item.paellaNombre}<br />{fmtDateHuman(item.fecha)} · {item.hora}
             </p>
-            <button
-              className="af-btn-primary w-full"
+            <Button
+              className="w-full"
               onClick={() => { onMarcarDevuelta(item.pedidoId, item.itemId); setConfirmando(false); }}
             >
               Sí, ya se devolvió
-            </button>
-            <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmando(false)}>Cancelar</button>
+            </Button>
+            <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmando(false)}>Cancelar</Button>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -3156,7 +3173,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                     </div>
                   </div>
                   <button
-                    className="af-chip af-chip-wa-mini"
+                    className={cn(badgeVariants({ variant: "plain" }), "af-chip-wa-mini")}
                     onClick={() => onConfirmarTransferencia && onConfirmarTransferencia(pedido.id, abono.id)}
                   >
                     <Check size={12} /> Ya cayó
@@ -3193,7 +3210,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
                   </button>
                   <div className="af-gasto-monto">{money(saldo)}</div>
                   <button
-                    className="af-chip af-chip-wa-mini"
+                    className={cn(badgeVariants({ variant: "plain" }), "af-chip-wa-mini")}
                     onClick={() => onSaldarPedido && onSaldarPedido(pedido.id)}
                   >
                     <Check size={12} /> Ya me pagaron
@@ -3393,43 +3410,43 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                 se pasa al siguiente decenas de veces: abrir el calendario en
                 cada salto era lo más lento de todo. */}
             {diaEntregados && (
-              <button
-                className="af-icon-btn"
+              <Button variant="ghost" size="icon-sm"
+               
                 style={{ flexShrink: 0 }}
                 title="Día anterior"
                 onClick={() => onDiaEntregados(correrDias(diaEntregados, -1))}
               >
                 <ChevronLeft size={20} />
-              </button>
+              </Button>
             )}
-            <input
+            <Input
               type="date"
-              className="af-input"
+             
               value={diaEntregados}
               onChange={(e) => onDiaEntregados(e.target.value)}
             />
             {diaEntregados && (
-              <button
-                className="af-icon-btn"
+              <Button variant="ghost" size="icon-sm"
+               
                 style={{ flexShrink: 0 }}
                 title="Día siguiente"
                 onClick={() => onDiaEntregados(correrDias(diaEntregados, 1))}
               >
                 <ChevronRight size={20} />
-              </button>
+              </Button>
             )}
             {diaEntregados && (
-              <button className="af-btn-ghost" style={{ flexShrink: 0 }} onClick={() => onDiaEntregados("")}>
+              <Button variant="link" size="auto" style={{ flexShrink: 0 }} onClick={() => onDiaEntregados("")}>
                 Ver todos
-              </button>
+              </Button>
             )}
           </div>
 
           {!diaEntregados && (
             <div className="af-year-switch" style={{ marginBottom: 0 }}>
-              <button className="af-icon-btn" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></button>
+              <Button variant="ghost" size="icon-sm" onClick={() => cambiarMes(-1)}><ChevronLeft size={20} /></Button>
               <span className="af-year-label" style={{ minWidth: 170 }}>{MESES[mesSel.m]} {mesSel.a}</span>
-              <button className="af-icon-btn" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></button>
+              <Button variant="ghost" size="icon-sm" onClick={() => cambiarMes(1)}><ChevronRight size={20} /></Button>
             </div>
           )}
           {entregadosFiltrados.length > 0 && (
@@ -3463,9 +3480,9 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 
       {fechas.length > 1 && (
         <div className="af-dias-acciones">
-          <button className="af-btn-ghost" onClick={() => abrirTodos(cuantosAbiertos < fechas.length)}>
+          <Button variant="link" size="auto" onClick={() => abrirTodos(cuantosAbiertos < fechas.length)}>
             {cuantosAbiertos < fechas.length ? "Abrir todos los días" : "Cerrar todos los días"}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -3483,8 +3500,8 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
             titulo={
               <>
                 {fmtDateHuman(fecha)}
-                {esHoy(fecha) && <span className="af-chip af-chip-gold ml-2">Hoy</span>}
-                {tab === "pendientes" && fecha < hoy && <span className="af-chip af-chip-wine-strong ml-2">Atrasado</span>}
+                {esHoy(fecha) && <Chip variant="oro" className="ml-2">Hoy</Chip>}
+                {tab === "pendientes" && fecha < hoy && <Chip variant="default" className="ml-2">Atrasado</Chip>}
               </>
             }
             resumen={
@@ -3521,7 +3538,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 
 function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
   return (
-    <div className="af-card af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
+    <Card className="af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-baseline gap-2 flex-wrap">
@@ -3542,9 +3559,9 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
 
       <div className="flex items-center gap-2 flex-wrap mb-2">
         {presupuesto.entrega ? (
-          <span className="af-chip af-chip-domicilio"><Truck size={12} /> A domicilio</span>
+          <Chip variant="marca"><Truck size={12} /> A domicilio</Chip>
         ) : (
-          <span className="af-chip af-chip-neutral"><Store size={12} /> Recoger</span>
+          <Chip variant="neutral"><Store size={12} /> Recoger</Chip>
         )}
       </div>
 
@@ -3562,12 +3579,12 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
       <div className="flex items-center justify-between mt-2">
         <span className="af-total">{money(presupuesto.total)}</span>
         {!presupuesto.convertido && (
-          <button className="af-btn-chip" onClick={(e) => { e.stopPropagation(); onAceptar(presupuesto); }}>
+          <Button variant="exito" size="sm" onClick={(e) => { e.stopPropagation(); onAceptar(presupuesto); }}>
             <Check size={14} /> Aceptar → pedido
-          </button>
+          </Button>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -3745,7 +3762,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
           </button>
         )}
 
-        <div className="af-card p-4 mb-4">
+        <Card className="p-4 mb-4">
           <div className="af-deuda-nombre">{abierta.quien}</div>
           {abierta.nota && <div className="af-ink-soft text-sm mb-2">{abierta.nota}</div>}
           <div className="af-deuda-cifra">{money(falta)}</div>
@@ -3757,24 +3774,24 @@ function DeudasView({ deudas, onGuardar, showToast }) {
             <span>Te debía <strong>{money(abierta.total)}</strong></span>
             <span>Ya te pagó <strong>{money(abonado)}</strong></span>
           </div>
-        </div>
+        </Card>
 
-        <button
-          className="af-btn-primary w-full mb-4"
+        <Button
+          className="w-full mb-4"
           onClick={() => setFormPago({ deudaId: abierta.id, monto: "", fecha: todayISO(), nota: "", comprobante: null })}
         >
           <Plus size={16} className="inline mr-1" /> Anotar un pago
-        </button>
+        </Button>
 
         <div className="af-section-title">
           {pagos.length === 0 ? "Todavía no te ha pagado nada" : `Pagos (${pagos.length})`}
         </div>
         {pagos.length === 0 ? (
-          <div className="af-card p-4 mb-4 af-ink-soft text-sm">
+          <Card className="p-4 mb-4 af-ink-soft text-sm">
             Cuando te dé algo, dale a "Anotar un pago" y aquí se va guardando todo con su fecha.
-          </div>
+          </Card>
         ) : (
-          <div className="af-card mb-4">
+          <Card className="mb-4">
             {pagos.map((p) => (
               <div key={p.id} className="af-pago-fila">
                 <div className="min-w-0 flex-1">
@@ -3784,39 +3801,39 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                   </div>
                 </div>
                 {p.comprobante && (
-                  <button className="af-icon-btn" title="Ver el comprobante" onClick={() => abrirComprobante(p)}>
+                  <Button variant="ghost" size="icon-sm" title="Ver el comprobante" onClick={() => abrirComprobante(p)}>
                     <Receipt size={16} />
-                  </button>
+                  </Button>
                 )}
-                <button
-                  className="af-icon-btn"
+                <Button variant="ghost" size="icon-sm"
+                 
                   title="Editar"
                   onClick={() => setFormPago({ deudaId: abierta.id, id: p.id, monto: String(p.monto), fecha: p.fecha, nota: p.nota || "", comprobante: p.comprobante || null })}
                 >
                   <Pencil size={16} />
-                </button>
-                <button className="af-icon-btn" title="Borrar" onClick={() => setPorBorrar({ tipo: "pago", deudaId: abierta.id, pago: p })}>
+                </Button>
+                <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setPorBorrar({ tipo: "pago", deudaId: abierta.id, pago: p })}>
                   <Trash2 size={16} />
-                </button>
+                </Button>
               </div>
             ))}
-          </div>
+          </Card>
         )}
 
         <div className="af-deuda-acciones">
-          <button
-            className="af-btn-secondary"
+          <Button variant="secondary"
+           
             onClick={() => setFormDeuda({ id: abierta.id, quien: abierta.quien, total: String(abierta.total), nota: abierta.nota || "" })}
           >
             <Pencil size={15} className="inline mr-1" /> Cambiar el nombre o el total
-          </button>
-          <button className="af-btn-danger" onClick={() => setPorBorrar({ tipo: "deuda", deuda: abierta })}>
+          </Button>
+          <Button variant="destructive-outline" onClick={() => setPorBorrar({ tipo: "deuda", deuda: abierta })}>
             <Trash2 size={15} className="inline mr-1" /> Borrar todo esto
-          </button>
+          </Button>
           {lista.length === 1 && (
-            <button className="af-btn-secondary" onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}>
+            <Button variant="secondary" onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}>
               <Plus size={15} className="inline mr-1" /> Anotar a alguien más
-            </button>
+            </Button>
           )}
         </div>
 
@@ -3833,12 +3850,12 @@ function DeudasView({ deudas, onGuardar, showToast }) {
         cuentas del negocio: es solo para llevar el control.
       </div>
 
-      <button
-        className="af-btn-primary w-full mb-4"
+      <Button
+        className="w-full mb-4"
         onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}
       >
         <Plus size={16} className="inline mr-1" /> Anotar quién me debe
-      </button>
+      </Button>
 
       {lista.length === 0 ? (
         <div className="af-empty">
@@ -3883,8 +3900,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               <div className="af-alerta-titulo">{formDeuda.id ? "Cambiar los datos" : "¿Quién te debe?"}</div>
               <div className="af-field">
                 <label>Nombre</label>
-                <input
-                  className="af-input"
+                <Input
+                 
                   placeholder="Ej. Juan Pérez"
                   value={formDeuda.quien}
                   onChange={(e) => setFormDeuda({ ...formDeuda, quien: e.target.value })}
@@ -3892,8 +3909,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <div className="af-field">
                 <label>¿Cuánto te debe?</label>
-                <input
-                  className="af-input"
+                <Input
+                 
                   type="number"
                   inputMode="decimal"
                   placeholder="0.00"
@@ -3903,15 +3920,15 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <div className="af-field">
                 <label>Nota (opcional)</label>
-                <input
-                  className="af-input"
+                <Input
+                 
                   placeholder="Ej. préstamo de la camioneta"
                   value={formDeuda.nota}
                   onChange={(e) => setFormDeuda({ ...formDeuda, nota: e.target.value })}
                 />
               </div>
-              <button className="af-btn-primary w-full mt-2" onClick={guardarDeuda}>Guardar</button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setFormDeuda(null)}>Cancelar</button>
+              <Button className="w-full mt-2" onClick={guardarDeuda}>Guardar</Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setFormDeuda(null)}>Cancelar</Button>
             </div>
           </div>
         )}
@@ -3922,8 +3939,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               <div className="af-alerta-titulo">{formPago.id ? "Cambiar el pago" : "¿Cuánto te pagó?"}</div>
               <div className="af-field">
                 <label>Cantidad</label>
-                <input
-                  className="af-input"
+                <Input
+                 
                   type="number"
                   inputMode="decimal"
                   placeholder="0.00"
@@ -3933,8 +3950,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <div className="af-field">
                 <label>¿Qué día?</label>
-                <input
-                  className="af-input"
+                <Input
+                 
                   type="date"
                   value={formPago.fecha}
                   onChange={(e) => setFormPago({ ...formPago, fecha: e.target.value })}
@@ -3962,15 +3979,15 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <div className="af-field">
                 <label>Nota (opcional)</label>
-                <input
-                  className="af-input"
+                <Input
+                 
                   placeholder="Ej. me lo dio en efectivo"
                   value={formPago.nota}
                   onChange={(e) => setFormPago({ ...formPago, nota: e.target.value })}
                 />
               </div>
-              <button className="af-btn-primary w-full mt-2" disabled={subiendo} onClick={guardarPago}>Guardar</button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setFormPago(null)}>Cancelar</button>
+              <Button className="w-full mt-2" disabled={subiendo} onClick={guardarPago}>Guardar</Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setFormPago(null)}>Cancelar</Button>
             </div>
           </div>
         )}
@@ -3985,7 +4002,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               ) : (
                 <img src={viendo.url} alt="Comprobante" className="af-comprobante-foto" />
               )}
-              <button className="af-btn-primary w-full mt-3" onClick={() => setViendo(null)}>Cerrar</button>
+              <Button className="w-full mt-3" onClick={() => setViendo(null)}>Cerrar</Button>
             </div>
           </div>
         )}
@@ -4002,8 +4019,8 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                   ? `Se va ${porBorrar.deuda.quien} con todos sus pagos apuntados. No se puede deshacer.`
                   : `${money(porBorrar.pago.monto)} del ${fmtDateHuman(porBorrar.pago.fecha)}. El total que falta vuelve a subir.`}
               </div>
-              <button className="af-btn-danger w-full" onClick={borrar}>Sí, bórralo</button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setPorBorrar(null)}>Mejor no</button>
+              <Button variant="destructive-outline" className="w-full" onClick={borrar}>Sí, bórralo</Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Mejor no</Button>
             </div>
           </div>
         )}
@@ -4061,9 +4078,9 @@ function BuscarView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
     <div>
       <div className="af-search-wrap mb-4">
         <Search size={18} className="af-search-icon" />
-        <input
+        <Input
           autoFocus
-          className="af-input af-input-search"
+          className="af-input-search"
           placeholder="Nombre, teléfono, fecha o platillo..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -4138,11 +4155,11 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         <div className="af-section-title">Nuevo cliente</div>
         <div className="af-field">
           <label>Nombre</label>
-          <input className="af-input" value={form.nombre} onChange={(e) => { setForm({ ...form, nombre: e.target.value }); setConfirmDup(false); }} placeholder="Nombre y apellido" />
+          <Input value={form.nombre} onChange={(e) => { setForm({ ...form, nombre: e.target.value }); setConfirmDup(false); }} placeholder="Nombre y apellido" />
         </div>
         <div className="af-field">
           <label>Teléfono</label>
-          <input className="af-input" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} placeholder="55 1234 5678" />
+          <Input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} placeholder="55 1234 5678" />
         </div>
         <div className="af-field">
           <label>Ubicación</label>
@@ -4150,7 +4167,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         </div>
         <div className="af-field">
           <label>Referencias de dirección</label>
-          <input className="af-input" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} placeholder="Opcional" />
+          <Input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} placeholder="Opcional" />
         </div>
         {(() => {
           const parecidos = clientesParecidos(form.nombre, clientes);
@@ -4170,8 +4187,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
               {malTel && (
                 <div className="af-error">⚠ Revisa el teléfono: {malTel}</div>
               )}
-              <button
-                className="af-btn-primary w-full mt-2"
+              <Button
+                className="w-full mt-2"
                 onClick={() => {
                   if (!form.nombre.trim()) return;
                   if (hayAviso && !confirmDup) { setConfirmDup(true); return; }
@@ -4183,7 +4200,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                 }}
               >
                 {hayAviso && confirmDup ? "¿Seguro? Guardar de todos modos" : "Guardar cliente"}
-              </button>
+              </Button>
             </>
           );
         })()}
@@ -4214,37 +4231,37 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
 
         <div className="af-field">
           <label>Nombre</label>
-          <input className="af-input" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+          <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
         </div>
         <div className="af-field">
           <label>Teléfono</label>
-          <input className="af-input" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
+          <Input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
         </div>
         <div className="af-field">
           <label>Ubicación</label>
           <UbicacionField value={form.ubicacion} onChange={(v) => setForm({ ...form, ubicacion: v })} />
           {form.ubicacion && (
-            <a href={enlaceDeUbicacion(form.ubicacion)} target="_blank" rel="noopener noreferrer" className="af-btn-ghost mt-1 inline-flex items-center gap-1">
+            <a href={enlaceDeUbicacion(form.ubicacion)} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: "link", size: "auto" }), "mt-1 inline-flex items-center gap-1")}>
               <MapPin size={13} /> Abrir en el mapa
             </a>
           )}
         </div>
         <div className="af-field">
           <label>Referencias de dirección</label>
-          <input className="af-input" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+          <Input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
         </div>
         <div className="af-field">
           <label>Notas</label>
-          <textarea className="af-input" rows={2} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
+          <Textarea rows={2} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
         </div>
 
         <div className="flex gap-2 mb-2">
-          <button className="af-btn-secondary flex-1" onClick={() => onUpdateCliente({ ...detalle, ...form })}>
+          <Button variant="secondary" className="flex-1" onClick={() => onUpdateCliente({ ...detalle, ...form })}>
             Guardar cambios
-          </button>
-          <button className="af-btn-primary flex-1" onClick={() => onNuevoPedidoPara(detalle)}>
+          </Button>
+          <Button className="flex-1" onClick={() => onNuevoPedidoPara(detalle)}>
             + Pedido
-          </button>
+          </Button>
         </div>
         {form.telefono && (
           <button className="af-btn-wa w-full mb-4" onClick={() => abrirWhatsApp(form.telefono, "")}>
@@ -4275,8 +4292,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         {/* Borrar va hasta abajo y en discreto, lejos de "+ Pedido" y
             "Guardar cambios": es lo que menos se usa y lo único que no se
             deshace, así que no debe quedar al alcance del pulgar por error. */}
-        <button
-          className="af-btn-ghost w-full mt-4 mb-2"
+        <Button variant="link" size="auto"
+          className="w-full mt-4 mb-2"
           style={{ color: "#b91c1c" }}
           onClick={() => {
             const pendientes = historial.filter((p) => (p.estado || "pendiente") !== "entregado");
@@ -4294,7 +4311,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
           }}
         >
           <Trash2 size={14} className="inline mr-1" /> Borrar cliente
-        </button>
+        </Button>
 
         {confirmBorrar && (
           <div className="af-modal-overlay af-modal-overlay-center" onClick={() => setConfirmBorrar(null)}>
@@ -4331,8 +4348,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
               )}
 
               <p className="af-ink-soft text-sm mb-3">No se puede deshacer.</p>
-              <button
-                className="af-btn-primary w-full"
+              <Button
+                className="w-full"
                 onClick={() => {
                   onEliminarCliente(confirmBorrar.cliente.id);
                   setConfirmBorrar(null);
@@ -4340,8 +4357,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                 }}
               >
                 Sí, bórralo
-              </button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmBorrar(null)}>Mejor no</button>
+              </Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmBorrar(null)}>Mejor no</Button>
             </div>
           </div>
         )}
@@ -4390,10 +4407,10 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
     <div>
       <div className="af-search-wrap mb-3">
         <Search size={18} className="af-search-icon" />
-        <input className="af-input af-input-search" placeholder="Buscar cliente..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input className="af-input-search" placeholder="Buscar cliente..." value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      <button
-        className="af-btn-secondary w-full mb-2"
+      <Button variant="secondary"
+        className="w-full mb-2"
         onClick={() => {
           setForm({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
           setConfirmDup(false);
@@ -4401,10 +4418,10 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         }}
       >
         <Plus size={16} className="inline mr-1" /> Nuevo cliente
-      </button>
+      </Button>
       {onImportarClientes && (
         <>
-          <label className="af-btn-secondary w-full mb-2" style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
+          <label className={cn(buttonVariants({ variant: "secondary" }), "w-full mb-2")} style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
             <Upload size={15} className="inline mr-1" /> Traer contactos del celular
             <input
               type="file"
@@ -4459,17 +4476,17 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
               (p) => p.clienteId === c.id && (p.estado || "pendiente") === "entregado" && p.items.some((it) => it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta)
             );
             return (
-              <div key={c.id} className="af-card p-4 mb-3 cursor-pointer" onClick={() => setDetalleId(c.id)}>
+              <Card key={c.id} className="p-4 mb-3 cursor-pointer" onClick={() => setDetalleId(c.id)}>
                 <div className="flex items-center justify-between">
                   <span className="af-cliente-nombre">{c.nombre}</span>
-                  <span className="af-chip af-chip-neutral">{n} pedido{n === 1 ? "" : "s"}</span>
+                  <Chip variant="neutral">{n} pedido{n === 1 ? "" : "s"}</Chip>
                 </div>
                 <div className="af-resumen mt-1">
                   {c.telefono && <span><Phone size={12} className="inline mr-1" />{c.telefono}</span>}
                   {c.direccion && <span className="ml-3"><MapPin size={12} className="inline mr-1" />{c.direccion}</span>}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap mt-2">
-                  {tienePendiente && <span className="af-chip af-chip-gold inline-flex"><ChefHat size={12} /> Paellera pendiente</span>}
+                  {tienePendiente && <Chip variant="oro" className="inline-flex"><ChefHat size={12} /> Paellera pendiente</Chip>}
                   {/* Hace cuánto que no pide, para saber a quién hablarle. */}
                   {(() => {
                     const dias = diasSinPedir(c);
@@ -4477,15 +4494,15 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                     const meses = Math.floor(dias / 30);
                     return (
                       <>
-                        <span className="af-chip af-chip-ausente inline-flex">
+                        <Chip variant="plain" className="af-chip-ausente inline-flex">
                           Sin pedir {meses >= 1 ? `${meses} ${meses === 1 ? "mes" : "meses"}` : `${dias} días`}
-                        </span>
+                        </Chip>
                         {/* Saludarlo desde aquí mismo: enterarse de que un
                             cliente se enfrió no sirve de nada si hay que ir a
                             buscar su número a otra pantalla. */}
                         {c.telefono && (
                           <button
-                            className="af-chip af-chip-wa-mini inline-flex"
+                            className={cn(badgeVariants({ variant: "plain" }), "af-chip-wa-mini inline-flex")}
                             onClick={(e) => {
                               e.stopPropagation();
                               abrirWhatsApp(c.telefono, mensajeExtranamos(c, config?.mensajes));
@@ -4498,7 +4515,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                     );
                   })()}
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -4528,8 +4545,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                     Marca los que quieras agregar.
                   </p>
                   {nuevos.length > 0 && (
-                    <button
-                      className="af-btn-ghost mb-2"
+                    <Button variant="link" size="auto"
+                      className="mb-2"
                       onClick={() =>
                         setImportando((prev) => {
                           const todos = cuantosElegidos === nuevos.length;
@@ -4541,7 +4558,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                       }
                     >
                       {cuantosElegidos === nuevos.length ? "Quitar todos" : "Marcar todos"}
-                    </button>
+                    </Button>
                   )}
                   <div className="af-import-lista mb-3">
                     {nuevos.map((c) => (
@@ -4568,8 +4585,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                   </div>
                 </>
               )}
-              <button
-                className="af-btn-primary w-full"
+              <Button
+                className="w-full"
                 disabled={cuantosElegidos === 0}
                 onClick={() => {
                   onImportarClientes(nuevos.filter((c) => importando.elegidos[c.telefono]));
@@ -4577,8 +4594,8 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                 }}
               >
                 {cuantosElegidos > 0 ? `Agregar ${cuantosElegidos}` : "Agregar"}
-              </button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setImportando(null)}>Cancelar</button>
+              </Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setImportando(null)}>Cancelar</Button>
             </div>
           </div>
         );
@@ -6180,9 +6197,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       {tab === "rentabilidad" && (
         <div>
           <div className="af-year-switch">
-            <button className="af-icon-btn" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></button>
+            <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></Button>
             <span className="af-year-label">{anio}</span>
-            <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
+            <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></Button>
           </div>
 
           <div className="af-rent-resumen mb-4">
@@ -6221,7 +6238,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {rentPorMes.length > 0 && (
             <>
               <div className="af-section-title">Mes por mes</div>
-              <div className="af-card mb-4 af-rent-meses">
+              <Card className="mb-4 af-rent-meses">
                 {rentPorMes.map((m) => {
                   const enCurso = anio === hoyAnio && m.mes === hoyMes;
                   return (
@@ -6248,7 +6265,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </div>
                   );
                 })}
-              </div>
+              </Card>
             </>
           )}
 
@@ -6276,14 +6293,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {filasRentabilidad.length > 6 && (
             <div className="af-buscador-gastos mb-3">
               <Search size={16} />
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Buscar un platillo…"
                 value={buscarRent}
                 onChange={(e) => setBuscarRent(e.target.value)}
               />
               {buscarRent && (
-                <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscarRent("")}><X size={16} /></button>
+                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarRent("")}><X size={16} /></Button>
               )}
             </div>
           )}
@@ -6323,7 +6340,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   {seccionAbierta && grupo.lista.map((f) => {
               const v = veredictoMargen(f);
               return (
-                <div key={f.clave} className="af-card af-rent-card mb-3">
+                <Card key={f.clave} className="af-rent-card mb-3">
                   <div className="af-rent-card-head">
                     <div className="min-w-0">
                       <div className="af-rent-nombre">{f.nombre}</div>
@@ -6532,9 +6549,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                                     sugerencias={nombresIngredientes}
                                     onChange={(nombre) => actualizarIngredienteReceta(f, ing.id, { nombre })}
                                   />
-                                  <button className="af-icon-btn" title="Quitar" onClick={() => quitarIngredienteReceta(f, ing.id)}>
+                                  <Button variant="ghost" size="icon-sm" title="Quitar" onClick={() => quitarIngredienteReceta(f, ing.id)}>
                                     <Trash2 size={15} />
-                                  </button>
+                                  </Button>
                                 </div>
                                 <div className="af-rent-ing-datos">
                                   <label className="af-rent-ing-campo">
@@ -6602,7 +6619,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       )}
                     </>
                   )}
-                </div>
+                </Card>
               );
                   })}
                 </div>
@@ -6621,7 +6638,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <div className="af-panel-titulo">Resumen del día</div>
               <div className="af-panel-sub">{fmtDateHuman(diaSel)}</div>
             </div>
-            <input type="date" className="af-input af-panel-fecha" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
+            <Input type="date" className="af-panel-fecha" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
           </div>
 
           {delDia.length === 0 ? (
@@ -6662,18 +6679,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       </div>
 
       <div className="af-year-switch">
-        <button className="af-icon-btn" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></button>
+        <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></Button>
         <span className="af-year-label">{anio}</span>
-        <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
+        <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></Button>
       </div>
 
-      <div className="af-card af-year-total-card mb-5">
+      <Card className="af-year-total-card mb-5">
         <div className="af-ink-soft text-sm">Cobrado en {anio}</div>
         <div className="af-year-total">{money(totalAnio)}</div>
         <div className="af-ink-soft text-xs">Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</div>
-      </div>
+      </Card>
 
-      <div className="af-card p-4 mb-5 af-chart-card">
+      <Card className="p-4 mb-5 af-chart-card">
         <div className="af-chart-title">Cobrado por mes — {anio}</div>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={datosMensuales} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
@@ -6690,7 +6707,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Pedidos reales</span>
           <span><span className="af-legend-dot" style={{ background: COLOR_GOLD }} /> Registro de libreta</span>
         </div>
-      </div>
+      </Card>
 
       {/* Doce casillas para capturar la libreta vieja, que se usan una vez y
           después estorban todo el año. Se abren cuando hacen falta. */}
@@ -6710,7 +6727,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <div key={i} className="af-menu-card">
               <div className="af-menu-card-top">
                 <span className="af-mes-nombre">{nombre}</span>
-                {pedidosPorMes[i] > 0 && <span className="af-chip af-chip-olive">{pedidosPorMes[i]} pedidos</span>}
+                {pedidosPorMes[i] > 0 && <Chip variant="exito">{pedidosPorMes[i]} pedidos</Chip>}
               </div>
               {auto > 0 ? (
                 <div className="af-mes-auto-total">{money(auto)}</div>
@@ -6733,7 +6750,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       )}
 
       {datosPorAnio.length > 1 && (
-        <div className="af-card p-4 mb-5 af-chart-card">
+        <Card className="p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Total por año</div>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={datosPorAnio} margin={{ top: 10, right: 20, left: 4, bottom: 0 }}>
@@ -6744,7 +6761,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <Line type="monotone" dataKey="total" stroke={COLOR_WINE} strokeWidth={3} dot={{ r: 5, fill: COLOR_WINE }} />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
       )}
 
       <div className="af-section-title">Comparar un mes entre años</div>
@@ -6763,7 +6780,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           subtitle="Según vayan registrando pedidos, o si capturan meses de la libreta, aquí se va a poder comparar año contra año."
         />
       ) : (
-        <div className="af-card p-4 mb-5 af-chart-card">
+        <Card className="p-4 mb-5 af-chart-card">
           <div className="af-chart-title">{MESES[mesComparar]} — comparado entre años</div>
           <ResponsiveContainer width="100%" height={Math.max(160, datosComparar.length * 46)}>
             <BarChart data={datosComparar} layout="vertical" margin={{ top: 5, right: 24, left: 4, bottom: 5 }}>
@@ -6774,11 +6791,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <Bar dataKey="valor" radius={[0, 6, 6, 0]} fill={COLOR_AZUL} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
       )}
 
       {todosLosProductos.length > 0 && (
-        <div className="af-card p-4 mb-5 af-chart-card">
+        <Card className="p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Qué se vendió — {anio}</div>
 
           {/* Una cosa a la vez: juntas, las paellas aplastan a lo demás y el
@@ -6871,7 +6888,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
           </>
           )}
-        </div>
+        </Card>
       )}
       </div>
       )}
@@ -6879,9 +6896,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       {tab === "finanzas" && (
       <div>
         <div className="af-year-switch">
-          <button className="af-icon-btn" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></button>
+          <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio - 1)}><ChevronLeft size={20} /></Button>
           <span className="af-year-label">{anio}</span>
-          <button className="af-icon-btn" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></button>
+          <Button variant="ghost" size="icon-sm" onClick={() => setAnio(anio + 1)}><ChevronRight size={20} /></Button>
         </div>
 
         {/* Aquí iba un resumen del año —Entró / Salió / Quedó, con una barra
@@ -6935,7 +6952,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </div>
 
         {abrirGasto && (
-        <div className="af-card p-4 mb-5 af-form-gasto">
+        <Card className="p-4 mb-5 af-form-gasto">
           {/* Capturar un gasto es contestar tres cosas: cuánto, dónde y el
               ticket. Lo demás tiene una respuesta buena por omisión (hoy, del
               negocio, la categoría de esa tienda) y vive en "Más detalles".
@@ -6957,23 +6974,23 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 de tres formas. Solo se escribe cuando es una tienda nueva. */}
             {tiendaOtra ? (
               <div className="flex gap-2">
-                <input
-                  className="af-input flex-1"
+                <Input
+                  className="flex-1"
                   autoFocus
                   placeholder="Nombre de la tienda"
                   value={nuevoGasto.tienda || ""}
                   onChange={(e) => setNuevoGasto({ ...nuevoGasto, tienda: e.target.value })}
                 />
-                <button
-                  className="af-btn-ghost"
+                <Button variant="link" size="auto"
+                 
                   onClick={() => { setTiendaOtra(false); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }}
                 >
                   Ver lista
-                </button>
+                </Button>
               </div>
             ) : (
-              <select
-                className="af-input"
+              <NativeSelect
+               
                 value={nuevoGasto.tienda || ""}
                 onChange={(e) => {
                   if (e.target.value === "__otra__") { setTiendaOtra(true); setNuevoGasto({ ...nuevoGasto, tienda: "" }); }
@@ -6992,7 +7009,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     escribir una nueva, la misma acaba con cuatro nombres y los
                     reportes la cuentan cuatro veces. */}
                 {esAdmin && <option value="__otra__">Otra tienda…</option>}
-              </select>
+              </NativeSelect>
             )}
           </div>
           <div className="af-field af-ticket-campo">
@@ -7000,12 +7017,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             {nuevoGasto.ticket ? (
               <div className="af-ticket-listo">
                 <Receipt size={15} /> Ticket guardado
-                <button className="af-btn-ghost" onClick={() => setNuevoGasto({ ...nuevoGasto, ticket: null })}>
+                <Button variant="link" size="auto" onClick={() => setNuevoGasto({ ...nuevoGasto, ticket: null })}>
                   Quitar
-                </button>
+                </Button>
               </div>
             ) : (
-              <label className="af-btn-secondary w-full" style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
+              <label className={cn(buttonVariants({ variant: "secondary" }), "w-full")} style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
                 {subiendoTicket
                   ? "Subiendo…"
                   : leyendoTicket
@@ -7109,12 +7126,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               el ticket en la mano y retratarlo antes de teclear nada. */}
           <div className="af-field">
             <label>Fecha</label>
-            <input type="date" className="af-input" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
+            <Input type="date" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
           </div>
           <div className="af-field">
             <label>Categoría</label>
-            <select
-              className="af-input"
+            <NativeSelect
+             
               value={nuevoGasto.categoria}
               onChange={(e) => {
                 if (e.target.value === "__nueva__") agregarCategoria();
@@ -7125,7 +7142,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               {/* Inventar tipos es solo del administrador: si cada quien puede,
                   la lista se llena de cosas que no van y ya no se entiende. */}
               {esAdmin && <option value="__nueva__">Otro tipo…</option>}
-            </select>
+            </NativeSelect>
           </div>
           <div className="af-field">
             <label>Descripción (opcional)</label>
@@ -7150,8 +7167,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             />
           </div>
 
-          <button className="af-btn-primary w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</button>
-        </div>
+          <Button className="af-gasto-guardar w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</Button>
+        </Card>
         )}
 
         {/* El mes se elige aquí arriba, como pestañas. Antes había que abrir
@@ -7184,18 +7201,18 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               obligan a abrirlas para saber qué filtran. */}
           <label className="af-filtro">
             <span className="af-mini-label">Bolsa</span>
-            <select className="af-input" value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
+            <NativeSelect value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
               <option value="todos">Todo</option>
               {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
-            </select>
+            </NativeSelect>
           </label>
 
           <label className="af-filtro">
             <span className="af-mini-label">Tipo</span>
-            <select className="af-input" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+            <NativeSelect value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
               <option value="todos">Todos</option>
               {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
-            </select>
+            </NativeSelect>
           </label>
 
           {/* Por tienda. El filtro ya existía por dentro —y hasta se contaba
@@ -7204,7 +7221,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {opcionesTienda.length > 1 && (
             <label className="af-filtro af-filtro-tienda">
               <span className="af-mini-label">Tienda</span>
-              <select className="af-input" value={filtroTienda} onChange={(e) => setFiltroTienda(e.target.value)}>
+              <NativeSelect value={filtroTienda} onChange={(e) => setFiltroTienda(e.target.value)}>
                 <option value="todas">Todas</option>
                 {opcionesTienda.map((t) => (
                   // El nombre se recorta: un select se estira hasta su opción
@@ -7215,16 +7232,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     {t.nombre.length > 16 ? t.nombre.slice(0, 16).trimEnd() + "…" : t.nombre}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           )}
 
           <label className="af-filtro">
             <span className="af-mini-label">Factura</span>
-            <select className="af-input" value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
+            <NativeSelect value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
               <option value="todos">Todas</option>
               {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
-            </select>
+            </NativeSelect>
           </label>
 
           {/* Un día concreto, en vez del buscador de texto. Para encontrar
@@ -7233,14 +7250,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <label className="af-filtro af-filtro-dia">
             <span className="af-mini-label">Un día</span>
             <div className="af-buscador-gastos">
-              <input
+              <Input
                 type="date"
-                className="af-input"
+               
                 value={diaGasto}
                 onChange={(e) => setDiaGasto(e.target.value)}
               />
               {diaGasto && (
-                <button className="af-icon-btn" title="Quitar el día" onClick={() => setDiaGasto("")}><X size={16} /></button>
+                <Button variant="ghost" size="icon-sm" title="Quitar el día" onClick={() => setDiaGasto("")}><X size={16} /></Button>
               )}
             </div>
           </label>
@@ -7279,7 +7296,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   {grupo.variantes.join(" · ")}
                   <span className="af-parecidos-hacia"> → {grupo.preferido}</span>
                 </div>
-                <button className="af-btn-chip" onClick={() => unificarNombres(grupo)}>Juntar</button>
+                <Button variant="exito" size="sm" onClick={() => unificarNombres(grupo)}>Juntar</Button>
               </div>
             ))}
           </div>
@@ -7298,15 +7315,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <span className="af-parecidos-hacia"> y {money(b.monto)} el {fmtDateHuman(b.fecha)}</span>
                 </div>
                 <div className="af-parecidos-botones">
-                  <button className="af-btn-chip" onClick={() => eliminarGasto(b.id)}>Borrar el 2º</button>
+                  <Button variant="exito" size="sm" onClick={() => eliminarGasto(b.id)}>Borrar el 2º</Button>
                   {/* Este par en concreto no es repetido: se deja de avisar solo de él. */}
-                  <button className="af-btn-ghost af-btn-chico" onClick={() => omitirPareja(a, b)}>No es repetido</button>
+                  <Button variant="link" size="auto" className="af-btn-chico" onClick={() => omitirPareja(a, b)}>No es repetido</Button>
                 </div>
               </div>
             ))}
-            <button className="af-btn-ghost w-full" onClick={omitirTodasLasParejas}>
+            <Button variant="link" size="auto" className="w-full" onClick={omitirTodasLasParejas}>
               Están bien todos, no me vuelvas a avisar
-            </button>
+            </Button>
           </div>
         )}
 
@@ -7369,9 +7386,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                           mueve nada, y de paso el par de botones cabe con
                           aire, que en el iPad los tres no cabían. */}
                       {g.ticket && (
-                        <button className="af-icon-btn af-gasto-ticket" title="Ver el ticket" onClick={() => abrirTicket(g)}>
+                        <Button variant="ghost" size="icon-sm" className="af-gasto-ticket" title="Ver el ticket" onClick={() => abrirTicket(g)}>
                           <Receipt size={15} />
-                        </button>
+                        </Button>
                       )}
                     </span>
                     {g.tienda && g.descripcion && <span className="af-gasto-sub">{g.descripcion}</span>}
@@ -7435,8 +7452,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <span className="af-gasto-acciones">
                     {esAdmin && (
                       <>
-                        <button className="af-icon-btn" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></button>
-                        <button className="af-icon-btn" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash2 size={16} /></button>
+                        <Button variant="ghost" size="icon-sm" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></Button>
+                        <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash2 size={16} /></Button>
                       </>
                     )}
                   </span>
@@ -7464,7 +7481,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </div>
 
         {!abrirFijos && (
-          <div className="af-card p-4 mb-5">
+          <Card className="p-4 mb-5">
             <div className="af-fijos-resumen">
               {fijosPorAmbito.map((a) => (
                 <div key={a.id} className="af-fijos-resumen-item">
@@ -7476,11 +7493,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         )}
 
         {abrirFijos && (
-        <div className="af-card p-4 mb-5">
+        <Card className="p-4 mb-5">
           <div className="af-hint mb-3">
             Se registran solos cada mes. Revisa que los montos estén al día: si sube la
             renta o cambia un sueldo, corrígelo aquí.
@@ -7508,16 +7525,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         </div>
                       </div>
                       <span className="af-fijos-monto">{money(montoAlMes(f))}</span>
-                      <button
-                        className="af-icon-btn"
+                      <Button variant="ghost" size="icon-sm"
+                       
                         title="Cambiar"
                         onClick={() => setDraftFijo({ ...f, ambito: ambitoDe(f), porDia: f.porDia || 0, monto: f.monto ? String(f.monto) : "" })}
                       >
                         <Pencil size={16} />
-                      </button>
-                      <button className="af-icon-btn" title="Quitar" onClick={() => quitarFijo(f.id)}>
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" title="Quitar" onClick={() => quitarFijo(f.id)}>
                         <Trash2 size={16} />
-                      </button>
+                      </Button>
                     </div>
                   ))}
                   <div className="af-fijos-total">
@@ -7558,13 +7575,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
               <div className="af-field">
                 <label>Categoría</label>
-                <select
-                  className="af-input"
+                <NativeSelect
+                 
                   value={draftFijo.categoria}
                   onChange={(e) => setDraftFijo({ ...draftFijo, categoria: e.target.value })}
                 >
                   {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                </NativeSelect>
               </div>
               {/* Hay gastos que se piensan al día aunque se apunten una vez al
                   mes, como los cigarros. Se captura el diario y la app hace la
@@ -7622,30 +7639,30 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 />
                 <div className="af-hint mt-1">Del 1 al 28, para que caiga en todos los meses.</div>
               </div>
-              <button
-                className="af-btn-primary w-full"
+              <Button
+                className="w-full"
                 onClick={guardarFijo}
                 disabled={!draftFijo.descripcion.trim() || (!draftFijo.monto && !draftFijo.porDia)}
               >
                 {draftFijo.id ? "Guardar cambios" : "Agregar gasto fijo"}
-              </button>
-              <button className="af-btn-ghost w-full mt-2" onClick={() => setDraftFijo(null)}>Cancelar</button>
+              </Button>
+              <Button variant="link" size="auto" className="w-full mt-2" onClick={() => setDraftFijo(null)}>Cancelar</Button>
             </div>
           ) : (
-            <button
-              className="af-btn-secondary w-full"
+            <Button variant="secondary"
+              className="w-full"
               onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", porDia: 0, monto: "", dia: 1 })}
             >
               <Plus size={16} className="inline mr-1" /> Agregar gasto fijo
-            </button>
+            </Button>
           )}
-        </div>
+        </Card>
         )}
 
         </>
         )}
 
-        <div className="af-card p-4 mb-5 af-chart-card">
+        <Card className="p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Ingresos vs. gastos por mes — {anio}</div>
           <ResponsiveContainer width="100%" height={240}>
             {/* Barras delgadas y muy juntas (`barSize` + `barGap`), con harto
@@ -7690,9 +7707,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <span><span className="af-legend-dot" style={{ background: COLOR_CASA }} /> Gastos de la casa</span>
           </div>
 
-        </div>
+        </Card>
 
-        <div className="af-card p-4 mb-5 af-chart-card">
+        <Card className="p-4 mb-5 af-chart-card">
           <div className="af-chart-title">Clientes nuevos por mes — {anio}</div>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={datosClientesMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
@@ -7703,7 +7720,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <Bar dataKey="nuevos" name="Clientes nuevos" radius={[6, 6, 0, 0]} fill={COLOR_OLIVE} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
 
 
         {/* Quitar los tipos que se inventaron y ya no se quieren. */}
@@ -7729,13 +7746,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       {enUso > 0 ? (
                         <span className="af-ink-soft text-xs">En uso</span>
                       ) : (
-                        <button className="af-btn-chip" onClick={() => quitarCategoria(c)}>Quitar</button>
+                        <Button variant="exito" size="sm" onClick={() => quitarCategoria(c)}>Quitar</Button>
                       )}
                     </div>
                   );
                 })
               )}
-              <button className="af-btn-secondary w-full mt-3" onClick={() => setBorrandoTipos(false)}>Listo</button>
+              <Button variant="secondary" className="w-full mt-3" onClick={() => setBorrandoTipos(false)}>Listo</Button>
             </div>
           </div>
         )}
@@ -7750,13 +7767,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 {" · "}{money(confirmarBorrarGasto.monto)} · {fmtDateHuman(confirmarBorrarGasto.fecha)}
               </p>
               <p className="af-ink-soft text-sm mb-3">Se quita de tus cuentas y no se puede deshacer.</p>
-              <button
-                className="af-btn-primary w-full"
+              <Button
+                className="w-full"
                 onClick={() => { eliminarGasto(confirmarBorrarGasto.id); setConfirmarBorrarGasto(null); showToast("Gasto borrado"); }}
               >
                 Sí, bórralo
-              </button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmarBorrarGasto(null)}>Mejor no</button>
+              </Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarBorrarGasto(null)}>Mejor no</Button>
             </div>
           </div>
         )}
@@ -7777,7 +7794,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </div>
                   )}
                 </div>
-                <button className="af-icon-btn" onClick={() => setViendoTicket(null)}><X size={18} /></button>
+                <Button variant="ghost" size="icon-sm" onClick={() => setViendoTicket(null)}><X size={18} /></Button>
               </div>
 
               {/* Todo lo que hace falta para pedir la factura, junto a la foto:
@@ -7797,7 +7814,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         </>
                       )}
                       <button
-                        className="af-chip af-chip-neutral"
+                        className={cn(badgeVariants({ variant: "neutral" }))}
                         onClick={() => { navigator.clipboard?.writeText(viendoTicket.gasto.folio); showToast("Folio copiado", "ok"); }}
                       >
                         <Copy size={12} /> Copiar folio
@@ -7811,7 +7828,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
                   {infoDeTienda(viendoTicket.gasto.tienda) && (
                     <a
-                      className="af-chip af-chip-portal"
+                      className={cn(badgeVariants({ variant: "plain" }), "af-chip-portal")}
                       href={infoDeTienda(viendoTicket.gasto.tienda).portal}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -7825,7 +7842,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     datosFiscales().map((d) => (
                       <button
                         key={d.etiqueta}
-                        className="af-chip af-chip-neutral af-chip-fiscal"
+                        className={cn(badgeVariants({ variant: "neutral" }), "af-chip-fiscal")}
                         title={`Copiar ${d.valor}`}
                         onClick={() => copiarTexto(d.valor, `${d.etiqueta} copiado`)}
                       >
@@ -7866,13 +7883,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 Sale de la lista de pendientes y ya no se te vuelve a recordar. El gasto
                 {confirmarFactura.ticket ? " y la foto del ticket se quedan" : " se queda"} en tus cuentas.
               </p>
-              <button
-                className="af-btn-primary w-full"
+              <Button
+                className="w-full"
                 onClick={() => { marcarFacturado(confirmarFactura.id); setConfirmarFactura(null); }}
               >
                 Sí, ya la facturé
-              </button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmarFactura(null)}>Todavía no</button>
+              </Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFactura(null)}>Todavía no</Button>
             </div>
           </div>
         )}
@@ -7884,15 +7901,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <div className="af-editar-modal" onClick={(e) => e.stopPropagation()}>
               <div className="af-alerta-titulo mb-2">Cópialo desde aquí</div>
               <p className="af-ink-soft text-sm mb-3">Tu navegador no dejó copiar solo. Selecciónalo y cópialo.</p>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={8}
                 readOnly
                 value={datosParaCopiar}
                 onFocus={(e) => e.target.select()}
                 autoFocus
               />
-              <button className="af-btn-primary w-full mt-3" onClick={() => setDatosParaCopiar(null)}>Listo</button>
+              <Button className="w-full mt-3" onClick={() => setDatosParaCopiar(null)}>Listo</Button>
             </div>
           </div>
         )}
@@ -7915,15 +7932,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   </div>
                 ))}
               </div>
-              <button className="af-btn-primary w-full" onClick={() => setPosibleDuplicado(null)}>
+              <Button className="w-full" onClick={() => setPosibleDuplicado(null)}>
                 Mejor no, ya estaba
-              </button>
-              <button
-                className="af-btn-secondary w-full mt-2"
+              </Button>
+              <Button variant="secondary"
+                className="w-full mt-2"
                 onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo, posibleDuplicado.parecidos)}
               >
                 Sí es otro, guárdalo
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -7948,15 +7965,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
               <div className="af-field">
                 <label>Fecha</label>
-                <input type="date" className="af-input" value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
+                <Input type="date" value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
               </div>
               {/* La tienda y la descripción se ELIGEN de las que ya hay, igual
                   que al capturar. Escritas a mano acababan con una letra de
                   diferencia y en los reportes contaban como dos cosas. */}
               <div className="af-field">
                 <label>¿En qué tienda?</label>
-                <select
-                  className="af-input"
+                <NativeSelect
+                 
                   value={gastoEditando.tienda || ""}
                   onChange={(e) => setGastoEditando({ ...gastoEditando, tienda: e.target.value })}
                 >
@@ -7965,27 +7982,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   {gastoEditando.tienda && !tiendasParaElegir.some((x) => x === gastoEditando.tienda) && (
                     <option value={gastoEditando.tienda}>{gastoEditando.tienda}</option>
                   )}
-                </select>
+                </NativeSelect>
               </div>
               <div className="af-field">
                 <label>Categoría</label>
-                <select className="af-input" value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
+                <NativeSelect value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
                   {categoriasEnUso.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                </NativeSelect>
               </div>
               <div className="af-field">
                 <label>Descripción (opcional)</label>
-                <select
-                  className="af-input"
+                <NativeSelect
+                 
                   value={nombresUsados.includes(gastoEditando.descripcion) ? gastoEditando.descripcion : "__otra__"}
                   onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value === "__otra__" ? "" : e.target.value })}
                 >
                   <option value="__otra__">Escribirla…</option>
                   {nombresUsados.map((x) => <option key={x} value={x}>{x}</option>)}
-                </select>
+                </NativeSelect>
                 {!nombresUsados.includes(gastoEditando.descripcion) && (
-                  <input
-                    className="af-input mt-2"
+                  <Input
+                    className="mt-2"
                     placeholder="De qué fue"
                     value={gastoEditando.descripcion || ""}
                     onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value })}
@@ -7996,8 +8013,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <label>Monto</label>
                 <NumberField value={gastoEditando.monto} min={0} className="af-input" onChange={(v) => setGastoEditando({ ...gastoEditando, monto: v })} />
               </div>
-              <button className="af-btn-primary w-full" onClick={guardarEdicionGasto} disabled={!gastoEditando.monto}>Guardar cambios</button>
-              <button className="af-btn-secondary w-full mt-2" onClick={() => setGastoEditando(null)}>Cancelar</button>
+              <Button className="w-full" onClick={guardarEdicionGasto} disabled={!gastoEditando.monto}>Guardar cambios</Button>
+              <Button variant="secondary" className="w-full mt-2" onClick={() => setGastoEditando(null)}>Cancelar</Button>
             </div>
           </div>
         )}
@@ -8058,48 +8075,49 @@ function UsuariosPanel({ perfil, showToast }) {
       ) : (
         <div className="mb-4">
           {usuarios.map((u) => (
-            <div key={u.user_id} className="af-card p-3 mb-2 af-usuario-row">
+            <Card key={u.user_id} className="p-3 mb-2 af-usuario-row">
               <div className="flex-1 min-w-0">
                 <div className="af-cliente-nombre">
                   {u.nombre || u.email}
-                  {u.rol === "admin" && <span className="af-chip af-chip-gold ml-2">Admin</span>}
-                  {u.user_id === perfil.user_id && <span className="af-chip af-chip-neutral ml-2">Tú</span>}
+                  {u.rol === "admin" && <Chip variant="oro" className="ml-2">Admin</Chip>}
+                  {u.user_id === perfil.user_id && <Chip variant="neutral" className="ml-2">Tú</Chip>}
                 </div>
                 <div className="af-ink-soft text-sm">{u.email}</div>
               </div>
               {u.user_id !== perfil.user_id && u.rol !== "admin" && (
-                <button
-                  className={"af-btn-chip" + (u.activo ? "" : " af-btn-chip-off")}
+                <Button
+                  variant={u.activo ? "exito" : "secondary"}
+                  size="sm"
                   onClick={() => toggleActivo(u)}
                 >
                   {u.activo ? "Activo" : "Desactivado"}
-                </button>
+                </Button>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
       <div className="af-section-title">Dar de alta un usuario</div>
-      <div className="af-card p-4">
+      <Card className="p-4">
         <div className="af-field">
           <label>Nombre</label>
-          <input className="af-input" placeholder="Ej. Papá" value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} />
+          <Input placeholder="Ej. Papá" value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} />
         </div>
         <div className="af-field">
           <label>Correo</label>
-          <input className="af-input" type="email" placeholder="correo@ejemplo.com" value={nuevo.email} onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })} />
+          <Input type="email" placeholder="correo@ejemplo.com" value={nuevo.email} onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })} />
         </div>
         <div className="af-field">
           <label>Contraseña</label>
-          <input className="af-input" type="text" placeholder="Mínimo 6 caracteres" value={nuevo.password} onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
+          <Input type="text" placeholder="Mínimo 6 caracteres" value={nuevo.password} onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
           <div className="af-hint">Compártela con la persona; podrá usarla de inmediato.</div>
         </div>
         {errorUsr && <div className="af-error">{errorUsr}</div>}
-        <button className="af-btn-primary w-full" onClick={alta} disabled={creando}>
+        <Button className="w-full" onClick={alta} disabled={creando}>
           {creando ? "Creando..." : "Crear usuario"}
-        </button>
-      </div>
+        </Button>
+      </Card>
     </div>
   );
 }
@@ -8323,9 +8341,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
   // único nuevo es el botón de cerrar, porque ahora se abre de una en una.
   const fichaDelMenu = (g, it, i) => {
     const cerrar = (
-      <button className="af-icon-btn" title="Cerrar" onClick={() => setPlatilloAbierto(null)}>
+      <Button variant="ghost" size="icon-sm" title="Cerrar" onClick={() => setPlatilloAbierto(null)}>
         <ChevronRight size={16} className="af-mes-flecha abierta" />
-      </button>
+      </Button>
     );
     const propsArrastre = g.acomodar
       ? {
@@ -8342,8 +8360,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       return (
         <div key={it.id} {...propsArrastre}>
           <div className="af-menu-card-top">
-            <input
-              className="af-input af-menu-name"
+            <Input
+              className="af-menu-name"
               data-nuevo={it.id}
               value={it.nombre}
               placeholder="Nombre de la paella"
@@ -8352,13 +8370,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 setDraft({ ...draft, paellas });
               }}
             />
-            <button
-              className="af-icon-btn"
+            <Button variant="ghost" size="icon-sm"
+             
               title="Quitar"
               onClick={() => setPorBorrar({ lista: "paellas", indice: i, nombre: it.nombre, que: "la paella" })}
             >
               <Trash2 size={15} />
-            </button>
+            </Button>
             {cerrar}
           </div>
           <div className="af-menu-card-row">
@@ -8381,8 +8399,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       return (
         <div key={it.id} {...propsArrastre}>
           <div className="af-menu-card-top">
-            <input
-              className="af-input af-menu-name"
+            <Input
+              className="af-menu-name"
               data-nuevo={it.id}
               value={it.nombre}
               placeholder="Ej. Langosta"
@@ -8391,13 +8409,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 setDraft({ ...draft, extrasPaella });
               }}
             />
-            <button
-              className="af-icon-btn"
+            <Button variant="ghost" size="icon-sm"
+             
               title="Quitar"
               onClick={() => setPorBorrar({ lista: "extrasPaella", indice: i, nombre: it.nombre, que: "el extra" })}
             >
               <Trash2 size={15} />
-            </button>
+            </Button>
             {cerrar}
           </div>
           <div className="af-menu-card-row">
@@ -8420,8 +8438,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
     return (
       <div key={it.id} {...propsArrastre}>
         <div className="af-menu-card-top">
-          <input
-            className="af-input af-menu-name"
+          <Input
+            className="af-menu-name"
             data-nuevo={ex.id}
             value={ex.nombre}
             placeholder="Nombre"
@@ -8430,17 +8448,17 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               setDraft({ ...draft, extras });
             }}
           />
-          <button
-            className="af-icon-btn"
+          <Button variant="ghost" size="icon-sm"
+           
             title="Quitar"
             onClick={() => setPorBorrar({ lista: "extras", indice: i, nombre: ex.nombre, que: "el platillo" })}
           >
             <Trash2 size={15} />
-          </button>
+          </Button>
         </div>
         <div className="af-mini-label mt-1">¿Cómo se vende?</div>
-        <select
-          className="af-input"
+        <NativeSelect
+         
           value={ex.unidad || "pieza"}
           onChange={(e) => {
             const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, unidad: e.target.value } : x));
@@ -8455,10 +8473,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {ex.unidad && !UNIDADES_MENU.includes(ex.unidad) && (
             <option value={ex.unidad}>{ex.unidad} (como estaba)</option>
           )}
-        </select>
+        </NativeSelect>
         <div className="af-mini-label mt-1">¿En qué sección va?</div>
-        <select
-          className="af-input"
+        <NativeSelect
+         
           value={ex.categoria || "platillo"}
           onChange={(e) => {
             const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, categoria: e.target.value } : x));
@@ -8468,7 +8486,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {CATEGORIAS_ITEM.filter((c) => c.id !== "paella").map((c) => (
             <option key={c.id} value={c.id}>{c.label}</option>
           ))}
-        </select>
+        </NativeSelect>
         <div className="af-menu-card-row">
           <NumberField
             value={ex.precio}
@@ -8508,8 +8526,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
         </div>
         <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
-        <select
-          className="af-input"
+        <NativeSelect
+         
           value={ex.empaqueTipo || "ninguno"}
           onChange={(e) => {
             const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueTipo: e.target.value } : x));
@@ -8519,10 +8537,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           <option value="ninguno">Sin envase</option>
           <option value="pieza">Un envase por cada unidad</option>
           <option value="rango">Según el total de piezas (rangos en Envases desechables)</option>
-        </select>
+        </NativeSelect>
         {ex.empaqueTipo === "pieza" && (
-          <select
-            className="af-input"
+          <NativeSelect
+           
             value={ex.empaqueEnvaseId || ""}
             onChange={(e) => {
               const extras = draft.extras.map((x, xi) => (xi === i ? { ...x, empaqueEnvaseId: e.target.value } : x));
@@ -8531,7 +8549,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           >
             <option value="">Elige el envase...</option>
             {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
-          </select>
+          </NativeSelect>
         )}
         {ex.empaqueTipo === "rango" && (
           <div className="af-hint">
@@ -8604,47 +8622,47 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       {tab === "datos" && (
         <div>
           {perfil && (
-            <div className="af-card p-4 mb-4 af-usuario-row">
+            <Card className="p-4 mb-4 af-usuario-row">
               <div className="flex-1 min-w-0">
                 <div className="af-cliente-nombre">{nombreUsuario || perfil.email}</div>
                 <div className="af-ink-soft text-sm">
                   {perfil.email} · {perfil.rol === "admin" ? "Administrador" : "Usuario"}
                 </div>
               </div>
-              <button className="af-btn-danger" style={{ padding: "9px 14px" }} onClick={onCerrarSesion}>
+              <Button variant="destructive-outline" style={{ padding: "9px 14px" }} onClick={onCerrarSesion}>
                 Cerrar sesión
-              </button>
-            </div>
+              </Button>
+            </Card>
           )}
           {!esAdmin && (
             <div className="af-hint mb-4">Solo el administrador puede modificar los ajustes. Lo que sí puedes cambiar es <strong>qué se ve en el menú</strong>, más abajo.</div>
           )}
           <fieldset disabled={!esAdmin} className="af-fieldset-reset">
           <div className="af-section-title">Datos de pago para clientes</div>
-          <div className="af-card p-4 mb-4">
+          <Card className="p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Estos datos se anexan al mensaje de WhatsApp y al PDF para que el cliente
               pueda dejar su anticipo por transferencia. Déjalos vacíos si no quieres enviarlos.
             </p>
             <div className="af-field">
               <label>Banco</label>
-              <input className="af-input" placeholder="Ej. BBVA" value={(draft.pago || {}).banco || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), banco: e.target.value } })} />
+              <Input placeholder="Ej. BBVA" value={(draft.pago || {}).banco || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), banco: e.target.value } })} />
             </div>
             <div className="af-field">
               <label>A nombre de</label>
-              <input className="af-input" placeholder="Nombre del titular" value={(draft.pago || {}).titular || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), titular: e.target.value } })} />
+              <Input placeholder="Nombre del titular" value={(draft.pago || {}).titular || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), titular: e.target.value } })} />
             </div>
             <div className="af-field">
               <label>CLABE o número de tarjeta</label>
-              <input className="af-input" placeholder="18 dígitos de CLABE o 16 de tarjeta" value={(draft.pago || {}).clabe || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), clabe: e.target.value } })} />
+              <Input placeholder="18 dígitos de CLABE o 16 de tarjeta" value={(draft.pago || {}).clabe || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), clabe: e.target.value } })} />
             </div>
-            <button className="af-btn-primary w-full" onClick={guardar}>
+            <Button className="w-full" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos de pago"}
-            </button>
-          </div>
+            </Button>
+          </Card>
 
           <div className="af-section-title">Datos para pedir facturas</div>
-          <div className="af-card p-4 mb-4">
+          <Card className="p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Se capturan una vez y después se copian de un toque en el portal de cada tienda.
               Viven solo en tu base de datos, nunca en el código de la app.
@@ -8657,8 +8675,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             ].map((c) => (
               <div className="af-field" key={c.k}>
                 <label>{c.label}</label>
-                <input
-                  className="af-input"
+                <Input
+                 
                   placeholder={c.ph}
                   value={(draft.fiscal || {})[c.k] || ""}
                   onChange={(e) => setDraft((prev) => ({ ...prev, fiscal: { ...(prev.fiscal || {}), [c.k]: e.target.value } }))}
@@ -8667,8 +8685,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             ))}
             <div className="af-field">
               <label>Régimen fiscal</label>
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Ej. 626"
                 value={(draft.fiscal || {}).regimen || ""}
                 onChange={(e) => setDraft((prev) => ({ ...prev, fiscal: { ...(prev.fiscal || {}), regimen: e.target.value } }))}
@@ -8677,18 +8695,18 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Uso de la factura</label>
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Ej. G01"
                 value={(draft.fiscal || {}).usoCFDI || ""}
                 onChange={(e) => setDraft((prev) => ({ ...prev, fiscal: { ...(prev.fiscal || {}), usoCFDI: e.target.value } }))}
               />
               <p className="af-ink-soft text-xs mt-1">G01 es Adquisición de mercancías.</p>
             </div>
-            <button className="af-btn-primary w-full" onClick={guardar}>
+            <Button className="w-full" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar datos fiscales"}
-            </button>
-          </div>
+            </Button>
+          </Card>
 
           </fieldset>
 
@@ -8698,7 +8716,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
              fuera admin: con Presupuestos apagado no podía entrar a
              Presupuestos ni volver a encenderlo. */}
           <div className="af-section-title">Qué se ve en el menú</div>
-          <div className="af-card p-4 mb-4">
+          <Card className="p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Apaga lo que no uses y desaparece de tu barra. <strong>Esto es solo tuyo</strong>:
               a los demás no les cambia nada, y te sigue a cualquier aparato donde entres.
@@ -8733,15 +8751,15 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 </button>
               );
             })}
-            <button className="af-btn-primary w-full mt-3" onClick={guardar}>
+            <Button className="w-full mt-3" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar el menú"}
-            </button>
-          </div>
+            </Button>
+          </Card>
 
           <fieldset disabled={!esAdmin} className="af-fieldset-reset">
 
           <div className="af-section-title">Dónde recoger</div>
-          <div className="af-card p-4 mb-4">
+          <Card className="p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Esto se le manda al cliente <strong>desde que aparta su pedido</strong> y otra vez
               cuando le avisas que ya está listo, para que no tenga que esperar a buscar la
@@ -8749,8 +8767,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </p>
             <div className="af-field">
               <label>Dirección</label>
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Calle, número y colonia"
                 value={(draft.local || {}).direccion || ""}
                 onChange={(e) => setDraft({ ...draft, local: { ...(draft.local || {}), direccion: e.target.value } })}
@@ -8758,8 +8776,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Liga de la ubicación</label>
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Ej. https://maps.google.com/?q=21.03,-89.59"
                 value={(draft.local || {}).ubicacion || ""}
                 onChange={(e) => setDraft({ ...draft, local: { ...(draft.local || {}), ubicacion: e.target.value } })}
@@ -8770,20 +8788,20 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Liga de la foto de la fachada</label>
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Ej. https://…/casa-recoleccion.webp"
                 value={(draft.local || {}).foto || ""}
                 onChange={(e) => setDraft({ ...draft, local: { ...(draft.local || {}), foto: e.target.value } })}
               />
             </div>
-            <button className="af-btn-primary w-full" onClick={guardar}>
+            <Button className="w-full" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar dónde recoger"}
-            </button>
-          </div>
+            </Button>
+          </Card>
 
           <div className="af-section-title">Mensajes de WhatsApp</div>
-          <div className="af-card p-4 mb-4">
+          <Card className="p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Así se redactan los mensajes automáticos. Puedes usar <strong>{"{nombre}"}</strong> y{" "}
               <strong>{"{folio}"}</strong> y se rellenan solos. El detalle del pedido (platillos, total, folio)
@@ -8791,8 +8809,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </p>
             <div className="af-field">
               <label>Saludo al crear un pedido</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).saludoPedido}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), saludoPedido: e.target.value } })}
@@ -8800,8 +8818,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Despedida al crear un pedido</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).cierrePedido}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), cierrePedido: e.target.value } })}
@@ -8809,8 +8827,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Al avisar — pedido para recoger</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={6}
                 value={(draft.mensajes || MENSAJES_DEFAULT).avisadoRecoger}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoRecoger: e.target.value } })}
@@ -8822,8 +8840,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Al avisar — pedido a domicilio</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).avisadoDomicilio}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoDomicilio: e.target.value } })}
@@ -8831,8 +8849,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Cuando el pedido cambia después de avisarle</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).cambioPedido || MENSAJES_DEFAULT.cambioPedido}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), cambioPedido: e.target.value } })}
@@ -8845,8 +8863,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Al llegar a la puerta — botón "Ya llegué"</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).llegue || MENSAJES_DEFAULT.llegue}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), llegue: e.target.value } })}
@@ -8858,8 +8876,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Al marcar Entregado</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).entregado || MENSAJES_DEFAULT.entregado}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), entregado: e.target.value } })}
@@ -8867,8 +8885,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Al recibir un pago — todavía debe algo</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={6}
                 value={(draft.mensajes || MENSAJES_DEFAULT).pagoAbono || MENSAJES_DEFAULT.pagoAbono}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), pagoAbono: e.target.value } })}
@@ -8880,8 +8898,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Para saludar a un cliente que no ha vuelto</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={4}
                 value={(draft.mensajes || MENSAJES_DEFAULT).extranamos || MENSAJES_DEFAULT.extranamos}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), extranamos: e.target.value } })}
@@ -8892,24 +8910,24 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </div>
             <div className="af-field">
               <label>Al recibir un pago — ya quedó saldado</label>
-              <textarea
-                className="af-input"
+              <Textarea
+               
                 rows={4}
                 value={(draft.mensajes || MENSAJES_DEFAULT).pagoLiquidado || MENSAJES_DEFAULT.pagoLiquidado}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), pagoLiquidado: e.target.value } })}
               />
             </div>
-            <button className="af-btn-primary w-full" onClick={guardar}>
+            <Button className="w-full" onClick={guardar}>
               {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar mensajes"}
-            </button>
-          </div>
+            </Button>
+          </Card>
 
   
         {/* En su propio apartado y siempre visible, aunque no haya pasado nada:
             si solo apareciera después de un tropiezo, nadie sabría que existe
             justo cuando hace falta. Carlos fue a buscarlo y no lo encontró. */}
         <div className="af-section-title">Si la app se atora</div>
-        <div className="af-card p-4 mb-4">
+        <Card className="p-4 mb-4">
               {(() => {
                 let ultimo = null;
                 try { ultimo = JSON.parse(window.localStorage.getItem("pepe_andaluz_ultimo_error") || "null"); } catch { /* nada */ }
@@ -8925,37 +8943,37 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   <>
                     <div className="text-sm">La última vez: {fmtDateHuman((ultimo.cuando || "").slice(0, 10))}</div>
                     <code className="text-xs" style={{ wordBreak: "break-word" }}>{ultimo.mensaje}</code>
-                    <button
-                      className="af-btn-secondary w-full mt-2"
+                    <Button variant="secondary"
+                      className="w-full mt-2"
                       onClick={() => {
                         navigator.clipboard.writeText(JSON.stringify(ultimo, null, 1));
                         showToast("Copiado. Pásaselo a Carlos.", "ok");
                       }}
                     >
                       <Copy size={14} className="inline mr-1" /> Copiar para mandarlo
-                    </button>
+                    </Button>
                   </>
                 );
               })()}
-        </div>
+        </Card>
 
         <div className="af-section-title">Respaldo de información</div>
-          <div className="af-card p-4 mb-4">
+          <Card className="p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Toda la información vive en este dispositivo. Descarga un respaldo cada cierto tiempo
               y guárdalo donde no se pierda (Drive, correo, etc.).
             </p>
-            <button className="af-btn-primary w-full" onClick={exportarRespaldo}>
+            <Button className="w-full" onClick={exportarRespaldo}>
               <Download size={15} className="inline mr-1" /> Descargar respaldo
-            </button>
-          </div>
+            </Button>
+          </Card>
 
-          <div className="af-card p-4 mb-4">
+          <Card className="p-4 mb-4">
             <p className="af-ink-soft text-sm mb-3">
               Restaurar un respaldo <strong>reemplaza</strong> todos los datos actuales
               (pedidos, clientes, menú, presupuestos y reportes).
             </p>
-            <label className="af-btn-secondary w-full block text-center cursor-pointer">
+            <label className={cn(buttonVariants({ variant: "secondary" }), "w-full block text-center cursor-pointer")}>
               <Upload size={15} className="inline mr-1" /> Elegir archivo de respaldo
               <input type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(e) => { leerArchivo(e.target.files[0]); e.target.value = ""; }} />
             </label>
@@ -8971,14 +8989,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <button className="af-btn-ghost flex-1" onClick={() => setImportPreview(null)}>Cancelar</button>
-                  <button className="af-btn-danger flex-1" onClick={() => { onImportarDatos(importPreview); setImportPreview(null); }}>
+                  <Button variant="link" size="auto" className="flex-1" onClick={() => setImportPreview(null)}>Cancelar</Button>
+                  <Button variant="destructive-outline" className="flex-1" onClick={() => { onImportarDatos(importPreview); setImportPreview(null); }}>
                     Reemplazar todo
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
-          </div>
+          </Card>
           </fieldset>
         </div>
       )}
@@ -8988,14 +9006,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {cuantosEnElMenu > 6 && (
             <div className="af-buscador-gastos mb-3">
               <Search size={16} />
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Buscar un platillo…"
                 value={buscarMenu}
                 onChange={(e) => setBuscarMenu(e.target.value)}
               />
               {buscarMenu && (
-                <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscarMenu("")}><X size={16} /></button>
+                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarMenu("")}><X size={16} /></Button>
               )}
             </div>
           )}
@@ -9031,9 +9049,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                           </button>
                         </div>
                       ))}
-                      <button className="af-btn-primary w-full mb-3" onClick={() => { setAcomodandoGrupo(null); guardar(); }}>
+                      <Button className="w-full mb-3" onClick={() => { setAcomodandoGrupo(null); guardar(); }}>
                         <Check size={16} className="inline mr-1" /> Listo
-                      </button>
+                      </Button>
                     </>
                   )}
                   {abierto && acomodandoGrupo !== g.id && (
@@ -9041,12 +9059,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       {g.hint && <div className="af-hint mb-2">{g.hint}</div>}
                       {/* Buscando no se acomoda: la lista filtrada no es el orden real. */}
                       {g.items.length > 1 && !normNombre(buscarMenu) && (
-                        <button
-                          className="af-btn-secondary w-full mb-2"
+                        <Button variant="secondary"
+                          className="w-full mb-2"
                           onClick={() => { setPlatilloAbierto(null); setAcomodandoGrupo(g.id); }}
                         >
                           <ArrowUpDown size={15} className="inline mr-1" /> Acomodar
-                        </button>
+                        </Button>
                       )}
                       {g.items.length === 0 && (
                         <p className="af-ink-soft text-sm mb-2">Todavía no hay nada en esta sección.</p>
@@ -9146,8 +9164,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       {posiblesDuenos.length > 0 && (
                         <label className="af-field">
                           <span className="af-mini-label">¿De qué cuenta sale?</span>
-                          <select
-                            className="af-input"
+                          <NativeSelect
+                           
                             value={ex.cuentaCon || ""}
                             // Al pasarse a una cuenta compartida se le borra
                             // su número propio: ya no lo lleva él. Si no, se
@@ -9167,21 +9185,21 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                             {posiblesDuenos.map((o) => (
                               <option key={o.id} value={o.id}>De la de {o.nombre}</option>
                             ))}
-                          </select>
+                          </NativeSelect>
                         </label>
                       )}
                       {!comparte && (
                         <label className="af-field">
                           <span className="af-mini-label">¿En qué lo cuentas?</span>
-                          <select
-                            className="af-input"
+                          <NativeSelect
+                           
                             value={unidad}
                             onChange={(e) => setEx({ unidadInventario: e.target.value })}
                           >
                             {UNIDADES_HECHAS.filter((u) => u.id !== "raciones" || paquete > 1).map((u) => (
                               <option key={u.id} value={u.id}>{u.label}</option>
                             ))}
-                          </select>
+                          </NativeSelect>
                           {paquete > 1 && (
                             <p className="af-ink-soft text-xs mt-1">
                               Se vende de {paquete} en {paquete}, así que cada venta descuenta{" "}
@@ -9222,11 +9240,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                         {/* Los saltos son los de una tanda de verdad: nadie
                             hace 60 kilos de bacalao, ni 1 croqueta. */}
                         {(unidad === "kilos" || unidad === "litros" ? [1, 2, 5, 10] : unidad === "piezas" ? [6, 12, 24, 60] : [1, 2, 5, 10]).map((n) => (
-                          <button key={n} className="af-chip" onClick={() => setEx({ stock: hay + n })}>
+                          <button key={n} className={cn(badgeVariants({ variant: "plain" }))} onClick={() => setEx({ stock: hay + n })}>
                             +{n}
                           </button>
                         ))}
-                        <button className="af-chip af-chip-cero" onClick={() => setEx({ stock: 0 })}>
+                        <button className={cn(badgeVariants({ variant: "plain" }), "af-chip-cero")} onClick={() => setEx({ stock: 0 })}>
                           Se acabaron
                         </button>
                       </div>
@@ -9260,8 +9278,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {(draft.extras || []).some((e) => !e.llevaInventario) && (
             <label className="af-field mb-4">
               <span className="af-mini-label">Llevar la cuenta de otro platillo</span>
-              <select
-                className="af-input"
+              <NativeSelect
+               
                 value=""
                 onChange={(e) => {
                   const id = e.target.value;
@@ -9280,7 +9298,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                 {(draft.extras || []).filter((x) => !x.llevaInventario).map((x) => (
                   <option key={x.id} value={x.id}>{x.nombre}</option>
                 ))}
-              </select>
+              </NativeSelect>
               <p className="af-ink-soft text-xs mt-1">
                 Para quitar uno de la lista, apaga su interruptor: el número se guarda por si lo vuelves a encender.
               </p>
@@ -9296,14 +9314,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {(draft.ingredientes || []).length > 6 && (
             <div className="af-buscador-gastos mb-3">
               <Search size={16} />
-              <input
-                className="af-input"
+              <Input
+               
                 placeholder="Buscar un ingrediente…"
                 value={buscarIng}
                 onChange={(e) => setBuscarIng(e.target.value)}
               />
               {buscarIng && (
-                <button className="af-icon-btn" title="Limpiar" onClick={() => setBuscarIng("")}><X size={16} /></button>
+                <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBuscarIng("")}><X size={16} /></Button>
               )}
             </div>
           )}
@@ -9396,38 +9414,38 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               return (
                 <div key={ing.id} className="af-menu-card af-ing-abierto">
                   <div className="af-menu-card-top">
-                    <input
-                      className="af-input af-menu-name"
+                    <Input
+                      className="af-menu-name"
                       value={ing.nombre}
                       placeholder="Ej. Arroz"
                       onChange={(e) => setIng({ nombre: e.target.value })}
                     />
-                    <button className="af-icon-btn" title="Cerrar" onClick={() => setIngAbierto(null)}>
+                    <Button variant="ghost" size="icon-sm" title="Cerrar" onClick={() => setIngAbierto(null)}>
                       <ChevronRight size={16} className="af-mes-flecha abierta" />
-                    </button>
-                    <button className="af-icon-btn" onClick={() => setDraft({ ...draft, ingredientes: draft.ingredientes.filter((_, xi) => xi !== i) })}>
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setDraft({ ...draft, ingredientes: draft.ingredientes.filter((_, xi) => xi !== i) })}>
                       <Trash2 size={15} />
-                    </button>
+                    </Button>
                   </div>
 
                   <div className="af-mini-label">¿Qué tipo de ingrediente es?</div>
-                  <select
-                    className="af-input w-full mb-2"
+                  <NativeSelect
+                    className="w-full mb-2"
                     value={familiaDeIngrediente(ing)}
                     onChange={(e) => setIng({ familia: e.target.value })}
                   >
                     {FAMILIAS_ING.map((f) => (<option key={f.id} value={f.id}>{f.label}</option>))}
-                  </select>
+                  </NativeSelect>
 
                   <div className="af-mini-label">¿Cómo lo compras?</div>
                   <div className="af-menu-card-row">
-                    <select
-                      className="af-input flex-1"
+                    <NativeSelect
+                      className="flex-1"
                       value={PRESENTACIONES.includes(ing.presentacionNombre) ? ing.presentacionNombre : "paquete"}
                       onChange={(e) => setIng({ presentacionNombre: e.target.value })}
                     >
                       {PRESENTACIONES.map((p) => (<option key={p} value={p}>{p}</option>))}
-                    </select>
+                    </NativeSelect>
                     <span className="af-price-suffix">de</span>
                     <NumberField
                       value={ing.presentacionCantidad}
@@ -9435,13 +9453,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       className="af-input af-menu-kgrange"
                       onChange={(v) => setIng({ presentacionCantidad: v })}
                     />
-                    <select
-                      className="af-input flex-1"
+                    <NativeSelect
+                      className="flex-1"
                       value={ing.presentacionUnidad}
                       onChange={(e) => setIng({ presentacionUnidad: e.target.value })}
                     >
                       {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
-                    </select>
+                    </NativeSelect>
                   </div>
 
                   {/* Con este precio, la rentabilidad de cada paella sale sola
@@ -9478,13 +9496,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
                   <div className="af-menu-card-row">
                     <span className="af-mini-label" style={{ marginBottom: 0 }}>Por kilo de paella uso</span>
-                    <select
-                      className="af-input flex-1"
+                    <NativeSelect
+                      className="flex-1"
                       value={ing.usoUnidad}
                       onChange={(e) => setIng({ usoUnidad: e.target.value })}
                     >
                       {UNIDADES_MEDIDA.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
-                    </select>
+                    </NativeSelect>
                   </div>
 
                   {/* Lo que se tira al limpiarlo. De un kilo de camarón con
@@ -9548,8 +9566,8 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                             setIng((actual) => ({ porKg: { ...(actual.porKg || {}), [pr.id]: v } }));
                           }}
                         />
-                        <button
-                          className="af-icon-btn"
+                        <Button variant="ghost" size="icon-sm"
+                         
                           title="Quitar de aquí"
                           onClick={() => {
                             setIng((actual) => {
@@ -9563,13 +9581,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                           }}
                         >
                           <X size={14} />
-                        </button>
+                        </Button>
                       </div>
                     ));
                   })()}
-                  <button className="af-btn-ghost w-full mt-1" onClick={() => setEligiendoPara(ing.id)}>
+                  <Button variant="link" size="auto" className="w-full mt-1" onClick={() => setEligiendoPara(ing.id)}>
                     <Plus size={14} className="inline mr-1" /> Agregar paella o platillo
-                  </button>
+                  </Button>
                   <label className="af-check-row af-check-row-small mt-2">
                     <input type="checkbox" checked={!!ing.avisarProduccion} onChange={(e) => setIng({ avisarProduccion: e.target.checked })} />
                     <span>Avisar el total en Agenda → Producción del día (ej. camarón que se pela con anticipación)</span>
@@ -9617,15 +9635,15 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               return (
                 <div key={d.id} className="af-menu-card">
                   <div className="af-menu-card-top">
-                    <input
-                      className="af-input af-menu-name"
+                    <Input
+                      className="af-menu-name"
                       value={d.nombre}
                       placeholder="Nombre del envase"
                       onChange={(e) => setD({ nombre: e.target.value })}
                     />
-                    <button className="af-icon-btn" onClick={() => setDraft({ ...draft, desechables: draft.desechables.filter((_, xi) => xi !== i) })}>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setDraft({ ...draft, desechables: draft.desechables.filter((_, xi) => xi !== i) })}>
                       <Trash2 size={15} />
-                    </button>
+                    </Button>
                   </div>
                   {/* Lo que cuesta el envase se captura como se compra —el
                       paquete entero— y la app saca la pieza. Con eso, el
@@ -9656,9 +9674,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   )}
 
                   <div className="af-mini-label">Se usa para</div>
-                  <select className="af-input mb-2" value={d.unidad} onChange={(e) => setD({ unidad: e.target.value })}>
+                  <NativeSelect className="mb-2" value={d.unidad} onChange={(e) => setD({ unidad: e.target.value })}>
                     {UNIDADES_ENVASE.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
-                  </select>
+                  </NativeSelect>
                   <div className="af-ambito-switch mb-2">
                     <button
                       className={"af-ambito-btn" + (!d.exacto ? " active" : "")}
@@ -9776,15 +9794,15 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               return (
                 <div key={t.id} className="af-menu-card">
                   <div className="af-menu-card-top">
-                    <input
-                      className="af-input af-menu-name"
+                    <Input
+                      className="af-menu-name"
                       value={t.nombre || ""}
                       placeholder={`Paellera ${t.rangoMin}-${t.rangoMax}kg`}
                       onChange={(e) => setT({ nombre: e.target.value })}
                     />
-                    <button className="af-icon-btn" onClick={() => setDraft({ ...draft, paelleras: draft.paelleras.filter((_, xi) => xi !== i) })}>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setDraft({ ...draft, paelleras: draft.paelleras.filter((_, xi) => xi !== i) })}>
                       <Trash2 size={15} />
-                    </button>
+                    </Button>
                   </div>
                   <label className="af-check-row af-check-row-small mb-2">
                     <input
@@ -9856,9 +9874,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           administrador: se podía escribir el número y no había manera de
           dejarlo. Menú y Datos sí siguen siendo del administrador. */}
       {(tab === "inventario" || (tab !== "datos" && tab !== "usuarios" && esAdmin)) && (
-        <button className="af-btn-primary w-full mt-5" onClick={guardar}>
+        <Button className="w-full mt-5" onClick={guardar}>
           {guardado ? <><Check size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
-        </button>
+        </Button>
       )}
 
       {/* Selector de productos para un ingrediente. Con casillas porque lo
@@ -9912,9 +9930,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   );
                 })}
               </div>
-              <button className="af-btn-primary w-full mt-2" onClick={() => setEligiendoPara(null)}>
+              <Button className="w-full mt-2" onClick={() => setEligiendoPara(null)}>
                 Listo
-              </button>
+              </Button>
             </div>
           </div>
         );
@@ -9932,10 +9950,10 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               Deja de aparecer al hacer un pedido. Los pedidos que ya lo llevan no se
               tocan. Para volver a tenerlo habría que capturarlo de nuevo.
             </p>
-            <button className="af-btn-danger w-full" onClick={confirmarBorrado}>
+            <Button variant="destructive-outline" className="w-full" onClick={confirmarBorrado}>
               Sí, quitarlo
-            </button>
-            <button className="af-btn-secondary w-full mt-2" onClick={() => setPorBorrar(null)}>Cancelar</button>
+            </Button>
+            <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Cancelar</Button>
           </div>
         </div>
       )}
@@ -10070,7 +10088,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
       <div className="af-modal" onClick={(e) => e.stopPropagation()}>
         <div className="af-modal-header">
           <span>Agregar ítem</span>
-          <button className="af-icon-btn" onClick={onClose}><X size={18} /></button>
+          <Button variant="ghost" size="icon-sm" onClick={onClose}><X size={18} /></Button>
         </div>
         {preciosDeOtroDia && (
           <div className="af-precio-de-otro-dia">
@@ -10083,8 +10101,8 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
           <div className={"af-modal-list-pane" + (mostrarDetalle ? " af-pane-hide-mobile" : "")}>
             <div className="af-search-wrap">
               <Search size={16} className="af-search-icon" />
-              <input
-                className="af-input af-input-search"
+              <Input
+                className="af-input-search"
                 placeholder="Buscar por nombre o categoría..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -10177,18 +10195,18 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                 <div className="af-section-title">{editando === "nuevo" ? "Nuevo producto" : "Editar producto"}</div>
                 <div className="af-field">
                   <label>Nombre</label>
-                  <input className="af-input" placeholder="Nombre del producto" value={draftProducto.nombre} onChange={(e) => setDraftProducto({ ...draftProducto, nombre: e.target.value })} />
+                  <Input placeholder="Nombre del producto" value={draftProducto.nombre} onChange={(e) => setDraftProducto({ ...draftProducto, nombre: e.target.value })} />
                 </div>
                 <div className="af-field">
                   <label>Categoría</label>
-                  <select className="af-input" value={draftProducto.categoria} onChange={(e) => setDraftProducto({ ...draftProducto, categoria: e.target.value })}>
+                  <NativeSelect value={draftProducto.categoria} onChange={(e) => setDraftProducto({ ...draftProducto, categoria: e.target.value })}>
                     {CATEGORIAS_ITEM.map((c) => (<option key={c.id} value={c.id}>{c.label}</option>))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 {draftProducto.categoria !== "paella" && (
                   <div className="af-field">
                     <label>Unidad</label>
-                    <input className="af-input" placeholder="pieza, ración de 6..." value={draftProducto.unidad} onChange={(e) => setDraftProducto({ ...draftProducto, unidad: e.target.value })} />
+                    <Input placeholder="pieza, ración de 6..." value={draftProducto.unidad} onChange={(e) => setDraftProducto({ ...draftProducto, unidad: e.target.value })} />
                   </div>
                 )}
                 <div className="af-field">
@@ -10196,13 +10214,13 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                   <NumberField className="af-input" min={0} value={draftProducto.precio} onChange={(v) => setDraftProducto({ ...draftProducto, precio: v })} />
                 </div>
                 <div className="flex gap-2 mt-2">
-                  <button className="af-btn-ghost flex-1" onClick={volver}>Cancelar</button>
-                  <button className="af-btn-primary flex-1" onClick={guardarProducto}>Guardar</button>
+                  <Button variant="link" size="auto" className="flex-1" onClick={volver}>Cancelar</Button>
+                  <Button className="flex-1" onClick={guardarProducto}>Guardar</Button>
                 </div>
                 {editando !== "nuevo" && (
-                  <button className="af-btn-danger w-full mt-2" onClick={eliminarProducto}>
+                  <Button variant="destructive-outline" className="w-full mt-2" onClick={eliminarProducto}>
                     <Trash2 size={14} className="inline mr-1" /> Eliminar producto del catálogo
-                  </button>
+                  </Button>
                 )}
               </div>
             ) : itemsCarrito.length > 0 ? (
@@ -10216,10 +10234,10 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                         <div className="af-ink-soft text-sm">{cantidad} {esPorKg(producto) ? "kg" : producto.unidad}</div>
                         {producto.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
                           <div className="af-extra-wrap">
-                            <button className="af-btn-ghost af-extra-btn"
+                            <Button variant="link" size="auto" className="af-extra-btn"
                               onClick={() => setExtrasAbiertoEn(extrasAbiertoEn === producto.id ? null : producto.id)}>
                               <Plus size={13} className="inline mr-1" /> Extra
-                            </button>
+                            </Button>
                             {extrasAbiertoEn === producto.id && (
                               <>
                                 <div className="af-clickaway" onClick={() => setExtrasAbiertoEn(null)} />
@@ -10260,7 +10278,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                         ))}
                       </div>
                       <span className="af-total">{money(subtotalDe(producto, cantidad, extras))}</span>
-                      <button className="af-icon-btn" onClick={() => quitarDelCarrito(producto.id)}><X size={14} /></button>
+                      <Button variant="ghost" size="icon-sm" onClick={() => quitarDelCarrito(producto.id)}><X size={14} /></Button>
                     </div>
                   ))}
                 </div>
@@ -10279,11 +10297,11 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
         </div>
 
         <div className="af-modal-footer">
-          <button className="af-btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="af-btn-primary" disabled={itemsCarrito.length === 0} onClick={confirmarTodo}>
+          <Button variant="link" size="auto" onClick={onClose}>Cancelar</Button>
+          <Button disabled={itemsCarrito.length === 0} onClick={confirmarTodo}>
             <Plus size={16} className="inline mr-1" />
             {itemsCarrito.length > 0 ? `Agregar ${itemsCarrito.length} ${itemsCarrito.length === 1 ? "ítem" : "ítems"}` : "Agregar ítem"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -10942,9 +10960,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             >
               <ChevronLeft size={18} />
             </button>
-            <input
+            <Input
               type="date"
-              className="af-input"
+             
               value={form.fecha}
               onChange={(e) => setForm((p) => ({ ...p, fecha: e.target.value }))}
             />
@@ -10972,7 +10990,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </div>
         <div className="af-field">
           <label>Hora</label>
-          <input type="time" className="af-input" value={form.hora} onChange={(e) => setForm((p) => ({ ...p, hora: e.target.value }))} />
+          <Input type="time" value={form.hora} onChange={(e) => setForm((p) => ({ ...p, hora: e.target.value }))} />
           {form.hora && <div className="af-hora-preview">Se verá como: <strong>{fmtHora12(form.hora)}</strong></div>}
         </div>
       </div>
@@ -10988,12 +11006,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 {form.clienteTelefono && <div className="af-ink-soft text-sm">{form.clienteTelefono}</div>}
               </div>
             </div>
-            <button
-              className="af-btn-ghost"
+            <Button variant="link" size="auto"
+             
               onClick={() => setForm((prev) => ({ ...prev, clienteId: null, clienteNombre: "", clienteTelefono: "", clienteDireccion: "", clienteUbicacion: "" }))}
             >
               Cambiar
-            </button>
+            </Button>
           </div>
         ) : (
           <div>
@@ -11005,8 +11023,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             {mostrarClientes && (
               <div className="af-combo-panel af-combo-wrap">
                 <div className="af-combo-search">
-                  <input
-                    className="af-input"
+                  <Input
+                   
                     autoFocus
                     placeholder="Buscar por nombre o teléfono..."
                     value={busqueda}
@@ -11033,22 +11051,22 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               </div>
             )}
             {mostrarNuevo && (
-              <div className="af-card p-3 mt-2">
-                <input className="af-input mb-2" placeholder="Nombre" value={nuevoCliente.nombre} onChange={(e) => { setNuevoCliente({ ...nuevoCliente, nombre: e.target.value }); setConfirmDupPedido(false); }} />
-                <input className="af-input mb-2" placeholder="Teléfono" value={nuevoCliente.telefono} onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })} />
+              <Card className="p-3 mt-2">
+                <Input className="mb-2" placeholder="Nombre" value={nuevoCliente.nombre} onChange={(e) => { setNuevoCliente({ ...nuevoCliente, nombre: e.target.value }); setConfirmDupPedido(false); }} />
+                <Input className="mb-2" placeholder="Teléfono" value={nuevoCliente.telefono} onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })} />
                 <div className="mb-2">
                   <UbicacionField value={nuevoCliente.ubicacion} onChange={(v) => setNuevoCliente({ ...nuevoCliente, ubicacion: v })} />
                 </div>
-                <input className="af-input mb-2" placeholder="Referencias de dirección (opcional)" value={nuevoCliente.direccion} onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })} />
+                <Input className="mb-2" placeholder="Referencias de dirección (opcional)" value={nuevoCliente.direccion} onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })} />
                 {parecidosNuevo.length > 0 && (
                   <div className="af-error">
                     ⚠ Parecido a: <strong>{parecidosNuevo.map((c) => c.nombre).join(", ")}</strong>.
                     {" "}Tócalo para usarlo en vez de duplicar:
                     <div className="mt-1">
                       {parecidosNuevo.map((c) => (
-                        <button key={c.id} className="af-btn-chip mr-1" onClick={() => { seleccionarCliente(c); setMostrarNuevo(false); setConfirmDupPedido(false); }}>
+                        <Button variant="exito" size="sm" key={c.id} className="mr-1" onClick={() => { seleccionarCliente(c); setMostrarNuevo(false); setConfirmDupPedido(false); }}>
                           Usar "{c.nombre}"
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -11057,12 +11075,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   <div className="af-error">⚠ Revisa el teléfono: {malTelNuevo}</div>
                 )}
                 <div className="flex gap-2">
-                  <button className="af-btn-ghost flex-1" onClick={() => setMostrarNuevo(false)}>Cancelar</button>
-                  <button className="af-btn-primary flex-1" onClick={crearCliente}>
+                  <Button variant="link" size="auto" className="flex-1" onClick={() => setMostrarNuevo(false)}>Cancelar</Button>
+                  <Button className="flex-1" onClick={crearCliente}>
                     {(parecidosNuevo.length > 0 || malTelNuevo) && confirmDupPedido ? "¿Seguro? Crear igual" : "Guardar"}
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             )}
           </div>
         )}
@@ -11071,8 +11089,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       {modo === "presupuesto" && (
         <div className="af-field">
           <label>Notas importantes (términos y condiciones)</label>
-          <textarea
-            className="af-input"
+          <Textarea
+           
             rows={4}
             placeholder="Vigencia, forma de pago, condiciones..."
             value={form.terminos}
@@ -11102,9 +11120,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       recorría justo cuando se le iba a dar otra vez. */}
                   {it.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
                     <div className="af-extra-wrap">
-                      <button className="af-btn-ghost af-extra-btn" onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
+                      <Button variant="link" size="auto" className="af-extra-btn" onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
                         <Plus size={13} className="inline mr-1" /> Extra
-                      </button>
+                      </Button>
                       {extrasAbierto === it.id && (
                         <>
                           <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
@@ -11149,9 +11167,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   )}
                   {modo === "pedido" && (
                     notaAbierta === it.id ? (
-                      <input
+                      <Input
                         autoFocus
-                        className="af-input af-input-small mt-1"
+                        className="af-input-small mt-1"
                         placeholder="Ej. sin chícharos, sin ejotes..."
                         value={it.nota || ""}
                         onChange={(e) => updateNotaItem(it.id, e.target.value)}
@@ -11162,9 +11180,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                         <StickyNote size={12} className="inline mr-1" />{it.nota}
                       </div>
                     ) : (
-                      <button className="af-btn-ghost af-extra-btn" onClick={() => setNotaAbierta(it.id)}>
+                      <Button variant="link" size="auto" className="af-extra-btn" onClick={() => setNotaAbierta(it.id)}>
                         <Plus size={13} className="inline mr-1" /> Nota
-                      </button>
+                      </Button>
                     )
                   )}
                 </div>
@@ -11175,7 +11193,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   onChange={(v) => (it.tipo === "paella" ? updateKg(it.id, v) : updateCantidad(it.id, v))}
                 />
                 <span className="af-items-col-total">{money(it.subtotal)}</span>
-                <button className="af-icon-btn ml-1" onClick={() => removeItem(it.id)}><X size={16} /></button>
+                <Button variant="ghost" size="icon-sm" className="ml-1" onClick={() => removeItem(it.id)}><X size={16} /></Button>
               </div>
             ))}
           </div>
@@ -11290,8 +11308,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             <div className="af-mini-label mt-2">Ubicación</div>
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
             <div className="af-mini-label mt-2">Referencias (opcional)</div>
-            <input
-              className="af-input"
+            <Input
+             
               placeholder="Casa azul, portón negro, entre calles..."
               value={form.direccion}
               onChange={(e) => setForm((p) => ({ ...p, direccion: e.target.value }))}
@@ -11312,7 +11330,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   <div key={a.id} className="af-abono-row">
                     <span className={"af-metodo-tag af-metodo-tag-" + a.metodo}>{METODO_PAGO_LABEL[a.metodo] || a.metodo}</span>
                     <span className="af-abono-monto">{money(a.monto)}</span>
-                    <button className="af-icon-btn" onClick={() => quitarAbono(a.id)}><X size={14} /></button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => quitarAbono(a.id)}><X size={14} /></Button>
                   </div>
                 ))}
               </div>
@@ -11330,15 +11348,15 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <div className="mt-2">
                 {!mostrarAbono ? (
                   <div className="flex gap-2">
-                    <button className="af-btn-chip flex-1" style={{ justifyContent: "center", display: "flex" }} onClick={marcarPagadoCompleto}>
+                    <Button variant="exito" size="sm" className="flex-1" style={{ justifyContent: "center", display: "flex" }} onClick={marcarPagadoCompleto}>
                       <Wallet size={14} /> Todo en efectivo
-                    </button>
-                    <button className="af-btn-secondary flex-1" onClick={() => { setAbonoDraft({ monto: saldo, metodo: "efectivo" }); setMostrarAbono(true); }}>
+                    </Button>
+                    <Button variant="secondary" className="flex-1" onClick={() => { setAbonoDraft({ monto: saldo, metodo: "efectivo" }); setMostrarAbono(true); }}>
                       Registrar cobro
-                    </button>
+                    </Button>
                   </div>
                 ) : (
-                  <div className="af-card p-3">
+                  <Card className="p-3">
                     <div className="af-mini-label">Monto</div>
                     <NumberField value={abonoDraft.monto} min={0} className="af-input mb-2" onChange={(v) => setAbonoDraft((d) => ({ ...d, monto: v }))} />
                     <div className="af-mini-label">Forma de pago</div>
@@ -11355,9 +11373,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       ))}
                     </div>
                     {!mostrarOtroMetodo ? (
-                      <button className="af-btn-ghost mt-1" onClick={() => { setMostrarOtroMetodo(true); setAbonoDraft((d) => ({ ...d, metodo: "tarjeta" })); }}>
+                      <Button variant="link" size="auto" className="mt-1" onClick={() => { setMostrarOtroMetodo(true); setAbonoDraft((d) => ({ ...d, metodo: "tarjeta" })); }}>
                         ¿Fue con tarjeta?
-                      </button>
+                      </Button>
                     ) : (
                       <div className="af-metodo-row" style={{ marginTop: 6 }}>
                         <button
@@ -11370,10 +11388,10 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       </div>
                     )}
                     <div className="flex gap-2 mt-2">
-                      <button className="af-btn-ghost flex-1" onClick={() => { setMostrarAbono(false); setMostrarOtroMetodo(false); }}>Cancelar</button>
-                      <button className="af-btn-primary flex-1" onClick={agregarAbono}>Agregar cobro</button>
+                      <Button variant="link" size="auto" className="flex-1" onClick={() => { setMostrarAbono(false); setMostrarOtroMetodo(false); }}>Cancelar</Button>
+                      <Button className="flex-1" onClick={agregarAbono}>Agregar cobro</Button>
                     </div>
-                  </div>
+                  </Card>
                 )}
               </div>
             )}
@@ -11395,34 +11413,34 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         <>
           {form.clienteId && form.items.length > 0 && (
             <div className="flex gap-2 mt-2">
-              <button className="af-btn-secondary flex-1" onClick={async () => entregarPDF(await construirPDF(form, "presupuesto", config), nombreArchivoPDF(form, "presupuesto"))}>
+              <Button variant="secondary" className="flex-1" onClick={async () => entregarPDF(await construirPDF(form, "presupuesto", config), nombreArchivoPDF(form, "presupuesto"))}>
                 <Download size={16} className="inline mr-1" /> PDF
-              </button>
+              </Button>
               <button className="af-btn-wa flex-1" onClick={() => abrirWhatsApp(form.clienteTelefono, mensajeWhatsApp(form, "presupuesto", config.pago, config.mensajes))}>
                 <MessageCircle size={16} className="inline mr-1" /> WhatsApp
               </button>
             </div>
           )}
-          <button className="af-btn-primary w-full mt-2" onClick={onGuardar}>
+          <Button className="w-full mt-2" onClick={onGuardar}>
             {editando ? "Guardar cambios" : "Guardar presupuesto"}
-          </button>
+          </Button>
           {editando && (
             form.convertido ? (
               <div className="af-hint mt-2" style={{ textAlign: "center" }}>Ya se convirtió en un pedido.</div>
             ) : (
-              <button className="af-btn-secondary w-full mt-2" onClick={onConvertir}>
+              <Button variant="secondary" className="w-full mt-2" onClick={onConvertir}>
                 <ArrowRightCircle size={16} className="inline mr-1" /> Convertir en pedido
-              </button>
+              </Button>
             )
           )}
           {editando && (
-            <button className="af-btn-secondary w-full mt-2" onClick={onDuplicar}>
+            <Button variant="secondary" className="w-full mt-2" onClick={onDuplicar}>
               <Copy size={15} className="inline mr-1" /> Duplicar presupuesto
-            </button>
+            </Button>
           )}
           {editando && (
-            <button
-              className="af-btn-danger w-full mt-2"
+            <Button variant="destructive-outline"
+              className="w-full mt-2"
               onClick={() => {
                 if (confirmarBorrar) {
                   onEliminar();
@@ -11434,7 +11452,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             >
               <Trash2 size={14} className="inline mr-1" />
               {confirmarBorrar ? "¿Seguro? Toca para confirmar" : "Eliminar presupuesto"}
-            </button>
+            </Button>
           )}
         </>
       ) : (
@@ -11442,9 +11460,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           {/* El recibo solo aparece cuando ya no debe nada: es lo que el
               cliente pide "de comprobante" al terminar de pagar. */}
           {editando && form.items.length > 0 && pagadoNum > 0 && pagadoNum >= total && (
-            <button className="af-btn-secondary w-full mt-2" onClick={async () => entregarPDF(await construirPDF(form, "recibo", config), nombreArchivoPDF(form, "recibo"))}>
+            <Button variant="secondary" className="w-full mt-2" onClick={async () => entregarPDF(await construirPDF(form, "recibo", config), nombreArchivoPDF(form, "recibo"))}>
               <Download size={16} className="inline mr-1" /> Recibo de pagado (PDF)
-            </button>
+            </Button>
           )}
           {/* Aquí estaba "Enviar resumen por WhatsApp". Se quitó: hacía lo
               mismo que guardar. Al guardar, la app ya ofrece el mensaje que
@@ -11452,13 +11470,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               entregado o el saldo al día si se le abonó—, así que el botón
               solo servía para mandar por segunda vez algo que ya iba a salir.
               Ese era el botón que duplicaba los mensajes de los clientes. */}
-          <button className="af-btn-primary w-full mt-2" onClick={onGuardar}>
+          <Button className="w-full mt-2" onClick={onGuardar}>
             {editando ? "Guardar cambios" : "Guardar pedido"}
-          </button>
+          </Button>
 
           {editando && (
-            <button
-              className="af-btn-danger w-full mt-2"
+            <Button variant="destructive-outline"
+              className="w-full mt-2"
               onClick={() => {
                 if (confirmarBorrar) {
                   onEliminar();
@@ -11470,7 +11488,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             >
               <Trash2 size={14} className="inline mr-1" />
               {confirmarBorrar ? "¿Seguro? Toca para confirmar" : "Eliminar pedido"}
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -13528,10 +13546,10 @@ export default function App() {
   // nadie.
   const campana = (
     <div className="af-campana">
-      <button className="af-icon-btn" title="Avisos" onClick={() => setVerAvisos((v) => !v)}>
+      <Button variant="ghost" size="icon-sm" title="Avisos" onClick={() => setVerAvisos((v) => !v)}>
         <Bell size={20} />
         {(porComprar.length > 0 || porHacer.length > 0) && <span className="af-campana-punto" />}
-      </button>
+      </Button>
       {verAvisos && (
         <div className="af-avisos-panel">
           {porComprar.length === 0 && porHacer.length === 0 ? (
@@ -13596,9 +13614,9 @@ export default function App() {
         </nav>
         <div className="af-topbar-right">
           {view !== "buscar" && (
-            <button className="af-icon-btn" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
+            <Button variant="ghost" size="icon-sm" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
               <Search size={18} />
-            </button>
+            </Button>
           )}
           {campana}
           <AvatarButton nombre={nombreUsuario} foto={fotoUsuario} onGuardar={guardarPerfilPersonal} />
@@ -13611,7 +13629,7 @@ export default function App() {
         <div className="af-header">
           {view === "nuevo" ? (
             <div className="af-header-back">
-              <button className="af-icon-btn" onClick={cancelarForm}><ArrowLeft size={20} /></button>
+              <Button variant="ghost" size="icon-sm" onClick={cancelarForm}><ArrowLeft size={20} /></Button>
               <span className="af-header-title">
                 {formModo === "presupuesto"
                   ? (form.pedidoId ? "Editar presupuesto" : "Nuevo presupuesto")
@@ -13632,9 +13650,9 @@ export default function App() {
               )}
               <div className="flex items-center gap-2 af-only-mobile">
                 {view !== "buscar" && (
-                  <button className="af-icon-btn" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
+                  <Button variant="ghost" size="icon-sm" title="Buscar pedidos" onClick={() => irAVista("buscar")}>
                     <Search size={20} />
-                  </button>
+                  </Button>
                 )}
                 {/* La campana vivía SOLO en la barra de pantalla ancha, así que
                     en el celular —que es donde se trabaja— no existía y sus
@@ -13755,15 +13773,15 @@ export default function App() {
             </div>
             <div className="af-confirma-dia">{fmtDateHuman(confirmarFecha.fecha)}</div>
             <div className="af-confirma-hora">{confirmarFecha.hora ? fmtHora12(confirmarFecha.hora) : "Sin hora"}</div>
-            <button
-              className="af-btn-primary w-full mt-4"
+            <Button
+              className="w-full mt-4"
               onClick={() => { setConfirmarFecha(null); guardarPedidoForm({ fechaConfirmada: true }); }}
             >
               Sí, así está
-            </button>
-            <button className="af-btn-secondary w-full mt-2" onClick={() => setConfirmarFecha(null)}>
+            </Button>
+            <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFecha(null)}>
               No, lo cambio
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -13792,15 +13810,15 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <button className="af-btn-primary w-full" onClick={() => setFaltaHechas(null)}>
+            <Button className="w-full" onClick={() => setFaltaHechas(null)}>
               Mejor lo cambio
-            </button>
-            <button
-              className="af-btn-secondary w-full mt-2"
+            </Button>
+            <Button variant="secondary"
+              className="w-full mt-2"
               onClick={() => { setFaltaHechas(null); guardarPedidoForm({ saltarAviso: true, fechaConfirmada: true }); }}
             >
               Las voy a hacer, guárdalo
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -13818,8 +13836,8 @@ export default function App() {
                 : ""}
               , sin guardar.
             </p>
-            <button
-              className="af-btn-primary w-full"
+            <Button
+              className="w-full"
               onClick={() => {
                 setForm(borradorPendiente.form);
                 setFormModo(borradorPendiente.modo || "pedido");
@@ -13830,13 +13848,13 @@ export default function App() {
               }}
             >
               Seguir con él
-            </button>
-            <button
-              className="af-btn-secondary w-full mt-2"
+            </Button>
+            <Button variant="secondary"
+              className="w-full mt-2"
               onClick={() => { olvidarBorrador(); setBorradorPendiente(null); }}
             >
               Descartarlo
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -14367,15 +14385,6 @@ const AZAFRAN_CSS = `
    grande medía 60px, un select 44, una fecha 46— y una tarjeta con cinco
    campos se veía como un rompecabezas de cajas distintas. Con la altura y la
    esquina fijas aquí, todo queda parejo sin tener que acordarse en cada sitio. */
-.af-input {
-  width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
-  height: var(--alto-campo); border-radius: var(--radio-campo);
-  background: var(--surface); border: 1px solid var(--line);
-  padding: 0 14px; font-size: var(--text-sm); font-family: 'Inter', sans-serif;
-  color: var(--ink); outline: none;
-}
-/* Los de varias líneas son la excepción: crecen, pero empiezan igual de altos. */
-textarea.af-input { height: auto; min-height: var(--alto-campo); padding: 12px 14px; line-height: 1.5; }
 
 /* Safari de iOS le pone a los campos de fecha y hora un tamaño propio que no
    respeta el ancho de su columna: se salían de la tarjeta y se traslapaban.
@@ -14392,7 +14401,6 @@ textarea.af-input { height: auto; min-height: var(--alto-campo); padding: 12px 1
 .af-input[type="time"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .af-input[type="date"]::-webkit-calendar-picker-indicator,
 .af-input[type="time"]::-webkit-calendar-picker-indicator { margin-left: auto; flex-shrink: 0; }
-.af-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
 /* Bug conocido de iOS Safari: el valor de <input type="date"> no queda
    centrado verticalmente dentro del campo a menos que se fuerce esto. */
 input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 1.2em; }
@@ -14474,13 +14482,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 .af-error { background: var(--wine-soft); color: var(--wine); border-radius: var(--radius-md); padding: 10px 13px; font-size: var(--text-sm); font-weight: 600; margin-bottom: 12px; }
 
-.af-btn-primary { background: var(--wine); color: white; font-weight: 700; border: none; border-radius: var(--radio-campo); min-height: var(--alto-campo); padding: 0 16px; font-size: var(--text-sm); font-family: 'Space Grotesk', sans-serif; box-shadow: 0 3px 10px -3px rgba(193,90,52,0.4); cursor: pointer; transition: all 0.15s ease; }
-.af-btn-primary:active { transform: translateY(0); }
-.af-btn-secondary { background: var(--gold-soft); color: #7A5A1E; font-weight: 700; border: none; border-radius: var(--radius-md); padding: 13px; font-size: var(--text-sm); font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.15s ease; }
-.af-btn-ghost { background: none; border: none; color: var(--wine); font-weight: 600; font-size: var(--text-sm); padding: 6px 0; cursor: pointer; transition: opacity 0.15s ease; }
-.af-btn-danger { background: none; border: 1px solid var(--wine); color: var(--wine); font-weight: 700; border-radius: var(--radius-md); padding: 12px; font-size: var(--text-sm); cursor: pointer; transition: all 0.15s ease; }
-.af-btn-chip { background: var(--olive); color: white; border: none; border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-xs); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.af-icon-btn { background: none; border: none; color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 4px; cursor: pointer; border-radius: var(--radius-sm); transition: all 0.15s ease; }
 .af-tag-btn { cursor: pointer; }
 
 .af-back-row { display: flex; align-items: center; gap: 6px; color: var(--wine); font-weight: 600; font-size: var(--text-sm); margin-bottom: 14px; cursor: pointer; }
@@ -14522,8 +14523,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-picker-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--radius-full); }
 .af-pane-hide-mobile { display: none; }
 .af-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--line); background: var(--surface); flex-shrink: 0; }
-.af-modal-footer .af-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
-.af-modal-footer .af-btn-primary { display: flex; align-items: center; }
 
 .af-category-pills { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; margin: 10px 0 0; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none; }
 .af-category-pills::-webkit-scrollbar { display: none; }
@@ -14568,14 +14567,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Panel de usuarios */
 .af-usuario-row { display: flex; align-items: center; gap: 10px; }
-.af-btn-chip-off { background: var(--neutral-soft); color: var(--ink-soft); }
 
 /* Pantalla de login */
 .af-login { align-items: center; justify-content: center; padding: 24px; max-width: none; }
 .af-login-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 28px 24px; box-shadow: 0 10px 30px -12px rgba(36,27,20,0.25); }
 .af-logo-login { width: 180px; margin-bottom: 6px; }
 .af-login-sub { color: var(--ink-soft); font-size: var(--text-sm); margin-bottom: 20px; }
-.af-login .af-btn-primary:disabled { opacity: 0.5; cursor: wait; }
 
 /* Toast de confirmación */
 .af-entrega-opciones { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
@@ -14887,8 +14884,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 @media (min-width: 900px) {
   .af-form-gasto { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 22px; align-items: start; }
   .af-form-gasto > .af-ticket-campo,
-  .af-form-gasto > .af-btn-primary { grid-column: 1 / -1; }
-  .af-form-gasto > .af-btn-primary { margin-top: 8px; }
+  .af-form-gasto > .af-gasto-guardar { grid-column: 1 / -1; }
+  .af-form-gasto > .af-gasto-guardar { margin-top: 8px; }
 }
 .af-filtro .af-mini-label { margin-bottom: 0; padding-left: 4px; }
 .af-btn-quitar-filtros { display: inline-flex; align-items: center; gap: 6px; height: var(--alto-campo); padding: 0 14px; border-radius: var(--radius-full); border: 1px solid color-mix(in srgb, #c0392b 35%, transparent); background: color-mix(in srgb, #c0392b 8%, transparent); color: #c0392b; font-family: 'Inter', sans-serif; font-size: var(--text-sm); font-weight: 700; cursor: pointer; white-space: nowrap; }
@@ -15028,13 +15025,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Los botones no se encogen: la columna se hace del tamaño que piden, y no al
    revés. Antes medían 32px de dibujo en una columna de 76 donde hacían falta
    108, así que el navegador los apretaba hasta deformarlos. */
-.af-gasto-acciones .af-icon-btn { flex: none; }
 /* El botón de la foto, junto al nombre: más chico, porque comparte renglón. */
 .af-gasto-que-linea { display: flex; align-items: center; gap: 3px; min-width: 0; }
 .af-gasto-que-linea .af-gasto-titulo { min-width: 0; }
 .af-gasto-ticket { width: 22px; height: 22px; flex: none; color: var(--ink-soft); }
-.af-gasto-acciones .af-icon-btn { width: 32px; height: 32px; border-radius: var(--radius-md); }
-.af-gasto-acciones .af-icon-btn:hover { background: color-mix(in srgb, var(--ink-soft) 12%, transparent); }
+.af-gasto-acciones
+
 
 /* El tipo de gasto, con su color. Es una lista desplegable de verdad: se
    corrige desde aquí sin abrir el gasto a editar. */
@@ -15398,12 +15394,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-suggest-item:hover { background: var(--gold-soft); }
   .af-paste-btn:hover { background: var(--wine-soft); border-color: var(--wine); }
   .af-toggle-btn:not(.active):hover { border-color: var(--gold); color: var(--ink); }
-  .af-btn-primary:hover { background: #A64826; transform: translateY(-1px); box-shadow: 0 6px 16px -4px rgba(193,90,52,0.5); }
-  .af-btn-secondary:hover { background: #F3E2A8; transform: translateY(-1px); }
-  .af-btn-ghost:hover { text-decoration: underline; opacity: 0.85; }
-  .af-btn-danger:hover { background: var(--wine-soft); }
-  .af-btn-chip:hover { background: #4A5C42; }
-  .af-icon-btn:hover { background: var(--neutral-soft); color: var(--wine); transform: scale(1.08); }
+
   .af-tag-btn:hover { border-color: var(--gold); }
   .af-card.cursor-pointer:hover { border-color: var(--gold); box-shadow: 0 6px 18px -6px rgba(36,27,20,0.2); transform: translateY(-2px); }
   .af-combo-trigger:hover { border-color: var(--gold); }
@@ -15415,7 +15406,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-picker-add-btn:hover { transform: scale(1.1); background: #A64826; }
   .af-extra-mini-btn:hover { background: var(--olive); color: white; }
   .af-extra-menu-item:hover { background: var(--gold-soft); }
-  .af-btn-chip-off:hover { background: #E3D7BE; }
+
   .af-btn-wa:hover { background: #D4EFD9; }
   .af-quick-btn:hover { border-color: var(--wine); background: var(--wine-soft); }
   .af-add-card:hover { border-color: var(--wine); color: var(--wine); }
