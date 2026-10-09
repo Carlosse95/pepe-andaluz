@@ -12,11 +12,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
-  X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
-  ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, ArrowRightCircle,
+  X, ArrowLeft, House, Truck, Store, ChefHat, Check, Minus, Trash,
+  ClipboardPaste, TrendingUp, ChevronLeft, ChevronRight, FileText, Download, CircleArrowRight,
   PackageSearch, MessageCircle, Copy, Wallet,
-  Upload, CheckCircle2, AlertTriangle, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell, Filter,
-  ChevronUp, ChevronDown, ArrowUpDown,
+  Upload, CircleCheck, TriangleAlert, TrendingDown, Receipt, StickyNote, Pencil, Camera, Bell,
+  ChevronUp, ChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
@@ -2229,7 +2229,7 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
 
         {abierta.motivo_pepe && (
           <div className="af-chat-motivo">
-            <AlertTriangle size={14} /> {abierta.motivo_pepe}
+            <TriangleAlert size={14} /> {abierta.motivo_pepe}
           </div>
         )}
 
@@ -2262,7 +2262,7 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
             }}
           />
           <button className="af-chat-enviar" onClick={enviar} disabled={!texto.trim() || enviando}>
-            {enviando ? "…" : <ArrowRightCircle size={20} />}
+            {enviando ? "…" : <CircleArrowRight size={20} />}
           </button>
         </div>
       </div>
@@ -2290,7 +2290,7 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
           <div className="af-conv-txt">{c.ultimo_texto}</div>
           {c.necesita_pepe && (
             <div className="af-conv-aviso">
-              <AlertTriangle size={13} /> {c.motivo_pepe || "Te toca contestar a ti"}
+              <TriangleAlert size={13} /> {c.motivo_pepe || "Te toca contestar a ti"}
             </div>
           )}
         </button>
@@ -2487,7 +2487,7 @@ function LetreroNube({ pendientes, onReintentar }) {
   const que = claves.map((k) => NOMBRE_CLAVE[k] || k).join(", ");
   return (
     <div className="af-letrero-nube fallo" role="alert">
-      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+      <TriangleAlert size={18} style={{ flexShrink: 0 }} />
       <div className="flex-1 min-w-0">
         <strong>Hay cambios que NO se han guardado en la nube</strong> ({que}). Se sigue intentando solo; no cierres la app.
       </div>
@@ -2512,7 +2512,7 @@ function LetreroAtrasada({ atrasada, onRecargar }) {
   const min = Math.max(1, Math.round((ahora - atrasada.desde) / 60000));
   return (
     <div className="af-letrero-nube fallo" role="alert">
-      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+      <TriangleAlert size={18} style={{ flexShrink: 0 }} />
       <div className="flex-1 min-w-0">
         {atrasada.sinInternet ? (
           <><strong>Sin internet</strong>: lo que ves puede no tener los cambios de los demás (hace {min} min que no se actualiza).</>
@@ -2529,7 +2529,7 @@ function Toast({ toast }) {
   if (!toast) return null;
   return (
     <div className={"af-toast" + (toast.tipo === "error" ? " af-toast-error" : "")}>
-      {toast.tipo === "error" ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
+      {toast.tipo === "error" ? <TriangleAlert size={16} /> : <CircleCheck size={16} />}
       <span>{toast.msg}</span>
     </div>
   );
@@ -2542,7 +2542,7 @@ function AlertaFranjaModal({ alerta, onCerrar }) {
   return (
     <Dialog open onOpenChange={(abierto) => { if (!abierto) (onCerrar)?.(); }}>
       <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
-        <div className="af-alerta-icon"><AlertTriangle size={26} /></div>
+        <div className="af-alerta-icon"><TriangleAlert size={26} /></div>
         <div className="af-alerta-titulo">Muchas paellas a la vez</div>
         <p className="af-alerta-texto">
           Ya son <strong>{alerta.total} paellas</strong> cerca de las {fmtHora12(alerta.hora)} del {fmtDateHuman(alerta.fecha)}.
@@ -2630,7 +2630,7 @@ function AvisoPendienteModal({ aviso, onEnviar, onEnviarConRecibo, subiendo, onC
         </p>
         {yaSeMando && (
           <div className="af-ya-enviado">
-            <AlertTriangle size={14} />
+            <TriangleAlert size={14} />
             <span>Este mismo mensaje ya se le mandó {haceCuanto(yaSeMando)}.</span>
           </div>
         )}
@@ -2882,7 +2882,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
     <div className={soloContenido ? "" : "mb-3"}>
       {!soloContenido && (
         <button className="af-colapsable-btn" onClick={onToggle}>
-          <ChefHat size={15} /> Producción del día {abierto ? "▲" : "▼"}
+          <ChefHat size={15} /> Producción del día {abierto ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
         </button>
       )}
       {(soloContenido || abierto) && (
@@ -3808,7 +3808,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                   <Pencil size={16} />
                 </Button>
                 <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setPorBorrar({ tipo: "pago", deudaId: abierta.id, pago: p })}>
-                  <Trash2 size={16} />
+                  <Trash size={16} />
                 </Button>
               </div>
             ))}
@@ -3823,7 +3823,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
             <Pencil size={15} className="inline mr-1" /> Cambiar el nombre o el total
           </Button>
           <Button variant="destructive-outline" onClick={() => setPorBorrar({ tipo: "deuda", deuda: abierta })}>
-            <Trash2 size={15} className="inline mr-1" /> Borrar todo esto
+            <Trash size={15} className="inline mr-1" /> Borrar todo esto
           </Button>
           {lista.length === 1 && (
             <Button variant="secondary" onClick={() => setFormDeuda({ quien: "", total: "", nota: "" })}>
@@ -4005,7 +4005,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
         {porBorrar && (
           <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
             <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
-              <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
+              <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
               <div className="af-alerta-titulo">
                 {porBorrar.tipo === "deuda" ? "¿Borrar esta deuda?" : "¿Borrar este pago?"}
               </div>
@@ -4175,12 +4175,12 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
             <>
               {parecidos.length > 0 && (
                 <div className="af-error">
-                  ⚠ Ya tienes cliente(s) con nombre parecido: <strong>{parecidos.map((c) => c.nombre).join(", ")}</strong>.
+                  <TriangleAlert size={14} className="inline -mt-0.5 mr-1" />Ya tienes cliente(s) con nombre parecido: <strong>{parecidos.map((c) => c.nombre).join(", ")}</strong>.
                   Revisa que no lo estés duplicando — puedes buscarlo en la lista.
                 </div>
               )}
               {malTel && (
-                <div className="af-error">⚠ Revisa el teléfono: {malTel}</div>
+                <div className="af-error"><TriangleAlert size={14} className="inline -mt-0.5 mr-1" />Revisa el teléfono: {malTel}</div>
               )}
               <Button
                 className="w-full mt-2"
@@ -4305,13 +4305,13 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
             });
           }}
         >
-          <Trash2 size={14} className="inline mr-1" /> Borrar cliente
+          <Trash size={14} className="inline mr-1" /> Borrar cliente
         </Button>
 
         {confirmBorrar && (
           <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmBorrar(null))?.(); }}>
             <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
-              <div className="af-alerta-icon"><Trash2 size={26} /></div>
+              <div className="af-alerta-icon"><Trash size={26} /></div>
               <div className="af-alerta-titulo">¿Borrar a {confirmBorrar.cliente.nombre}?</div>
 
               {/* Lo que más tranquiliza al borrar es saber qué NO se va. */}
@@ -4452,7 +4452,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
           className={"af-ausentes-aviso mb-3" + (soloAusentes ? " activo" : "")}
           onClick={() => setSoloAusentes((v) => !v)}
         >
-          <AlertTriangle size={15} />
+          <TriangleAlert size={15} />
           <span className="af-ausentes-txt">
             {soloAusentes
               ? "Viendo los que no han vuelto — toca para ver todos"
@@ -6403,7 +6403,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         <PackageSearch size={14} />
                         Sacar el costo con ingredientes
                         {(f.usaTanda || f.costoAuto > 0) && <span className="af-rent-desglose-chip">{money(f.costo)}/{f.unidad}</span>}
-                        <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? "▲" : "▼"}</span>
+                        <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
                       </button>
 
                       {rentAbierta[f.clave] && (
@@ -6435,7 +6435,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                           {/* Ligados a esta paella pero sin precio de compra. */}
                           {f.sinPrecio?.length > 0 && (
                             <div className="af-rent-faltan">
-                              <AlertTriangle size={13} />
+                              <TriangleAlert size={13} />
                               <span>
                                 Falta poner cuánto cuesta: <strong>{f.sinPrecio.map((i) => i.nombre).join(", ")}</strong>.
                                 Ponlo en Ajustes → Inventario y el costo se calcula solo.
@@ -6545,7 +6545,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                                     onChange={(nombre) => actualizarIngredienteReceta(f, ing.id, { nombre })}
                                   />
                                   <Button variant="ghost" size="icon-sm" title="Quitar" onClick={() => quitarIngredienteReceta(f, ing.id)}>
-                                    <Trash2 size={15} />
+                                    <Trash size={15} />
                                   </Button>
                                 </div>
                                 <div className="af-rent-ing-datos">
@@ -6656,11 +6656,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
 
               <div className="af-tabla-montos">
-                <div className="af-tabla-row"><span>💵 Efectivo</span><span>{money(porMetodo.efectivo)}</span></div>
-                <div className="af-tabla-row"><span>💳 Tarjeta</span><span>{money(porMetodo.tarjeta)}</span></div>
-                <div className="af-tabla-row"><span>🏦 Transferencia</span><span>{money(porMetodo.transferencia)}</span></div>
+                <div className="af-tabla-row"><span><Banknote size={14} className="inline -mt-0.5 mr-1.5" />Efectivo</span><span>{money(porMetodo.efectivo)}</span></div>
+                <div className="af-tabla-row"><span><CreditCard size={14} className="inline -mt-0.5 mr-1.5" />Tarjeta</span><span>{money(porMetodo.tarjeta)}</span></div>
+                <div className="af-tabla-row"><span><Landmark size={14} className="inline -mt-0.5 mr-1.5" />Transferencia</span><span>{money(porMetodo.transferencia)}</span></div>
                 {propinaDia > 0 && (
-                  <div className="af-tabla-row af-tabla-row-destacada"><span>🎉 Propinas</span><span>{money(propinaDia)}</span></div>
+                  <div className="af-tabla-row af-tabla-row-destacada"><span><PartyPopper size={14} className="inline -mt-0.5 mr-1.5" />Propinas</span><span>{money(propinaDia)}</span></div>
                 )}
               </div>
 
@@ -7267,7 +7267,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               dejaría esos gastos apuntando a un tipo que ya no existe. */}
           {esAdmin && categoriasPropias.length > 0 && (
             <button className="af-btn-quitar-filtros" onClick={() => setBorrandoTipos(true)} title="Quitar tipos de gasto">
-              <Trash2 size={15} /> Tipos
+              <Trash size={15} /> Tipos
             </button>
           )}
           </div>
@@ -7283,7 +7283,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {esAdmin && gruposParecidos.length > 0 && (
           <div className="af-parecidos mb-3">
             <div className="af-parecidos-titulo">
-              <AlertTriangle size={15} /> Nombres que parecen repetidos
+              <TriangleAlert size={15} /> Nombres que parecen repetidos
             </div>
             {gruposParecidos.map((grupo) => (
               <div key={grupo.preferido} className="af-parecidos-row">
@@ -7301,7 +7301,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {esAdmin && duplicadosExistentes.length > 0 && (
           <div className="af-parecidos mb-3">
             <div className="af-parecidos-titulo">
-              <AlertTriangle size={15} /> Parecen apuntados dos veces
+              <TriangleAlert size={15} /> Parecen apuntados dos veces
             </div>
             {duplicadosExistentes.map(([a, b]) => (
               <div key={clavePareja(a, b)} className="af-parecidos-row">
@@ -7339,7 +7339,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         ) : (
           <>
           <div className="af-tabla-pista">
-            <ArrowRightCircle size={14} /> Desliza la tabla de lado para ver todo
+            <CircleArrowRight size={14} /> Desliza la tabla de lado para ver todo
           </div>
           <div className="af-tabla-scroll mb-4">
           <div className="af-tabla-gastos">
@@ -7448,7 +7448,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     {esAdmin && (
                       <>
                         <Button variant="ghost" size="icon-sm" title="Editar" onClick={() => abrirEdicionGasto(g)}><Pencil size={16} /></Button>
-                        <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash2 size={16} /></Button>
+                        <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash size={16} /></Button>
                       </>
                     )}
                   </span>
@@ -7528,7 +7528,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         <Pencil size={16} />
                       </Button>
                       <Button variant="ghost" size="icon-sm" title="Quitar" onClick={() => quitarFijo(f.id)}>
-                        <Trash2 size={16} />
+                        <Trash size={16} />
                       </Button>
                     </div>
                   ))}
@@ -7755,7 +7755,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {confirmarBorrarGasto && (
           <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarBorrarGasto(null))?.(); }}>
             <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
-              <div className="af-alerta-icon"><Trash2 size={26} /></div>
+              <div className="af-alerta-icon"><Trash size={26} /></div>
               <div className="af-alerta-titulo">¿Borrar este gasto?</div>
               <p className="af-alerta-texto">
                 <strong>{confirmarBorrarGasto.tienda || confirmarBorrarGasto.descripcion || confirmarBorrarGasto.categoria}</strong>
@@ -7913,7 +7913,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {posibleDuplicado && (
           <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPosibleDuplicado(null))?.(); }}>
             <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
-              <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
+              <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
               <div className="af-alerta-titulo">¿No lo apuntaste ya?</div>
               <div className="af-alerta-texto mb-3">
                 Vas a guardar <strong>{posibleDuplicado.nuevo.descripcion || posibleDuplicado.nuevo.categoria}</strong> por{" "}
@@ -8370,7 +8370,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               title="Quitar"
               onClick={() => setPorBorrar({ lista: "paellas", indice: i, nombre: it.nombre, que: "la paella" })}
             >
-              <Trash2 size={15} />
+              <Trash size={15} />
             </Button>
             {cerrar}
           </div>
@@ -8409,7 +8409,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               title="Quitar"
               onClick={() => setPorBorrar({ lista: "extrasPaella", indice: i, nombre: it.nombre, que: "el extra" })}
             >
-              <Trash2 size={15} />
+              <Trash size={15} />
             </Button>
             {cerrar}
           </div>
@@ -8448,7 +8448,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             title="Quitar"
             onClick={() => setPorBorrar({ lista: "extras", indice: i, nombre: ex.nombre, que: "el platillo" })}
           >
-            <Trash2 size={15} />
+            <Trash size={15} />
           </Button>
         </div>
         <div className="af-mini-label mt-1">¿Cómo se vende?</div>
@@ -9360,7 +9360,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       <span className="af-mes-cuenta">{g.items.length}</span>
                       {faltantes > 0 && (
                         <span className="af-ing-row-alerta" title="Hay que comprar">
-                          <AlertTriangle size={14} />
+                          <TriangleAlert size={14} />
                         </span>
                       )}
                     </button>
@@ -9397,7 +9397,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     onClick={() => setIngAbierto(ing.id)}
                   >
                     <span className="af-ing-row-nombre">{ing.nombre || "Sin nombre"}</span>
-                    {ing.stock <= ing.minimo && <AlertTriangle size={14} className="af-ing-row-alerta" />}
+                    {ing.stock <= ing.minimo && <TriangleAlert size={14} className="af-ing-row-alerta" />}
                     <span className="af-ing-row-meta">
                       {ligados === 0 ? "sin ligar" : `en ${ligados} ${ligados === 1 ? "platillo" : "platillos"}`}
                     </span>
@@ -9419,7 +9419,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       <ChevronRight size={16} className="af-mes-flecha abierta" />
                     </Button>
                     <Button variant="ghost" size="icon-sm" onClick={() => setDraft({ ...draft, ingredientes: draft.ingredientes.filter((_, xi) => xi !== i) })}>
-                      <Trash2 size={15} />
+                      <Trash size={15} />
                     </Button>
                   </div>
 
@@ -9517,7 +9517,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   </div>
                   {!familiasOk && (
                     <div className="af-stock-alert">
-                      ⚠ La unidad de uso y la de compra deben ser de la misma familia (peso, volumen o piezas).
+                      <TriangleAlert size={14} className="inline -mt-0.5 mr-1" />La unidad de uso y la de compra deben ser de la misma familia (peso, volumen o piezas).
                       Ej.: si usas piezas, pon la {ing.presentacionNombre} también en piezas.
                     </div>
                   )}
@@ -9637,7 +9637,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       onChange={(e) => setD({ nombre: e.target.value })}
                     />
                     <Button variant="ghost" size="icon-sm" onClick={() => setDraft({ ...draft, desechables: draft.desechables.filter((_, xi) => xi !== i) })}>
-                      <Trash2 size={15} />
+                      <Trash size={15} />
                     </Button>
                   </div>
                   {/* Lo que cuesta el envase se captura como se compra —el
@@ -9796,7 +9796,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                       onChange={(e) => setT({ nombre: e.target.value })}
                     />
                     <Button variant="ghost" size="icon-sm" onClick={() => setDraft({ ...draft, paelleras: draft.paelleras.filter((_, xi) => xi !== i) })}>
-                      <Trash2 size={15} />
+                      <Trash size={15} />
                     </Button>
                   </div>
                   <label className="af-check-row af-check-row-small mb-2">
@@ -9935,7 +9935,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
       {porBorrar && (
         <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
           <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
-            <div className="af-alerta-icon"><Trash2 size={26} /></div>
+            <div className="af-alerta-icon"><Trash size={26} /></div>
             <div className="af-alerta-titulo">¿Quitar {porBorrar.que}?</div>
             <p className="af-alerta-texto">
               <strong>{porBorrar.nombre.trim() || "Sin nombre"}</strong>
@@ -10213,7 +10213,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                 </div>
                 {editando !== "nuevo" && (
                   <Button variant="destructive-outline" className="w-full mt-2" onClick={eliminarProducto}>
-                    <Trash2 size={14} className="inline mr-1" /> Eliminar producto del catálogo
+                    <Trash size={14} className="inline mr-1" /> Eliminar producto del catálogo
                   </Button>
                 )}
               </div>
@@ -11054,7 +11054,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 <Input className="mb-2" placeholder="Referencias de dirección (opcional)" value={nuevoCliente.direccion} onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })} />
                 {parecidosNuevo.length > 0 && (
                   <div className="af-error">
-                    ⚠ Parecido a: <strong>{parecidosNuevo.map((c) => c.nombre).join(", ")}</strong>.
+                    <TriangleAlert size={14} className="inline -mt-0.5 mr-1" />Parecido a: <strong>{parecidosNuevo.map((c) => c.nombre).join(", ")}</strong>.
                     {" "}Tócalo para usarlo en vez de duplicar:
                     <div className="mt-1">
                       {parecidosNuevo.map((c) => (
@@ -11066,7 +11066,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   </div>
                 )}
                 {malTelNuevo && (
-                  <div className="af-error">⚠ Revisa el teléfono: {malTelNuevo}</div>
+                  <div className="af-error"><TriangleAlert size={14} className="inline -mt-0.5 mr-1" />Revisa el teléfono: {malTelNuevo}</div>
                 )}
                 <div className="flex gap-2">
                   <Button variant="link" size="auto" className="flex-1" onClick={() => setMostrarNuevo(false)}>Cancelar</Button>
@@ -11335,7 +11335,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <div className="af-pago-line af-pago-saldo"><span>Saldo pendiente</span><span>{money(saldo)}</span></div>
             )}
             {propinaNum > 0 && (
-              <div className="af-pago-line af-pago-propina"><span>🎉 Propina</span><span>{money(propinaNum)}</span></div>
+              <div className="af-pago-line af-pago-propina"><span><PartyPopper size={14} className="inline -mt-0.5 mr-1.5" />Propina</span><span>{money(propinaNum)}</span></div>
             )}
 
             {saldo > 0.5 && (
@@ -11423,7 +11423,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <div className="af-hint mt-2" style={{ textAlign: "center" }}>Ya se convirtió en un pedido.</div>
             ) : (
               <Button variant="secondary" className="w-full mt-2" onClick={onConvertir}>
-                <ArrowRightCircle size={16} className="inline mr-1" /> Convertir en pedido
+                <CircleArrowRight size={16} className="inline mr-1" /> Convertir en pedido
               </Button>
             )
           )}
@@ -11444,7 +11444,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 }
               }}
             >
-              <Trash2 size={14} className="inline mr-1" />
+              <Trash size={14} className="inline mr-1" />
               {confirmarBorrar ? "¿Seguro? Toca para confirmar" : "Eliminar presupuesto"}
             </Button>
           )}
@@ -11480,7 +11480,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 }
               }}
             >
-              <Trash2 size={14} className="inline mr-1" />
+              <Trash size={14} className="inline mr-1" />
               {confirmarBorrar ? "¿Seguro? Toca para confirmar" : "Eliminar pedido"}
             </Button>
           )}
@@ -13520,7 +13520,7 @@ export default function App() {
   const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", deudas: "Me deben", reportes: "Reportes", ajustes: "Ajustes" };
 
   const navTodos = [
-    { key: "hoy", icon: <Home size={20} />, label: "Hoy" },
+    { key: "hoy", icon: <House size={20} />, label: "Hoy" },
     { key: "agenda", icon: <CalendarDays size={20} />, label: "Agenda" },
     { key: "mensajes", icon: <MessageCircle size={20} />, label: "Mensajes", badge: pendientesWhatsApp },
     { key: "presupuestos", icon: <FileText size={20} />, label: "Presupuestos" },
@@ -13785,7 +13785,7 @@ export default function App() {
       {faltaHechas && faltaHechas.length > 0 && (
         <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setFaltaHechas(null))?.(); }}>
           <DialogContent className="af-alerta-modal" overlayClassName="af-modal-overlay-center">
-            <div className="af-alerta-icon af-alerta-icon-aviso"><AlertTriangle size={26} /></div>
+            <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
             <div className="af-alerta-titulo">No alcanza lo que hay hecho</div>
             <div className="af-alerta-texto mb-3">
               Este pedido pide más de lo que tienes:
