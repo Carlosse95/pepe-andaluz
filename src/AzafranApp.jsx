@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
+import { Ayuda } from "@/components/ayuda";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -3303,10 +3304,10 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               abierto={verSinPagar}
               onToggle={() => setVerSinPagar((v) => !v)}
             >
-              <p className="af-ink-soft text-xs mb-2">
+              <Ayuda className="mb-2">
                 Ya salió la comida y falta que entre el dinero. Si alguno ya se pagó y
                 nada más no se apuntó, márcalo aquí.
-              </p>
+              </Ayuda>
               {entregadosSinPagar.map(({ pedido, saldo }) => (
                 <div key={pedido.id} className="af-confirmar-row">
                   <button className="flex-1 min-w-0 af-fila-limpia" onClick={() => onAbrir && onAbrir(pedido)}>
@@ -3951,10 +3952,10 @@ function DeudasView({ deudas, onGuardar, showToast }) {
   /* ---------- La lista ---------- */
   return (
     <div>
-      <div className="af-hint mb-3">
+      <Ayuda className="mb-3">
         Para el dinero que te deben y te van pagando de a poco. Nada de esto entra en las
         cuentas del negocio: es solo para llevar el control.
-      </div>
+      </Ayuda>
 
       <Button
         className="w-full mb-4"
@@ -4544,9 +4545,9 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
               }}
             />
           </label>
-          <div className="af-hint mb-3" style={{ textAlign: "center" }}>
+          <Ayuda className="mb-3">
             Desde Contactos del iPhone: selecciona, Compartir, "Guardar en Archivos", y sube el archivo aquí.
-          </div>
+          </Ayuda>
         </>
       )}
       <div className="af-hint mb-3" style={{ textAlign: "center" }}>
@@ -6373,12 +6374,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </>
           )}
 
-          <div className="af-section-title">Producto por producto</div>
-          <div className="af-hint mb-3">
+          <div className="af-section-title">Producto por producto<Ayuda enLinea>
             Cada producto saca su costo del inventario: lo que compras, cuánto usas y cuánto
             se va en merma. Ábrelo para agregarle el envase, el gas y la mano de obra, y para
             ver a cuánto conviene venderlo.
-          </div>
+          </Ayuda></div>
+          
 
           {esAdmin && (
             <div className="af-colchon mb-3">
@@ -6791,7 +6792,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       <Card className="af-year-total-card mb-5">
         <div className="af-ink-soft text-sm">Cobrado en {anio}</div>
         <div className="af-year-total">{money(totalAnio)}</div>
-        <div className="af-ink-soft text-xs">Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</div>
+        <Ayuda>Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</Ayuda>
       </Card>
 
       <Card className="p-4 mb-5 af-chart-card">
@@ -7200,10 +7201,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 />
               </label>
             )}
-            <p className="af-ink-soft text-xs mt-1">
+            <Ayuda className="mt-1">
               Al subirla se lee sola y llena la tienda, la fecha y el monto. Revísalos
               antes de guardar, y corrige lo que haga falta.
-            </p>
+            </Ayuda>
           </div>
 
 
@@ -7595,10 +7596,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {abrirFijos && (
         <Card className="p-4 mb-5">
-          <div className="af-hint mb-3">
+          <Ayuda className="mb-3">
             Se registran solos cada mes. Revisa que los montos estén al día: si sube la
             renta o cambia un sueldo, corrígelo aquí.
-          </div>
+          </Ayuda>
 
           {gastosFijos.length === 0 ? (
             <div className="af-hint mb-3" style={{ textAlign: "center" }}>
@@ -7726,7 +7727,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               )}
               <div className="af-field">
-                <Label>Qué día del mes se paga</Label>
+                <Label>Qué día del mes se paga<Ayuda enLinea>Del 1 al 28, para que caiga en todos los meses.</Ayuda></Label>
                 <NumberField
                   value={draftFijo.dia}
                   min={1}
@@ -7734,7 +7735,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   className="af-input"
                   onChange={(v) => setDraftFijo({ ...draftFijo, dia: v })}
                 />
-                <div className="af-hint mt-1">Del 1 al 28, para que caiga en todos los meses.</div>
+                
               </div>
               <Button
                 className="w-full"
@@ -8206,9 +8207,9 @@ function UsuariosPanel({ perfil, showToast }) {
           <Input type="email" placeholder="correo@ejemplo.com" value={nuevo.email} onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })} />
         </div>
         <div className="af-field">
-          <Label>Contraseña</Label>
+          <Label>Contraseña<Ayuda enLinea>Compártela con la persona; podrá usarla de inmediato.</Ayuda></Label>
           <Input type="text" placeholder="Mínimo 6 caracteres" value={nuevo.password} onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
-          <div className="af-hint">Compártela con la persona; podrá usarla de inmediato.</div>
+          
         </div>
         {errorUsr && <div className="af-error">{errorUsr}</div>}
         <Button className="w-full" onClick={alta} disabled={creando}>
@@ -8615,13 +8616,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             {ex.piezasPorUnidad > 0 ? "piezas en cada orden" : "déjalo en 0 si se vende por pieza"}
           </span>
         </div>
-        <div className="af-hint">
+        <Ayuda>
           {ex.piezasPorUnidad > 1
             ? `Al pedir 2 saldrán ${2 * ex.piezasPorUnidad} piezas en la producción del día y en el WhatsApp del cliente.`
             : ex.piezasPorUnidad === 1
               ? "Poner 1 es lo mismo que poner 0: déjalo en 0 y te evitas la duda."
               : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
-        </div>
+        </Ayuda>
         <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
         <Combobox
          
@@ -8649,11 +8650,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           </Combobox>
         )}
         {ex.empaqueTipo === "rango" && (
-          <div className="af-hint">
+          <Ayuda>
             Se usará el envase (medido en piezas) cuyo rango incluya el total de piezas del pedido
             ({ex.piezasPorUnidad > 0 ? `${ex.piezasPorUnidad} por orden` : "define las piezas por orden arriba"}).
             Configura esos envases en <strong>Inventario → Envases desechables</strong>.
-          </div>
+          </Ayuda>
         )}
       </div>
     );
@@ -8735,12 +8736,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             <div className="af-hint mb-4">Solo el administrador puede modificar los ajustes. Lo que sí puedes cambiar es <strong>qué se ve en el menú</strong>, más abajo.</div>
           )}
           <fieldset disabled={!esAdmin} className="af-fieldset-reset">
-          <div className="af-section-title">Datos de pago para clientes</div>
-          <Card className="p-4 mb-4">
-            <p className="af-ink-soft text-sm mb-3">
+          <div className="af-section-title">Datos de pago para clientes<Ayuda enLinea>
               Estos datos se anexan al mensaje de WhatsApp y al PDF para que el cliente
               pueda dejar su anticipo por transferencia. Déjalos vacíos si no quieres enviarlos.
-            </p>
+            </Ayuda></div>
+          <Card className="p-4 mb-4">
+            
             <div className="af-field">
               <Label>Banco</Label>
               <Input placeholder="Ej. BBVA" value={(draft.pago || {}).banco || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), banco: e.target.value } })} />
@@ -8758,12 +8759,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </Button>
           </Card>
 
-          <div className="af-section-title">Datos para pedir facturas</div>
-          <Card className="p-4 mb-4">
-            <p className="af-ink-soft text-sm mb-3">
+          <div className="af-section-title">Datos para pedir facturas<Ayuda enLinea>
               Se capturan una vez y después se copian de un toque en el portal de cada tienda.
               Viven solo en tu base de datos, nunca en el código de la app.
-            </p>
+            </Ayuda></div>
+          <Card className="p-4 mb-4">
+            
             {[
               { k: "rfc", label: "RFC", ph: "Con homoclave" },
               { k: "razonSocial", label: "Nombre o razón social", ph: "Igual que en tu Constancia" },
@@ -8812,13 +8813,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
              ve cada quien; y dejarla bloqueada dejaba encerrado a quien no
              fuera admin: con Presupuestos apagado no podía entrar a
              Presupuestos ni volver a encenderlo. */}
-          <div className="af-section-title">Qué se ve en el menú</div>
-          <Card className="p-4 mb-4">
-            <p className="af-ink-soft text-sm mb-3">
+          <div className="af-section-title">Qué se ve en el menú<Ayuda enLinea>
               Apaga lo que no uses y desaparece de tu barra. <strong>Esto es solo tuyo</strong>:
               a los demás no les cambia nada, y te sigue a cualquier aparato donde entres.
               No se borra nada — lo que hubiera ahí sigue guardado y vuelve a aparecer al encenderlo.
-            </p>
+            </Ayuda></div>
+          <Card className="p-4 mb-4">
+            
             {NAV_ESCONDIBLES.map((n) => {
               const ocultas = navOcultasDe(draft, perfil);
               const visible = !ocultas.includes(n.key);
@@ -8855,13 +8856,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
           <fieldset disabled={!esAdmin} className="af-fieldset-reset">
 
-          <div className="af-section-title">Dónde recoger</div>
-          <Card className="p-4 mb-4">
-            <p className="af-ink-soft text-sm mb-3">
+          <div className="af-section-title">Dónde recoger<Ayuda enLinea>
               Esto se le manda al cliente <strong>desde que aparta su pedido</strong> y otra vez
               cuando le avisas que ya está listo, para que no tenga que esperar a buscar la
               dirección. Solo se envía en los pedidos para recoger. Deja vacío lo que no quieras mandar.
-            </p>
+            </Ayuda></div>
+          <Card className="p-4 mb-4">
+            
             <div className="af-field">
               <Label>Dirección</Label>
               <Input
@@ -8872,16 +8873,16 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <Label>Liga de la ubicación</Label>
+              <Label>Liga de la ubicación<Ayuda enLinea>
+                Se saca de Google Maps: busca el lugar, dale a Compartir y copia la liga.
+              </Ayuda></Label>
               <Input
                
                 placeholder="Ej. https://maps.google.com/?q=21.03,-89.59"
                 value={(draft.local || {}).ubicacion || ""}
                 onChange={(e) => setDraft({ ...draft, local: { ...(draft.local || {}), ubicacion: e.target.value } })}
               />
-              <p className="af-ink-soft text-xs mt-1">
-                Se saca de Google Maps: busca el lugar, dale a Compartir y copia la liga.
-              </p>
+              
             </div>
             <div className="af-field">
               <Label>Liga de la foto de la fachada</Label>
@@ -8897,13 +8898,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </Button>
           </Card>
 
-          <div className="af-section-title">Mensajes de WhatsApp</div>
-          <Card className="p-4 mb-4">
-            <p className="af-ink-soft text-sm mb-3">
+          <div className="af-section-title">Mensajes de WhatsApp<Ayuda enLinea>
               Así se redactan los mensajes automáticos. Puedes usar <strong>{"{nombre}"}</strong> y{" "}
               <strong>{"{folio}"}</strong> y se rellenan solos. El detalle del pedido (platillos, total, folio)
               se agrega aparte, no hace falta escribirlo aquí.
-            </p>
+            </Ayuda></div>
+          <Card className="p-4 mb-4">
+            
             <div className="af-field">
               <Label>Saludo al crear un pedido</Label>
               <Textarea
@@ -8923,17 +8924,17 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <Label>Al avisar — pedido para recoger</Label>
+              <Label>Al avisar — pedido para recoger<Ayuda enLinea>
+                Donde diga <strong>{"{dondeRecoger}"}</strong> se pone sola la dirección, la ubicación
+                y la foto que capturaste arriba. Si lo borras, ya no se manda.
+              </Ayuda></Label>
               <Textarea
                
                 rows={6}
                 value={(draft.mensajes || MENSAJES_DEFAULT).avisadoRecoger}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoRecoger: e.target.value } })}
               />
-              <p className="af-ink-soft text-xs mt-1">
-                Donde diga <strong>{"{dondeRecoger}"}</strong> se pone sola la dirección, la ubicación
-                y la foto que capturaste arriba. Si lo borras, ya no se manda.
-              </p>
+              
             </div>
             <div className="af-field">
               <Label>Al avisar — pedido a domicilio</Label>
@@ -8945,31 +8946,31 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <Label>Cuando el pedido cambia después de avisarle</Label>
+              <Label>Cuando el pedido cambia después de avisarle<Ayuda enLinea>
+                Se ofrece al guardar un pedido al que ya le habías avisado al cliente y que
+                cambió de platillos, total, día, hora o forma de entrega. Abajo va el resumen
+                completo ya actualizado.
+              </Ayuda></Label>
               <Textarea
                
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).cambioPedido || MENSAJES_DEFAULT.cambioPedido}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), cambioPedido: e.target.value } })}
               />
-              <p className="af-ink-soft text-xs mt-1">
-                Se ofrece al guardar un pedido al que ya le habías avisado al cliente y que
-                cambió de platillos, total, día, hora o forma de entrega. Abajo va el resumen
-                completo ya actualizado.
-              </p>
+              
             </div>
             <div className="af-field">
-              <Label>Al llegar a la puerta — botón "Ya llegué"</Label>
+              <Label>Al llegar a la puerta — botón "Ya llegué"<Ayuda enLinea>
+                Sale como un botón verde en los pedidos a domicilio que faltan por entregar.
+                Abre WhatsApp con el mensaje escrito, sin mandarlo: todavía hay que darle enviar.
+              </Ayuda></Label>
               <Textarea
                
                 rows={2}
                 value={(draft.mensajes || MENSAJES_DEFAULT).llegue || MENSAJES_DEFAULT.llegue}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), llegue: e.target.value } })}
               />
-              <p className="af-ink-soft text-xs mt-1">
-                Sale como un botón verde en los pedidos a domicilio que faltan por entregar.
-                Abre WhatsApp con el mensaje escrito, sin mandarlo: todavía hay que darle enviar.
-              </p>
+              
             </div>
             <div className="af-field">
               <Label>Al marcar Entregado</Label>
@@ -8981,29 +8982,29 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <Label>Al recibir un pago — todavía debe algo</Label>
+              <Label>Al recibir un pago — todavía debe algo<Ayuda enLinea>
+                Aquí sí puedes usar <strong>{"{abono}"}</strong> (lo que acaba de pagar),{" "}
+                <strong>{"{pagado}"}</strong>, <strong>{"{saldo}"}</strong> y <strong>{"{total}"}</strong>.
+              </Ayuda></Label>
               <Textarea
                
                 rows={6}
                 value={(draft.mensajes || MENSAJES_DEFAULT).pagoAbono || MENSAJES_DEFAULT.pagoAbono}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), pagoAbono: e.target.value } })}
               />
-              <p className="af-ink-soft text-xs mt-1">
-                Aquí sí puedes usar <strong>{"{abono}"}</strong> (lo que acaba de pagar),{" "}
-                <strong>{"{pagado}"}</strong>, <strong>{"{saldo}"}</strong> y <strong>{"{total}"}</strong>.
-              </p>
+              
             </div>
             <div className="af-field">
-              <Label>Para saludar a un cliente que no ha vuelto</Label>
+              <Label>Para saludar a un cliente que no ha vuelto<Ayuda enLinea>
+                Sale del botón "Saludarlo" en Clientes. Aquí no hay pedido, así que solo funciona <strong>{"{nombre}"}</strong>.
+              </Ayuda></Label>
               <Textarea
                
                 rows={4}
                 value={(draft.mensajes || MENSAJES_DEFAULT).extranamos || MENSAJES_DEFAULT.extranamos}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), extranamos: e.target.value } })}
               />
-              <p className="af-ink-soft text-xs mt-1">
-                Sale del botón "Saludarlo" en Clientes. Aquí no hay pedido, así que solo funciona <strong>{"{nombre}"}</strong>.
-              </p>
+              
             </div>
             <div className="af-field">
               <Label>Al recibir un pago — ya quedó saldado</Label>
@@ -9054,12 +9055,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               })()}
         </Card>
 
-        <div className="af-section-title">Respaldo de información</div>
-          <Card className="p-4 mb-4">
-            <p className="af-ink-soft text-sm mb-3">
+        <div className="af-section-title">Respaldo de información<Ayuda enLinea>
               Toda la información vive en este dispositivo. Descarga un respaldo cada cierto tiempo
               y guárdalo donde no se pierda (Drive, correo, etc.).
-            </p>
+            </Ayuda></div>
+          <Card className="p-4 mb-4">
+            
             <Button className="w-full" onClick={exportarRespaldo}>
               <Download size={15} className="inline mr-1" /> Descargar respaldo
             </Button>
@@ -9134,7 +9135,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
                   {abierto && acomodandoGrupo === g.id && (
                     <>
-                      <div className="af-hint mb-2">Usa las flechas para subir o bajar. Al terminar toca <strong>Listo</strong> y se guarda.</div>
+                      <Ayuda className="mb-2">Usa las flechas para subir o bajar. Al terminar toca <strong>Listo</strong> y se guarda.</Ayuda>
                       {g.items.map(({ it }, pos) => (
                         <div key={it.id} className="af-ing-row af-menu-row af-acomodar-row">
                           <span className="af-ing-row-nombre">{it.nombre || "Sin nombre"}</span>
@@ -9153,7 +9154,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   )}
                   {abierto && acomodandoGrupo !== g.id && (
                     <>
-                      {g.hint && <div className="af-hint mb-2">{g.hint}</div>}
+                      {g.hint && <Ayuda className="mb-2">{g.hint}</Ayuda>}
                       {/* Buscando no se acomoda: la lista filtrada no es el orden real. */}
                       {g.items.length > 1 && !normNombre(buscarMenu) && (
                         <Button variant="secondary"
@@ -9208,15 +9209,15 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
           {/* Va PRIMERO porque es lo que se toca a diario: se hacen croquetas
               por la mañana y se apunta cuántas salieron. Los ingredientes se
               revisan de vez en cuando; esto, cada día. */}
-          <div className="af-section-title">Lo que ya está hecho</div>
-          <div className="af-hint mb-3">
+          <div className="af-section-title">Lo que ya está hecho<Ayuda enLinea>
             Aquí van solo los platillos que preparas <strong>por adelantado</strong>. Apunta
             cuántos te salieron y cada pedido los va descontando solo: en "Hoy" te avisa cuando
             queden pocos, y al guardar un pedido que pide más de los que hay, te lo dice antes.
             <br />
             Cada uno se cuenta <strong>como tú lo cuentas</strong>: las croquetas por pieza, el
             alioli por frasco, el bacalao por kilo. Lo eliges en cada tarjeta.
-          </div>
+          </Ayuda></div>
+          
           <div className="af-menu-grid mb-4">
             {/* Solo los que de verdad llevan cuenta. La lista entera del menú
                 no sirve de nada: son quince platillos y se cuentan cuatro.
@@ -9396,18 +9397,18 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                   <option key={x.id} value={x.id}>{x.nombre}</option>
                 ))}
               </Combobox>
-              <p className="af-ink-soft text-xs mt-1">
+              <Ayuda className="mt-1">
                 Para quitar uno de la lista, apaga su interruptor: el número se guarda por si lo vuelves a encender.
-              </p>
+              </Ayuda>
             </label>
           )}
 
-          <div className="af-section-title">Ingredientes</div>
-          <div className="af-hint mb-3">
+          <div className="af-section-title">Ingredientes<Ayuda enLinea>
             Dile a la app cómo COMPRAS cada ingrediente (ej. bolsa de 1.5 kilos) y cuánto USAS
             por cada kilo de paella (ej. 150 gramos, o 4 piezas). Ella hace la conversión y
             descuenta solita al guardar pedidos; en "Hoy" te avisa cuando algo esté por acabarse.
-          </div>
+          </Ayuda></div>
+          
           {(draft.ingredientes || []).length > 6 && (
             <div className="af-buscador-gastos mb-3">
               <Search size={16} />
@@ -9715,13 +9716,13 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </button>
           </div>
 
-          <div className="af-section-title">Envases desechables</div>
-          <div className="af-hint mb-3">
+          <div className="af-section-title">Envases desechables<Ayuda enLinea>
             Cada envase cubre una medida exacta o un rango. Los de <strong>kilos</strong> los toman
             solas las paellas que no van en paellera; los de <strong>piezas</strong> hay que
             vincularlos desde el platillo (Menú → ese platillo → Empaque). Abajo de cada uno dice en
             qué se está usando hoy.
-          </div>
+          </Ayuda></div>
+          
           <div className="af-menu-grid">
             {(draft.desechables || []).map(normalizarDesechable).map((d, i) => {
               const uInfo = UNIDADES_ENVASE.find((u) => u.id === d.unidad) || UNIDADES_ENVASE[0];
@@ -9873,14 +9874,14 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
             </button>
           </div>
 
-          <div className="af-section-title">Paelleras</div>
-          <div className="af-hint mb-3">
+          <div className="af-section-title">Paelleras<Ayuda enLinea>
             Ponle nombre a cada tamaño para identificarlo más fácil (si lo dejas vacío se usa el
             rango de kilos). Cada tamaño cubre un rango de kilos: al guardar un pedido, según los
             kilos de cada paella se sabe qué tamaño se necesita — se ve en Producción del día, en
             Agenda. Las paellas de {PAELLA_SUELTA_MAX_KG} kg o menos son muy chicas para cualquier
             paellera y se cuentan aparte como "sueltas".
-          </div>
+          </Ayuda></div>
+          
           <div className="af-menu-grid">
             {(draft.paelleras || []).map((t, i) => {
               const setT = (cambios) => {
@@ -11414,7 +11415,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
       {modo === "pedido" && (
         <div className="af-field">
-          <Label>Pago</Label>
+          <Label>Pago<Ayuda enLinea>El pago no es obligatorio, puede completarse antes, durante o después de la entrega. Si dan parte por transferencia y el resto en efectivo, registra cada cobro por separado.</Ayuda></Label>
           <div className="af-pago-box">
             <div className="af-pago-line"><span>Total</span><span>{money(total)}</span></div>
 
@@ -11490,7 +11491,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               </div>
             )}
           </div>
-          <div className="af-hint">El pago no es obligatorio, puede completarse antes, durante o después de la entrega. Si dan parte por transferencia y el resto en efectivo, registra cada cobro por separado.</div>
         </div>
       )}
 
