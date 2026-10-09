@@ -11636,6 +11636,24 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const hayNuevaVersion = useNuevaVersion();
 
+  // El color de la barra de Safari (y de lo que asoma arriba al deslizar) va
+  // igual que el encabezado. En celular el encabezado es lavanda; en iPad y
+  // compu, con la barra lateral, es casi blanco. Si se quedaba lavanda en el
+  // iPad, Safari pintaba una franja lavanda arriba y la difuminaba sobre la
+  // app: se veía como un degradado que tapaba.
+  useEffect(() => {
+    const ancho = window.matchMedia("(min-width: 700px)");
+    const aplicar = () => {
+      const color = ancho.matches ? "#FAFBFF" : "#B8CAFF";
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", color);
+      document.documentElement.style.background = color;
+      document.body.style.background = color;
+    };
+    aplicar();
+    ancho.addEventListener("change", aplicar);
+    return () => ancho.removeEventListener("change", aplicar);
+  }, []);
+
   // Cuando hay versión nueva se actualiza sola, sin pedir nada. La única
   // excepción es estar capturando un pedido: ahí se deja el aviso para no
   // borrar lo que se esté escribiendo, y se actualiza al salir del formulario.
