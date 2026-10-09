@@ -7,6 +7,9 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Card } from "@/components/ui/card";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Toggle } from "@/components/ui/toggle";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Plus, Search, CalendarDays, Users, Settings, MapPin, Phone,
   X, ArrowLeft, Home, Truck, Store, ChefHat, Check, Minus, Trash2,
@@ -2408,7 +2411,7 @@ function LoginView({ onEntrar }) {
         <div className="af-logo-mark af-logo-login" />
         <div className="af-login-sub">Inicia sesión para ver los pedidos</div>
         <div className="af-field">
-          <label>Correo</label>
+          <Label>Correo</Label>
           <Input
             type="email" autoComplete="username" placeholder="tu@correo.com"
             value={email} onChange={(e) => setEmail(e.target.value)}
@@ -2416,7 +2419,7 @@ function LoginView({ onEntrar }) {
           />
         </div>
         <div className="af-field">
-          <label>Contraseña</label>
+          <Label>Contraseña</Label>
           <Input
             type="password" autoComplete="current-password" placeholder="••••••••"
             value={password} onChange={(e) => setPassword(e.target.value)}
@@ -2771,7 +2774,7 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34 }) {
                   </Button>
                 )}
                 <div className="af-field">
-                  <label>Nombre</label>
+                  <Label>Nombre</Label>
                   <Input placeholder="Tu nombre" value={nombreDraft} onChange={(e) => setNombreDraft(e.target.value)} />
                 </div>
                 <Button className="w-full" onClick={guardar} disabled={guardando}>
@@ -3081,17 +3084,17 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
       {activosHoy.length > 0 && (
         <div className="af-category-pills mb-3">
-          <button className={"af-category-pill" + (estadoFiltro === "todos" ? " active" : "")} onClick={() => setEstadoFiltro("todos")}>
+          <Toggle variant="pastilla" pressed={estadoFiltro === "todos"} onClick={() => setEstadoFiltro("todos")}>
             Todos
-          </button>
+          </Toggle>
           {ESTADOS_PEDIDO.filter((e) => e.id !== "entregado").map((e) => (
-            <button
+            <Toggle
               key={e.id}
-              className={"af-category-pill" + (estadoFiltro === e.id ? " active" : "")}
+              variant="pastilla" pressed={estadoFiltro === e.id}
               onClick={() => setEstadoFiltro(e.id)}
             >
               {e.label}
-            </button>
+            </Toggle>
           ))}
         </div>
       )}
@@ -3376,12 +3379,12 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
   return (
     <div>
       <div className="af-subtabs mb-4">
-        <button className={"af-subtab" + (tab === "pendientes" ? " active" : "")} onClick={() => onTab("pendientes")}>
+        <Toggle variant="segmento" pressed={tab === "pendientes"} onClick={() => onTab("pendientes")}>
           Por entregar {pendientes.length > 0 && <span className="af-dot">{pendientes.length}</span>}
-        </button>
-        <button className={"af-subtab" + (tab === "entregados" ? " active" : "")} onClick={() => onTab("entregados")}>
+        </Toggle>
+        <Toggle variant="segmento" pressed={tab === "entregados"} onClick={() => onTab("entregados")}>
           Entregados
-        </button>
+        </Toggle>
       </div>
 
       {/* Aquí no va "Nuevo pedido": ya está en Hoy, que es la pantalla de
@@ -3891,7 +3894,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
             <DialogContent className="af-alerta-modal af-modal-form" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo">{formDeuda.id ? "Cambiar los datos" : "¿Quién te debe?"}</div>
               <div className="af-field">
-                <label>Nombre</label>
+                <Label>Nombre</Label>
                 <Input
                  
                   placeholder="Ej. Juan Pérez"
@@ -3900,7 +3903,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                 />
               </div>
               <div className="af-field">
-                <label>¿Cuánto te debe?</label>
+                <Label>¿Cuánto te debe?</Label>
                 <Input
                  
                   type="number"
@@ -3911,7 +3914,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                 />
               </div>
               <div className="af-field">
-                <label>Nota (opcional)</label>
+                <Label>Nota (opcional)</Label>
                 <Input
                  
                   placeholder="Ej. préstamo de la camioneta"
@@ -3930,7 +3933,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
             <DialogContent className="af-alerta-modal af-modal-form" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo">{formPago.id ? "Cambiar el pago" : "¿Cuánto te pagó?"}</div>
               <div className="af-field">
-                <label>Cantidad</label>
+                <Label>Cantidad</Label>
                 <Input
                  
                   type="number"
@@ -3941,7 +3944,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                 />
               </div>
               <div className="af-field">
-                <label>¿Qué día?</label>
+                <Label>¿Qué día?</Label>
                 <Input
                  
                   type="date"
@@ -3950,7 +3953,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                 />
               </div>
               <div className="af-field">
-                <label>Comprobante (opcional)</label>
+                <Label>Comprobante (opcional)</Label>
                 {formPago.comprobante ? (
                   <div className="af-ticket-guardado">
                     <Receipt size={16} /> <span>Foto guardada</span>
@@ -3970,7 +3973,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
                 )}
               </div>
               <div className="af-field">
-                <label>Nota (opcional)</label>
+                <Label>Nota (opcional)</Label>
                 <Input
                  
                   placeholder="Ej. me lo dio en efectivo"
@@ -4146,19 +4149,19 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         </div>
         <div className="af-section-title">Nuevo cliente</div>
         <div className="af-field">
-          <label>Nombre</label>
+          <Label>Nombre</Label>
           <Input value={form.nombre} onChange={(e) => { setForm({ ...form, nombre: e.target.value }); setConfirmDup(false); }} placeholder="Nombre y apellido" />
         </div>
         <div className="af-field">
-          <label>Teléfono</label>
+          <Label>Teléfono</Label>
           <Input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} placeholder="55 1234 5678" />
         </div>
         <div className="af-field">
-          <label>Ubicación</label>
+          <Label>Ubicación</Label>
           <UbicacionField value={form.ubicacion} onChange={(v) => setForm({ ...form, ubicacion: v })} placeholder="Pega el link que te mandan por WhatsApp" />
         </div>
         <div className="af-field">
-          <label>Referencias de dirección</label>
+          <Label>Referencias de dirección</Label>
           <Input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} placeholder="Opcional" />
         </div>
         {(() => {
@@ -4222,15 +4225,15 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         </div>
 
         <div className="af-field">
-          <label>Nombre</label>
+          <Label>Nombre</Label>
           <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
         </div>
         <div className="af-field">
-          <label>Teléfono</label>
+          <Label>Teléfono</Label>
           <Input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
         </div>
         <div className="af-field">
-          <label>Ubicación</label>
+          <Label>Ubicación</Label>
           <UbicacionField value={form.ubicacion} onChange={(v) => setForm({ ...form, ubicacion: v })} />
           {form.ubicacion && (
             <a href={enlaceDeUbicacion(form.ubicacion)} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: "link", size: "auto" }), "mt-1 inline-flex items-center gap-1")}>
@@ -4239,11 +4242,11 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
           )}
         </div>
         <div className="af-field">
-          <label>Referencias de dirección</label>
+          <Label>Referencias de dirección</Label>
           <Input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
         </div>
         <div className="af-field">
-          <label>Notas</label>
+          <Label>Notas</Label>
           <Textarea rows={2} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
         </div>
 
@@ -6181,9 +6184,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   return (
     <div>
       <div className="af-subtabs mb-4">
-        <button className={"af-subtab" + (tab === "ventas" ? " active" : "")} onClick={() => setTab("ventas")}>Ventas</button>
-        <button className={"af-subtab" + (tab === "rentabilidad" ? " active" : "")} onClick={() => setTab("rentabilidad")}>Rentabilidad</button>
-        <button className={"af-subtab" + (tab === "finanzas" ? " active" : "")} onClick={() => setTab("finanzas")}>Finanzas</button>
+        <Toggle variant="segmento" pressed={tab === "ventas"} onClick={() => setTab("ventas")}>Ventas</Toggle>
+        <Toggle variant="segmento" pressed={tab === "rentabilidad"} onClick={() => setTab("rentabilidad")}>Rentabilidad</Toggle>
+        <Toggle variant="segmento" pressed={tab === "finanzas"} onClick={() => setTab("finanzas")}>Finanzas</Toggle>
       </div>
 
       {tab === "rentabilidad" && (
@@ -6793,26 +6796,26 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {/* Una cosa a la vez: juntas, las paellas aplastan a lo demás y el
               pastel se vuelve ilegible. */}
           <div className="af-ambito-switch mb-3">
-            <button
-              className={"af-ambito-btn" + (vistaVentas === "paellas" ? " active" : "")}
+            <Toggle
+              variant="segmento" pressed={vistaVentas === "paellas"}
               onClick={() => { setVistaVentas("paellas"); setSectorPlatillo(null); }}
             >
               Paellas
-            </button>
+            </Toggle>
             {soloOtros.length > 0 && (
-              <button
-                className={"af-ambito-btn" + (vistaVentas === "otros" ? " active" : "")}
+              <Toggle
+                variant="segmento" pressed={vistaVentas === "otros"}
                 onClick={() => { setVistaVentas("otros"); setSectorPlatillo(null); }}
               >
                 Otros platillos
-              </button>
+              </Toggle>
             )}
-            <button
-              className={"af-ambito-btn" + (vistaVentas === "todo" ? " active" : "")}
+            <Toggle
+              variant="segmento" pressed={vistaVentas === "todo"}
               onClick={() => { setVistaVentas("todo"); setSectorPlatillo(null); }}
             >
               Todo
-            </button>
+            </Toggle>
           </div>
 
           {datosPaella.length === 0 ? (
@@ -6950,7 +6953,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               negocio, la categoría de esa tienda) y vive en "Más detalles".
               Antes eran siete campos para apuntar una compra de $200. */}
           <div className="af-field">
-            <label>¿Cuánto fue?</label>
+            <Label>¿Cuánto fue?</Label>
             <NumberField
               value={nuevoGasto.monto}
               min={0}
@@ -6960,7 +6963,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </div>
 
           <div className="af-field">
-            <label>¿En qué tienda?</label>
+            <Label>¿En qué tienda?</Label>
             {/* Lista en vez de campo libre: se elige de las que ya se han
                 usado, así el nombre sale idéntico siempre y no acaba escrito
                 de tres formas. Solo se escribe cuando es una tienda nueva. */}
@@ -7005,7 +7008,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             )}
           </div>
           <div className="af-field af-ticket-campo">
-            <label>Foto del ticket</label>
+            <Label>Foto del ticket</Label>
             {nuevoGasto.ticket ? (
               <div className="af-ticket-listo">
                 <Receipt size={15} /> Ticket guardado
@@ -7099,16 +7102,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               "Más detalles" y había que descubrirla; en una pantalla ancha
               caben los seis campos sin que estorben. */}
           <div className="af-field">
-            <label>¿De dónde sale?</label>
+            <Label>¿De dónde sale?</Label>
             <div className="af-ambito-switch">
               {AMBITOS.map((a) => (
-                <button
+                <Toggle
                   key={a.id}
-                  className={"af-ambito-btn" + ((nuevoGasto.ambito || "negocio") === a.id ? " active" : "")}
+                  variant="segmento" pressed={(nuevoGasto.ambito || "negocio") === a.id}
                   onClick={() => setNuevoGasto({ ...nuevoGasto, ambito: a.id })}
                 >
                   {a.label}
-                </button>
+                </Toggle>
               ))}
             </div>
           </div>
@@ -7117,11 +7120,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               factura, y Pepe no la encontraba: el paso natural es llegar con
               el ticket en la mano y retratarlo antes de teclear nada. */}
           <div className="af-field">
-            <label>Fecha</label>
+            <Label>Fecha</Label>
             <Input type="date" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
           </div>
           <div className="af-field">
-            <label>Categoría</label>
+            <Label>Categoría</Label>
             <NativeSelect
              
               value={nuevoGasto.categoria}
@@ -7137,7 +7140,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </NativeSelect>
           </div>
           <div className="af-field">
-            <label>Descripción (opcional)</label>
+            <Label>Descripción (opcional)</Label>
             {/* Ofrece los nombres ya usados: así "Chedraui" se escribe igual
                 todas las veces y no acaba escrito de tres formas distintas. */}
             <CampoConSugerencias
@@ -7543,21 +7546,21 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {draftFijo ? (
             <div className="af-fijos-form mt-3">
               <div className="af-field">
-                <label>¿De dónde sale?</label>
+                <Label>¿De dónde sale?</Label>
                 <div className="af-ambito-switch">
                   {AMBITOS.map((a) => (
-                    <button
+                    <Toggle
                       key={a.id}
-                      className={"af-ambito-btn" + ((draftFijo.ambito || "negocio") === a.id ? " active" : "")}
+                      variant="segmento" pressed={(draftFijo.ambito || "negocio") === a.id}
                       onClick={() => setDraftFijo({ ...draftFijo, ambito: a.id })}
                     >
                       {a.label}
-                    </button>
+                    </Toggle>
                   ))}
                 </div>
               </div>
               <div className="af-field">
-                <label>¿De qué es?</label>
+                <Label>¿De qué es?</Label>
                 <CampoConSugerencias
                   value={draftFijo.descripcion}
                   placeholder="Ej. Renta del local, sueldo de Lupita..."
@@ -7566,7 +7569,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 />
               </div>
               <div className="af-field">
-                <label>Categoría</label>
+                <Label>Categoría</Label>
                 <NativeSelect
                  
                   value={draftFijo.categoria}
@@ -7579,25 +7582,25 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   mes, como los cigarros. Se captura el diario y la app hace la
                   cuenta según los días que traiga cada mes. */}
               <div className="af-field">
-                <label>¿Cómo lo tienes contado?</label>
+                <Label>¿Cómo lo tienes contado?</Label>
                 <div className="af-ambito-switch">
-                  <button
-                    className={"af-ambito-btn" + (!(draftFijo.porDia > 0) ? " active" : "")}
+                  <Toggle
+                    variant="segmento" pressed={!(draftFijo.porDia > 0)}
                     onClick={() => setDraftFijo({ ...draftFijo, porDia: 0 })}
                   >
                     Al mes
-                  </button>
-                  <button
-                    className={"af-ambito-btn" + (draftFijo.porDia > 0 ? " active" : "")}
+                  </Toggle>
+                  <Toggle
+                    variant="segmento" pressed={draftFijo.porDia > 0}
                     onClick={() => setDraftFijo({ ...draftFijo, porDia: draftFijo.porDia || draftFijo.monto || 1, monto: "" })}
                   >
                     Por día
-                  </button>
+                  </Toggle>
                 </div>
               </div>
               {draftFijo.porDia > 0 ? (
                 <div className="af-field">
-                  <label>Cuánto al día</label>
+                  <Label>Cuánto al día</Label>
                   <NumberField
                     value={draftFijo.porDia}
                     min={0}
@@ -7611,7 +7614,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               ) : (
                 <div className="af-field">
-                  <label>Cuánto es</label>
+                  <Label>Cuánto es</Label>
                   <NumberField
                     value={draftFijo.monto}
                     min={0}
@@ -7621,7 +7624,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </div>
               )}
               <div className="af-field">
-                <label>Qué día del mes se paga</label>
+                <Label>Qué día del mes se paga</Label>
                 <NumberField
                   value={draftFijo.dia}
                   min={1}
@@ -7942,28 +7945,28 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             <DialogContent className="af-editar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo mb-3">Editar gasto</div>
               <div className="af-field">
-                <label>¿De dónde sale?</label>
+                <Label>¿De dónde sale?</Label>
                 <div className="af-ambito-switch">
                   {AMBITOS.map((a) => (
-                    <button
+                    <Toggle
                       key={a.id}
-                      className={"af-ambito-btn" + (ambitoDe(gastoEditando) === a.id ? " active" : "")}
+                      variant="segmento" pressed={ambitoDe(gastoEditando) === a.id}
                       onClick={() => setGastoEditando({ ...gastoEditando, ambito: a.id })}
                     >
                       {a.label}
-                    </button>
+                    </Toggle>
                   ))}
                 </div>
               </div>
               <div className="af-field">
-                <label>Fecha</label>
+                <Label>Fecha</Label>
                 <Input type="date" value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
               </div>
               {/* La tienda y la descripción se ELIGEN de las que ya hay, igual
                   que al capturar. Escritas a mano acababan con una letra de
                   diferencia y en los reportes contaban como dos cosas. */}
               <div className="af-field">
-                <label>¿En qué tienda?</label>
+                <Label>¿En qué tienda?</Label>
                 <NativeSelect
                  
                   value={gastoEditando.tienda || ""}
@@ -7977,13 +7980,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </NativeSelect>
               </div>
               <div className="af-field">
-                <label>Categoría</label>
+                <Label>Categoría</Label>
                 <NativeSelect value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
                   {categoriasEnUso.map((c) => <option key={c} value={c}>{c}</option>)}
                 </NativeSelect>
               </div>
               <div className="af-field">
-                <label>Descripción (opcional)</label>
+                <Label>Descripción (opcional)</Label>
                 <NativeSelect
                  
                   value={nombresUsados.includes(gastoEditando.descripcion) ? gastoEditando.descripcion : "__otra__"}
@@ -8002,7 +8005,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 )}
               </div>
               <div className="af-field">
-                <label>Monto</label>
+                <Label>Monto</Label>
                 <NumberField value={gastoEditando.monto} min={0} className="af-input" onChange={(v) => setGastoEditando({ ...gastoEditando, monto: v })} />
               </div>
               <Button className="w-full" onClick={guardarEdicionGasto} disabled={!gastoEditando.monto}>Guardar cambios</Button>
@@ -8093,15 +8096,15 @@ function UsuariosPanel({ perfil, showToast }) {
       <div className="af-section-title">Dar de alta un usuario</div>
       <Card className="p-4">
         <div className="af-field">
-          <label>Nombre</label>
+          <Label>Nombre</Label>
           <Input placeholder="Ej. Papá" value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} />
         </div>
         <div className="af-field">
-          <label>Correo</label>
+          <Label>Correo</Label>
           <Input type="email" placeholder="correo@ejemplo.com" value={nuevo.email} onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })} />
         </div>
         <div className="af-field">
-          <label>Contraseña</label>
+          <Label>Contraseña</Label>
           <Input type="text" placeholder="Mínimo 6 caracteres" value={nuevo.password} onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })} />
           <div className="af-hint">Compártela con la persona; podrá usarla de inmediato.</div>
         </div>
@@ -8599,11 +8602,11 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
   return (
     <div>
       <div className="af-subtabs mb-4">
-        <button className={"af-subtab" + (tab === "menu" ? " active" : "")} onClick={() => setTab("menu")}>Menú</button>
-        <button className={"af-subtab" + (tab === "inventario" ? " active" : "")} onClick={() => setTab("inventario")}>Inventario</button>
-        <button className={"af-subtab" + (tab === "datos" ? " active" : "")} onClick={() => setTab("datos")}>Datos</button>
+        <Toggle variant="segmento" pressed={tab === "menu"} onClick={() => setTab("menu")}>Menú</Toggle>
+        <Toggle variant="segmento" pressed={tab === "inventario"} onClick={() => setTab("inventario")}>Inventario</Toggle>
+        <Toggle variant="segmento" pressed={tab === "datos"} onClick={() => setTab("datos")}>Datos</Toggle>
         {perfil && perfil.rol === "admin" && (
-          <button className={"af-subtab" + (tab === "usuarios" ? " active" : "")} onClick={() => setTab("usuarios")}>Usuarios</button>
+          <Toggle variant="segmento" pressed={tab === "usuarios"} onClick={() => setTab("usuarios")}>Usuarios</Toggle>
         )}
       </div>
 
@@ -8637,15 +8640,15 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               pueda dejar su anticipo por transferencia. Déjalos vacíos si no quieres enviarlos.
             </p>
             <div className="af-field">
-              <label>Banco</label>
+              <Label>Banco</Label>
               <Input placeholder="Ej. BBVA" value={(draft.pago || {}).banco || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), banco: e.target.value } })} />
             </div>
             <div className="af-field">
-              <label>A nombre de</label>
+              <Label>A nombre de</Label>
               <Input placeholder="Nombre del titular" value={(draft.pago || {}).titular || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), titular: e.target.value } })} />
             </div>
             <div className="af-field">
-              <label>CLABE o número de tarjeta</label>
+              <Label>CLABE o número de tarjeta</Label>
               <Input placeholder="18 dígitos de CLABE o 16 de tarjeta" value={(draft.pago || {}).clabe || ""} onChange={(e) => setDraft({ ...draft, pago: { ...(draft.pago || {}), clabe: e.target.value } })} />
             </div>
             <Button className="w-full" onClick={guardar}>
@@ -8666,7 +8669,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               { k: "correo", label: "Correo donde llega la factura", ph: "tu@correo.com" },
             ].map((c) => (
               <div className="af-field" key={c.k}>
-                <label>{c.label}</label>
+                <Label>{c.label}</Label>
                 <Input
                  
                   placeholder={c.ph}
@@ -8676,7 +8679,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </div>
             ))}
             <div className="af-field">
-              <label>Régimen fiscal</label>
+              <Label>Régimen fiscal</Label>
               <Input
                
                 placeholder="Ej. 626"
@@ -8686,7 +8689,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               <p className="af-ink-soft text-xs mt-1">626 es Simplificado de Confianza (RESICO).</p>
             </div>
             <div className="af-field">
-              <label>Uso de la factura</label>
+              <Label>Uso de la factura</Label>
               <Input
                
                 placeholder="Ej. G01"
@@ -8758,7 +8761,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               dirección. Solo se envía en los pedidos para recoger. Deja vacío lo que no quieras mandar.
             </p>
             <div className="af-field">
-              <label>Dirección</label>
+              <Label>Dirección</Label>
               <Input
                
                 placeholder="Calle, número y colonia"
@@ -8767,7 +8770,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <label>Liga de la ubicación</label>
+              <Label>Liga de la ubicación</Label>
               <Input
                
                 placeholder="Ej. https://maps.google.com/?q=21.03,-89.59"
@@ -8779,7 +8782,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </p>
             </div>
             <div className="af-field">
-              <label>Liga de la foto de la fachada</label>
+              <Label>Liga de la foto de la fachada</Label>
               <Input
                
                 placeholder="Ej. https://…/casa-recoleccion.webp"
@@ -8800,7 +8803,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               se agrega aparte, no hace falta escribirlo aquí.
             </p>
             <div className="af-field">
-              <label>Saludo al crear un pedido</label>
+              <Label>Saludo al crear un pedido</Label>
               <Textarea
                
                 rows={2}
@@ -8809,7 +8812,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <label>Despedida al crear un pedido</label>
+              <Label>Despedida al crear un pedido</Label>
               <Textarea
                
                 rows={2}
@@ -8818,7 +8821,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <label>Al avisar — pedido para recoger</label>
+              <Label>Al avisar — pedido para recoger</Label>
               <Textarea
                
                 rows={6}
@@ -8831,7 +8834,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </p>
             </div>
             <div className="af-field">
-              <label>Al avisar — pedido a domicilio</label>
+              <Label>Al avisar — pedido a domicilio</Label>
               <Textarea
                
                 rows={2}
@@ -8840,7 +8843,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <label>Cuando el pedido cambia después de avisarle</label>
+              <Label>Cuando el pedido cambia después de avisarle</Label>
               <Textarea
                
                 rows={2}
@@ -8854,7 +8857,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </p>
             </div>
             <div className="af-field">
-              <label>Al llegar a la puerta — botón "Ya llegué"</label>
+              <Label>Al llegar a la puerta — botón "Ya llegué"</Label>
               <Textarea
                
                 rows={2}
@@ -8867,7 +8870,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </p>
             </div>
             <div className="af-field">
-              <label>Al marcar Entregado</label>
+              <Label>Al marcar Entregado</Label>
               <Textarea
                
                 rows={2}
@@ -8876,7 +8879,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               />
             </div>
             <div className="af-field">
-              <label>Al recibir un pago — todavía debe algo</label>
+              <Label>Al recibir un pago — todavía debe algo</Label>
               <Textarea
                
                 rows={6}
@@ -8889,7 +8892,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </p>
             </div>
             <div className="af-field">
-              <label>Para saludar a un cliente que no ha vuelto</label>
+              <Label>Para saludar a un cliente que no ha vuelto</Label>
               <Textarea
                
                 rows={4}
@@ -8901,7 +8904,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
               </p>
             </div>
             <div className="af-field">
-              <label>Al recibir un pago — ya quedó saldado</label>
+              <Label>Al recibir un pago — ya quedó saldado</Label>
               <Textarea
                
                 rows={4}
@@ -9581,7 +9584,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     <Plus size={14} className="inline mr-1" /> Agregar paella o platillo
                   </Button>
                   <label className="af-check-row af-check-row-small mt-2">
-                    <input type="checkbox" checked={!!ing.avisarProduccion} onChange={(e) => setIng({ avisarProduccion: e.target.checked })} />
+                    <Checkbox checked={!!ing.avisarProduccion} onCheckedChange={(v) => setIng({ avisarProduccion: v === true })} />
                     <span>Avisar el total en Agenda → Producción del día (ej. camarón que se pela con anticipación)</span>
                   </label>
                   {ing.stock <= ing.minimo && <div className="af-stock-alert">¡Hay que comprar más!</div>}
@@ -9670,18 +9673,18 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     {UNIDADES_ENVASE.map((u) => (<option key={u.id} value={u.id}>{u.label}</option>))}
                   </NativeSelect>
                   <div className="af-ambito-switch mb-2">
-                    <button
-                      className={"af-ambito-btn" + (!d.exacto ? " active" : "")}
+                    <Toggle
+                      variant="segmento" pressed={!d.exacto}
                       onClick={() => setD({ exacto: false })}
                     >
                       Un rango
-                    </button>
-                    <button
-                      className={"af-ambito-btn" + (d.exacto ? " active" : "")}
+                    </Toggle>
+                    <Toggle
+                      variant="segmento" pressed={d.exacto}
                       onClick={() => setD({ exacto: true, rangoMax: d.rangoMin })}
                     >
                       Medida exacta
-                    </button>
+                    </Toggle>
                   </div>
                   {d.exacto ? (
                     <div className="af-menu-card-row">
@@ -9797,10 +9800,9 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     </Button>
                   </div>
                   <label className="af-check-row af-check-row-small mb-2">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={esExacto}
-                      onChange={(e) => setT(e.target.checked ? { rangoMax: t.rangoMin } : { rangoMax: t.rangoMin + 2 })}
+                      onCheckedChange={(v) => setT(v === true ? { rangoMax: t.rangoMin } : { rangoMax: t.rangoMin + 2 })}
                     />
                     <span>Kilos exactos (no un rango)</span>
                   </label>
@@ -9912,7 +9914,7 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
                     <React.Fragment key={pr.id}>
                       {abreGrupo && <div className="af-receta-grupo">{pr.grupo}</div>}
                       <label className="af-check-row">
-                        <input type="checkbox" checked={yaEsta(pr.id)} onChange={() => alternar(pr.id)} />
+                        <Checkbox checked={yaEsta(pr.id)} onCheckedChange={() => alternar(pr.id)} />
                         <span>
                           {pr.nombre}
                           <span className="af-ink-soft"> · por {pr.porQue}</span>
@@ -10101,11 +10103,11 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
               />
             </div>
             <div className="af-category-pills">
-              <button className={"af-category-pill" + (categoria === "todos" ? " active" : "")} onClick={() => setCategoria("todos")}>Todos</button>
+              <Toggle variant="pastilla" pressed={categoria === "todos"} onClick={() => setCategoria("todos")}>Todos</Toggle>
               {CATEGORIAS_ITEM.map((c) => (
-                <button key={c.id} className={"af-category-pill" + (categoria === c.id ? " active" : "")} onClick={() => setCategoria(c.id)}>
+                <Toggle key={c.id} variant="pastilla" pressed={categoria === c.id} onClick={() => setCategoria(c.id)}>
                   {c.label}
-                </button>
+                </Toggle>
               ))}
             </div>
             {itemsCarrito.length > 0 && (
@@ -10186,23 +10188,23 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
               <div className="af-picker-form">
                 <div className="af-section-title">{editando === "nuevo" ? "Nuevo producto" : "Editar producto"}</div>
                 <div className="af-field">
-                  <label>Nombre</label>
+                  <Label>Nombre</Label>
                   <Input placeholder="Nombre del producto" value={draftProducto.nombre} onChange={(e) => setDraftProducto({ ...draftProducto, nombre: e.target.value })} />
                 </div>
                 <div className="af-field">
-                  <label>Categoría</label>
+                  <Label>Categoría</Label>
                   <NativeSelect value={draftProducto.categoria} onChange={(e) => setDraftProducto({ ...draftProducto, categoria: e.target.value })}>
                     {CATEGORIAS_ITEM.map((c) => (<option key={c.id} value={c.id}>{c.label}</option>))}
                   </NativeSelect>
                 </div>
                 {draftProducto.categoria !== "paella" && (
                   <div className="af-field">
-                    <label>Unidad</label>
+                    <Label>Unidad</Label>
                     <Input placeholder="pieza, ración de 6..." value={draftProducto.unidad} onChange={(e) => setDraftProducto({ ...draftProducto, unidad: e.target.value })} />
                   </div>
                 )}
                 <div className="af-field">
-                  <label>{draftProducto.categoria === "paella" ? "Precio por kg" : "Precio"}</label>
+                  <Label>{draftProducto.categoria === "paella" ? "Precio por kg" : "Precio"}</Label>
                   <NumberField className="af-input" min={0} value={draftProducto.precio} onChange={(v) => setDraftProducto({ ...draftProducto, precio: v })} />
                 </div>
                 <div className="flex gap-2 mt-2">
@@ -10913,7 +10915,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
     <div className="af-form-wrap">
       {editando && modo === "pedido" && (
         <div className="af-field">
-          <label>Estado del pedido</label>
+          <Label>Estado del pedido</Label>
           <div className="af-estado-pills">
             {ESTADOS_PEDIDO.map((e) => (
               <button
@@ -10939,7 +10941,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
       <div className="af-card-grid">
         <div className="af-field">
-          <label>Fecha</label>
+          <Label>Fecha</Label>
           {/* Las flechas son para capturar pedidos viejos: pasar del 5 al 6 de
               enero es un toque, en vez de abrir el calendario y buscar el día.
               Ese ir y venir es lo que más tiempo toma al meter meses pasados. */}
@@ -10981,14 +10983,14 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           )}
         </div>
         <div className="af-field">
-          <label>Hora</label>
+          <Label>Hora</Label>
           <Input type="time" value={form.hora} onChange={(e) => setForm((p) => ({ ...p, hora: e.target.value }))} />
           {form.hora && <div className="af-hora-preview">Se verá como: <strong>{fmtHora12(form.hora)}</strong></div>}
         </div>
       </div>
 
       <div className="af-field">
-        <label>Cliente</label>
+        <Label>Cliente</Label>
         {form.clienteId ? (
           <div className="af-cliente-chip">
             <div className="af-combo-row">
@@ -11080,7 +11082,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
       {modo === "presupuesto" && (
         <div className="af-field">
-          <label>Notas importantes (términos y condiciones)</label>
+          <Label>Notas importantes (términos y condiciones)</Label>
           <Textarea
            
             rows={4}
@@ -11092,7 +11094,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       )}
 
       <div className="af-field">
-        <label>Ítems</label>
+        <Label>Ítems</Label>
         {form.items.length > 0 && (
           <div className="af-items-table">
             <div className="af-items-head">
@@ -11153,7 +11155,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       quiere en paellera y si vamos por ella, y eso cambia el total. */}
                   {it.tipo === "paella" && (
                     <label className="af-check-row af-check-row-small">
-                      <input type="checkbox" checked={!!it.enPaellera} onChange={(e) => updateEnPaellera(it.id, e.target.checked)} />
+                      <Checkbox checked={!!it.enPaellera} onCheckedChange={(v) => updateEnPaellera(it.id, v === true)} />
                       <span><ChefHat size={13} className="inline mr-1" /> Va en paellera</span>
                     </label>
                   )}
@@ -11226,7 +11228,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           </>
         )}
         <label className="af-check-row af-check-row-small mt-2">
-          <input type="checkbox" checked={!!form.iva} onChange={(e) => setForm((p) => ({ ...p, iva: e.target.checked }))} />
+          <Checkbox checked={!!form.iva} onCheckedChange={(v) => setForm((p) => ({ ...p, iva: v === true }))} />
           <span>Agregar IVA (16%) — solo si el cliente lo pide</span>
         </label>
       </div>
@@ -11242,28 +11244,28 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       )}
 
       <div className="af-field">
-        <label>Entrega</label>
+        <Label>Entrega</Label>
         {/* Tres opciones grandes. "Llevar y recoger" es llevar el pedido y
             después pasar por la paellera; cuesta un viaje más (mismo precio). */}
         <div className="af-entrega-opciones">
-          <button
-            className={"af-toggle-btn" + (!form.entrega ? " active" : "")}
+          <Toggle
+            variant="segmento" pressed={!form.entrega}
             onClick={() => setForm((p) => ({ ...p, entrega: false, recogerPaellera: false }))}
           >
             <Store size={16} className="inline mr-1" /> Recoger
-          </button>
-          <button
-            className={"af-toggle-btn" + (form.entrega && !form.recogerPaellera ? " active" : "")}
+          </Toggle>
+          <Toggle
+            variant="segmento" pressed={form.entrega && !form.recogerPaellera}
             onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: false }))}
           >
             <Truck size={16} className="inline mr-1" /> A domicilio
-          </button>
-          <button
-            className={"af-toggle-btn" + (form.entrega && form.recogerPaellera ? " active" : "")}
+          </Toggle>
+          <Toggle
+            variant="segmento" pressed={form.entrega && form.recogerPaellera}
             onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: true, costoRecoleccion: p.envio }))}
           >
             <ChefHat size={16} className="inline mr-1" /> Llevar y recoger
-          </button>
+          </Toggle>
         </div>
         {form.entrega && form.recogerPaellera && !hayPaelleraEnForm && (
           <div className="af-hint mt-2">
@@ -11312,7 +11314,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
       {modo === "pedido" && (
         <div className="af-field">
-          <label>Pago</label>
+          <Label>Pago</Label>
           <div className="af-pago-box">
             <div className="af-pago-line"><span>Total</span><span>{money(total)}</span></div>
 
@@ -14436,8 +14438,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-envio-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 8px 12px; }
 .af-total-big { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: var(--text-xl); color: var(--wine); }
 
-.af-toggle-btn { flex: 1; padding: 11px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: var(--text-sm); color: var(--ink-soft); cursor: pointer; transition: all 0.15s ease; }
-.af-toggle-btn.active { background: var(--wine); border-color: var(--wine); color: white; }
 
 /* Ojo: se escribe con doble clase para ganarle a ".af-field label", que es
    más específico y si no convierte la fila en bloque y en MAYÚSCULAS —
@@ -14518,8 +14518,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 .af-category-pills { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; margin: 10px 0 0; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none; }
 .af-category-pills::-webkit-scrollbar { display: none; }
-.af-category-pill { flex-shrink: 0; padding: 7px 13px; border-radius: var(--radius-full); border: 1px solid var(--line); background: var(--surface); font-size: var(--text-xs); font-weight: 600; color: var(--ink-soft); cursor: pointer; white-space: nowrap; transition: all 0.15s ease; }
-.af-category-pill.active { background: var(--wine); border-color: var(--wine); color: white; }
 
 .af-picker-group-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin: 14px 2px 6px; }
 .af-picker-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border-radius: var(--radius-md); cursor: pointer; gap: 8px; transition: background 0.15s ease; }
@@ -14568,7 +14566,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Toast de confirmación */
 .af-entrega-opciones { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.af-entrega-opciones .af-toggle-btn { min-height: 52px; padding: 8px 6px; font-size: var(--text-sm); line-height: 1.2; }
+.af-entrega-opciones > button { min-height: 52px; padding: 8px 6px; font-size: var(--text-sm); line-height: 1.2; }
 
 .af-letrero-nube {
   position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 10px;
@@ -14628,8 +14626,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-price-suffix { font-size: var(--text-xs); color: var(--ink-soft); white-space: nowrap; }
 
 .af-subtabs { display: flex; gap: 8px; }
-.af-subtab { flex: 1; min-width: 0; padding: 10px 6px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: clamp(11.5px, 3.2vw, 13px); color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
-.af-subtab.active { background: var(--wine); border-color: var(--wine); color: white; }
 
 /* Columnas automáticas: caben las que quepan con un ancho mínimo decente, en
    vez de fijar cuántas por tamaño de pantalla. Antes, en iPad horizontal, se
@@ -14670,7 +14666,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-add-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 96px; border: 2px dashed var(--line); border-radius: var(--radius-md); background: none; color: var(--ink-soft); font-weight: 600; font-size: var(--text-sm); cursor: pointer; }
 
 .af-check-row-small, .af-field label.af-check-row-small { font-size: var(--text-xs); gap: 6px; }
-.af-check-row-small input { width: 15px; height: 15px; }
+.af-check-row-small button[role=checkbox] { width: 15px; height: 15px; }
 
 .af-dot { background: var(--wine); color: white; border-radius: var(--radius-full); font-size: var(--text-2xs); padding: 1px 6px; }
 
@@ -15187,9 +15183,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* De qué bolsa sale el gasto: negocio o casa. */
 .af-ambito-switch { display: flex; gap: 6px; flex-wrap: wrap; }
-.af-ambito-btn { flex: 1; min-width: 0; height: var(--alto-campo); padding: 0 12px; border-radius: var(--radio-campo); border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.af-ambito-btn.active { background: var(--wine); border-color: var(--wine); color: #fff; }
-.af-ambito-btn.active .af-pill-total { color: #fff; opacity: 0.9; }
+[data-state=on] .af-pill-total { color: #fff; opacity: 0.9; }
 
 /* La cuenta de "cuánto entró, cuánto salió, cuánto quedó", en renglones que
    se leen de corrido en vez de cuadritos sueltos. */
@@ -15385,7 +15379,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-fab:hover { transform: scale(1.07); box-shadow: 0 8px 22px rgba(193,90,52,0.45); }
   .af-suggest-item:hover { background: var(--gold-soft); }
   .af-paste-btn:hover { background: var(--wine-soft); border-color: var(--wine); }
-  .af-toggle-btn:not(.active):hover { border-color: var(--gold); color: var(--ink); }
 
   .af-tag-btn:hover { border-color: var(--gold); }
   .af-card.cursor-pointer:hover { border-color: var(--gold); box-shadow: 0 6px 18px -6px rgba(36,27,20,0.2); transform: translateY(-2px); }
@@ -15393,7 +15386,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-combo-item:hover { background: var(--gold-soft); }
   .af-combo-new:hover { background: var(--gold-soft); }
   .af-add-item-btn:hover { background: #F3D3BE; }
-  .af-category-pill:not(.active):hover { border-color: var(--gold); color: var(--ink); }
   .af-picker-item:hover { background: var(--gold-soft); }
   .af-picker-add-btn:hover { transform: scale(1.1); background: #A64826; }
   .af-extra-mini-btn:hover { background: var(--olive); color: white; }
@@ -15405,7 +15397,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-nueva-version:hover { filter: brightness(1.08); }
   .af-rent-desglose-btn:hover { border-color: var(--wine); color: var(--wine); background: var(--wine-soft); }
   .af-rent-add-ing:hover { background: var(--wine-soft); }
-  .af-ambito-btn:hover { border-color: var(--wine); }
   .af-btn-accion:hover { border-color: var(--wine); background: color-mix(in srgb, var(--wine) 8%, transparent); }
   .af-chip-filtro:hover { background: color-mix(in srgb, var(--wine) 22%, transparent); }
   .af-toggle-fila:hover { border-color: var(--wine); }
