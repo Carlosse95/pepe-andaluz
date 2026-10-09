@@ -12,6 +12,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { DatePicker } from "@/components/ui/date-picker";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -3433,9 +3434,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
                 <ChevronLeft size={20} />
               </Button>
             )}
-            <Input
-              type="date"
-             
+            <DatePicker
               value={diaEntregados}
               onChange={(e) => onDiaEntregados(e.target.value)}
             />
@@ -3964,9 +3963,7 @@ function DeudasView({ deudas, onGuardar, showToast }) {
               </div>
               <div className="af-field">
                 <Label>¿Qué día?</Label>
-                <Input
-                 
-                  type="date"
+                <DatePicker
                   value={formPago.fecha}
                   onChange={(e) => setFormPago({ ...formPago, fecha: e.target.value })}
                 />
@@ -6652,7 +6649,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               <div className="af-panel-titulo">Resumen del día</div>
               <div className="af-panel-sub">{fmtDateHuman(diaSel)}</div>
             </div>
-            <Input type="date" className="af-panel-fecha" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
+            <DatePicker className="af-panel-fecha" value={diaSel} onChange={(e) => setDiaSel(e.target.value)} />
           </div>
 
           {delDia.length === 0 ? (
@@ -7140,7 +7137,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               el ticket en la mano y retratarlo antes de teclear nada. */}
           <div className="af-field">
             <Label>Fecha</Label>
-            <Input type="date" value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
+            <DatePicker value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
           </div>
           <div className="af-field">
             <Label>Categoría</Label>
@@ -7264,9 +7261,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <label className="af-filtro af-filtro-dia">
             <span className="af-mini-label">Un día</span>
             <div className="af-buscador-gastos">
-              <Input
-                type="date"
-               
+              <DatePicker
                 value={diaGasto}
                 onChange={(e) => setDiaGasto(e.target.value)}
               />
@@ -7979,7 +7974,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </div>
               <div className="af-field">
                 <Label>Fecha</Label>
-                <Input type="date" value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
+                <DatePicker value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
               </div>
               {/* La tienda y la descripción se ELIGEN de las que ya hay, igual
                   que al capturar. Escritas a mano acababan con una letra de
@@ -10973,9 +10968,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             >
               <ChevronLeft size={18} />
             </button>
-            <Input
-              type="date"
-             
+            <DatePicker
               value={form.fecha}
               onChange={(e) => setForm((p) => ({ ...p, fecha: e.target.value }))}
             />
