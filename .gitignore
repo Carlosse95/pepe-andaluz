@@ -1,3 +1,7 @@
 node_modules
 dist
 .DS_Store
+
+# Vista local con nube de prueba (no se publica)
+prueba-sync/
+vite.prueba.config.js

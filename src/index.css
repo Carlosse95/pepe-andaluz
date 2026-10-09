@@ -2,6 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------
+   SISTEMA DE DISEÑO de Pepe El Andaluz (shadcn/ui + paleta de marca).
+   Todo tamaño de letra, redondeo y color de la app sale de aquí.
+   ------------------------------------------------------------------ */
+@layer base {
+  :root {
+    /* Paleta de marca (HSL). */
+    --higo: 228 46% 24%;      /* Higo negro  #212C59 */
+    --lavanda: 225 100% 86%;  /* Azul lavanda #B8CAFF */
+    --oro: 40 58% 43%;        /* Oro oliva   #AF842E */
+    --azafran: 58 96% 43%;    /* Azafrán     #D9D204 */
+    --pimenton: 11 100% 61%;  /* Pimentón    #FF5D37 */
+
+    /* Colores con nombre de shadcn, armados con la paleta. */
+    --background: 230 100% 98%;
+    --foreground: var(--higo);
+    --card: 0 0% 100%;
+    --card-foreground: var(--higo);
+    --popover: 0 0% 100%;
+    --popover-foreground: var(--higo);
+    --primary: var(--higo);
+    --primary-foreground: 0 0% 100%;
+    --secondary: var(--lavanda);
+    --secondary-foreground: var(--higo);
+    --muted: 229 81% 96%;
+    --muted-foreground: 228 20% 45%;
+    --accent: 229 81% 94%;
+    --accent-foreground: var(--higo);
+    --destructive: var(--pimenton);
+    --destructive-foreground: 0 0% 100%;
+    --border: 227 63% 92%;
+    --input: 227 63% 92%;
+    --ring: var(--higo);
+
+    /* Escala de letra: 8 tamaños para toda la app (antes había 25). */
+    --text-2xs: 0.6875rem;  /* 11px: etiquetas de la barra de abajo, globitos */
+    --text-xs: 0.75rem;     /* 12px: datos secundarios */
+    --text-sm: 0.875rem;    /* 14px: texto normal de la app */
+    --text-base: 1rem;      /* 16px: campos y texto destacado */
+    --text-lg: 1.125rem;    /* 18px */
+    --text-xl: 1.25rem;     /* 20px: títulos de pantalla */
+    --text-2xl: 1.5rem;     /* 24px */
+    --text-3xl: 2rem;       /* 32px: números grandes */
+
+    /* Redondeos: 3 tamaños más el de píldora (antes había 13). */
+    --radius-sm: 0.5rem;    /* 8px: botones chicos, etiquetas */
+    --radius-md: 0.75rem;   /* 12px: botones, campos */
+    --radius-lg: 1.25rem;   /* 20px: tarjetas y ventanas */
+    --radius-full: 9999px;  /* píldoras y círculos */
+    --radius: var(--radius-md);
+  }
+}
+
 html, body, #root {
   height: 100%;
 }

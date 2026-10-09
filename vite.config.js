@@ -1,8 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'url'
 
 export default defineConfig({
   plugins: [react()],
+  // "@/..." apunta a src/ (así lo esperan los componentes de shadcn/ui).
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   // Rutas relativas para que el build funcione en GitHub Pages
   // (https://usuario.github.io/nombre-del-repo/) sin configurar nada más.
   base: './',
