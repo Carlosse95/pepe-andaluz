@@ -43,7 +43,7 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
                   {s.icono}
                   <span>{s.label}</span>
                 </SidebarMenuButton>
-                {s.badge > 0 && <SidebarMenuBadge className="bg-pimenton text-white">{s.badge > 9 ? "9+" : s.badge}</SidebarMenuBadge>}
+                {s.badge > 0 && <SidebarMenuBadge className={s.badgeSuave ? "bg-aviso/25 text-higo" : "bg-pimenton text-white"}>{s.badge > 9 ? "9+" : s.badge}</SidebarMenuBadge>}
               </SidebarMenuItem>
             ))}
           </SidebarMenu>

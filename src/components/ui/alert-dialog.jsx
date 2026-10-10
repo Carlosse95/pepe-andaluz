@@ -10,10 +10,13 @@ const AlertDialogTrigger = AlertDialogPrimitive.Trigger
 
 const AlertDialogPortal = AlertDialogPrimitive.Portal
 
+// Estilo Maia (redondo) y montado dentro de .af-app para tomar sus colores.
+const contenedorApp = () => (typeof document !== "undefined" ? document.querySelector(".af-app") || undefined : undefined)
+
 const AlertDialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -23,12 +26,13 @@ const AlertDialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName
 
 const AlertDialogContent = React.forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPortal>
+  <AlertDialogPortal container={contenedorApp()}>
     <AlertDialogOverlay />
     <AlertDialogPrimitive.Content
       ref={ref}
+      onOpenAutoFocus={(e) => e.preventDefault()}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100%-2rem)] max-w-sm translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[2rem] bg-card p-6 text-card-foreground shadow-xl ring-1 ring-foreground/10 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
         className
       )}
       {...props}
@@ -43,7 +47,7 @@ const AlertDialogHeader = ({
 }) => (
   <div
     className={cn(
-      "flex flex-col space-y-2 text-center sm:text-left",
+      "flex flex-col items-center gap-2 text-center",
       className
     )}
     {...props}
@@ -57,7 +61,7 @@ const AlertDialogFooter = ({
 }) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "grid grid-cols-2 gap-2 pt-1",
       className
     )}
     {...props}
@@ -68,7 +72,7 @@ AlertDialogFooter.displayName = "AlertDialogFooter"
 const AlertDialogTitle = React.forwardRef(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold", className)}
+    className={cn("text-lg font-semibold leading-snug", className)}
     {...props}
   />
 ))
@@ -97,8 +101,7 @@ const AlertDialogCancel = React.forwardRef(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
     className={cn(
-      buttonVariants({ variant: "outline" }),
-      "mt-2 sm:mt-0",
+      buttonVariants({ variant: "secondary" }),
       className
     )}
     {...props}
@@ -106,7 +109,21 @@ const AlertDialogCancel = React.forwardRef(({ className, ...props }, ref) => (
 ))
 AlertDialogCancel.displayName = AlertDialogPrimitive.Cancel.displayName
 
+// Ícono redondo arriba del título (como AlertDialogMedia de shadcn nuevo).
+//   tono: "default" | "aviso" | "error"
+const AlertDialogMedia = ({ className, tono = "default", ...props }) => (
+  <div
+    className={cn(
+      "mb-1 flex size-12 items-center justify-center rounded-full [&>svg]:size-6",
+      tono === "aviso" ? "bg-aviso/15 text-aviso-fuerte" : tono === "error" ? "bg-error/15 text-error-fuerte" : "bg-secondary text-secondary-foreground",
+      className
+    )}
+    {...props}
+  />
+)
+
 export {
+  AlertDialogMedia,
   AlertDialog,
   AlertDialogPortal,
   AlertDialogOverlay,

@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogConfirmacion } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogConfirmacion, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel, AlertDialogMedia } from "@/components/ui/alert-dialog";
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,6 @@ import { Combobox } from "@/components/ui/combobox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SwitchVista } from "@/components/ui/switch";
@@ -3076,7 +3075,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onBuscar, onConfirmarTransferencia, onSaldarPedido, showToast, inventario, onVerInventario }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia, onSaldarPedido, showToast }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
@@ -3170,30 +3169,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
       <InvitacionAvisos showToast={showToast} />
 
-      {/* Lo de inventario ya no va en la campana (ahí solo van las novedades
-          de los demás): aquí, que es donde se planea el día. */}
-      {inventario && (inventario.porHacer > 0 || inventario.porComprar > 0) && (
-        <Alert variant="aviso" className="mb-4">
-          <TriangleAlert />
-          <AlertTitle>Inventario</AlertTitle>
-          <AlertDescription>
-            <p>
-              {[inventario.porHacer > 0 && `${inventario.porHacer} por hacer`, inventario.porComprar > 0 && `${inventario.porComprar} por comprar`].filter(Boolean).join(" · ")}
-            </p>
-            <Button size="sm" variant="secondary" className="mt-1" onClick={onVerInventario}>Ver inventario</Button>
-          </AlertDescription>
-        </Alert>
-      )}
 
-      {/* Buscar vive aquí (ya no en la barra lateral): Hoy es la pantalla
-          de entrada y aquí están también Nuevo pedido y Nuevo presupuesto. */}
-      <button
-        type="button"
-        onClick={onBuscar}
-        className="mb-3 flex h-10 w-full items-center gap-2 rounded-[2rem] border border-input bg-input/30 px-4 text-left text-sm text-muted-foreground"
-      >
-        <Search size={16} /> Buscar un pedido…
-      </button>
       <div className="af-quick-row">
         <button className="af-quick-btn" onClick={onNuevoPedido}>
           <CirclePlus size={16} /> Nuevo pedido
@@ -4955,6 +4931,43 @@ const ICONO_MOVIMIENTO = {
   pago: Banknote, "pago-quitado": CircleMinus, "gasto-nuevo": Receipt, "gasto-cambio": Receipt,
   "gasto-borrado": Trash, "cliente-nuevo": Users,
 };
+
+// ---------- Aviso estilo iOS (dentro de la app) ----------
+// Cuando OTRO aparato cambia algo mientras se usa la app: baja de arriba
+// como las notificaciones del iPhone, se va solo a los pocos segundos y se
+// puede quitar deslizándolo hacia arriba (Sonner, swipeDirections "top").
+// Tocarlo abre el pedido.
+const ICONO_APP = `${import.meta.env.BASE_URL}icono-180.png`;
+function BannerIOS({ titulo, cuerpo, alTocar, cerrar }) {
+  // Deslizar no es tocar: si el dedo se movió, no se abre el pedido.
+  const inicio = useRef(null);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onPointerDown={(e) => { inicio.current = { x: e.clientX, y: e.clientY }; }}
+      onClick={(e) => {
+        const i = inicio.current;
+        if (i && (Math.abs(e.clientY - i.y) > 8 || Math.abs(e.clientX - i.x) > 8)) return;
+        alTocar?.();
+        cerrar();
+      }}
+      className="flex w-[min(92vw,380px)] cursor-pointer select-none items-start gap-3 rounded-[22px] bg-white/85 px-4 py-3 text-left shadow-[0_10px_30px_rgba(33,44,89,0.18)] ring-1 ring-black/5 backdrop-blur-xl"
+    >
+      <img src={ICONO_APP} alt="" className="mt-0.5 size-9 shrink-0 rounded-[9px]" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span className="font-semibold uppercase tracking-wide">Pepe El Andaluz</span>
+          <span>ahora</span>
+        </div>
+        <div className="text-sm font-semibold leading-snug text-foreground">{titulo}</div>
+        {cuerpo && <div className="line-clamp-2 text-sm leading-snug text-foreground/80">{cuerpo}</div>}
+      </div>
+    </div>
+  );
+}
+const avisoIOS = ({ titulo, cuerpo, alTocar }) =>
+  toast.custom((id) => <BannerIOS titulo={titulo} cuerpo={cuerpo} alTocar={alTocar} cerrar={() => toast.dismiss(id)} />, { duration: 5000 });
 
 // ---------- Avisos con la app cerrada (Web Push) ----------
 // De qué se avisa a los demás aparatos (igual que en la función del servidor).
@@ -12767,9 +12780,6 @@ export default function App() {
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
   const [cobroModal, setCobroModal] = useState(null); // { pedido, faltante } o null
   const [verAvisos, setVerAvisos] = useState(false);
-  // Lo que cambió OTRO aparato mientras se usa la app: se queda arriba hasta
-  // cerrarlo (el aviso flotante de antes se iba solo y se perdía).
-  const [alertaInterna, setAlertaInterna] = useState(null);
   // Campana = novedades: lo que registraron los DEMÁS (del Historial).
   const [novedades, setNovedades] = useState([]);
   const [vistasHasta, setVistasHasta] = useState(() => {
@@ -14331,7 +14341,13 @@ export default function App() {
       if (!quedan.has(v.id)) avisos.push({ p: null, icono: <Trash className="size-4" />, texto: `Se borró el pedido de ${v.clienteNombre || "un cliente"}` });
     }
     if (!avisos.length) return;
-    setAlertaInterna({ avisos, en: Date.now() });
+    if (avisos.length > 3) {
+      avisoIOS({ titulo: `${avisos.length} cambios en pedidos`, cuerpo: avisos.slice(0, 3).map((a) => a.texto).join(" · ") + "…" });
+    } else {
+      avisos.forEach((a) =>
+        avisoIOS({ titulo: a.texto, cuerpo: a.detalle, alTocar: a.p ? () => irAEditarRef.current?.(a.p) : undefined })
+      );
+    }
     // El otro aparato sube su movimiento al Historial un instante después de
     // guardar: se espera tantito y se trae para la campana.
     setTimeout(() => cargarNovedadesRef.current?.(), 2500);
@@ -14860,7 +14876,9 @@ export default function App() {
     { key: "reportes", icon: <TrendingUp size={20} />, label: "Reportes" },
     { key: "historial", icon: <History size={20} />, label: "Historial" },
     { key: "menu", icon: <UtensilsCrossed size={20} />, label: "Menú" },
-    { key: "inventario", icon: <Package size={20} />, label: "Inventario" },
+    // Lo que falta comprar o hacer: un numerito discreto aquí (ya no en la
+    // campana ni en medio de Hoy).
+    { key: "inventario", icon: <Package size={20} />, label: "Inventario", badge: porComprar.length + porHacer.length, badgeSuave: true },
     { key: "ajustes", icon: <Settings size={20} />, label: "Ajustes" },
   ];
   // Las pestañas que no se usan se pueden esconder desde Ajustes. Hoy y
@@ -14944,7 +14962,7 @@ export default function App() {
 
       <SidebarProvider className="af-con-sidebar">
       <AppSidebar
-        secciones={navItems.map((n) => ({ key: n.key, label: n.label, icono: n.icon, badge: n.badge }))}
+        secciones={navItems.map((n) => ({ key: n.key, label: n.label, icono: n.icon, badge: n.badge, badgeSuave: n.badgeSuave }))}
         vista={view}
         onIr={irAVista}
         usuario={{ nombre: nombreUsuario, email: perfil?.email || "", foto: fotoUsuario }}
@@ -14978,7 +14996,10 @@ export default function App() {
             <div className="af-header-row">
               <SidebarTrigger className="af-sidebar-trigger -ml-1 shrink-0" />
               <span className="af-header-title-plain">{titulos[view]}</span>
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-1 ml-auto">
+                <Button variant="ghost" size="icon-sm" title="Buscar pedidos" aria-label="Buscar pedidos" onClick={() => irAVista("buscar")}>
+                  <Search size={20} />
+                </Button>
                 {campana}
                 
               </div>
@@ -14987,28 +15008,7 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {alertaInterna && (
-            <Alert variant="info" className="mb-4">
-              <BellRing />
-              <AlertTitle>
-                {alertaInterna.avisos.length === 1 ? alertaInterna.avisos[0].texto : `${alertaInterna.avisos.length} cambios en pedidos`}
-              </AlertTitle>
-              <AlertDescription>
-                <p>
-                  {alertaInterna.avisos.length === 1
-                    ? alertaInterna.avisos[0].detalle || "Lo acaba de cambiar otro aparato."
-                    : alertaInterna.avisos.slice(0, 3).map((a) => a.texto).join(" · ") + (alertaInterna.avisos.length > 3 ? "…" : "")}
-                </p>
-                <div className="mt-1 flex gap-2">
-                  {alertaInterna.avisos.length === 1 && alertaInterna.avisos[0].p && (
-                    <Button size="sm" onClick={() => { const p = alertaInterna.avisos[0].p; setAlertaInterna(null); irAEditar(p); }}>Ver pedido</Button>
-                  )}
-                  <Button size="sm" variant="secondary" onClick={() => setAlertaInterna(null)}>Entendido</Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onBuscar={() => irAVista("buscar")} showToast={showToast} inventario={{ porHacer: porHacer.length, porComprar: porComprar.length }} onVerInventario={() => irAVista("inventario")} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
@@ -15091,7 +15091,7 @@ export default function App() {
           </button>
         )}
 
-        <Toaster position="top-center" offset={16} />
+        <Toaster position="top-center" offset={12} mobileOffset={8} swipeDirections={["top"]} />
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
         <CobroEntregaModal
           cobro={cobroModal}
@@ -15104,44 +15104,43 @@ export default function App() {
       {/* Confirmar el día y la hora del pedido nuevo. Solo eso, en grande: es
           lo que se quiere revisar, y cualquier otro dato distraería. */}
       {confirmarFecha && (
-        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFecha(null))?.(); }}>
-          <AlertDialogConfirmacion>
-            <div className="af-alerta-icon"><CalendarDays size={26} /></div>
-            <div className="af-alerta-titulo">¿Es para este día y hora?</div>
-            <div className={"af-confirma-relativo" + (confirmarFecha.fecha < todayISO() ? " pasado" : "")}>
-              {diaRelativo(confirmarFecha.fecha)}
-              {confirmarFecha.fecha < todayISO() && " — ese día ya pasó"}
-            </div>
-            <div className="af-confirma-dia">{fmtDateHuman(confirmarFecha.fecha)}</div>
-            <div className="af-confirma-hora">{confirmarFecha.hora ? fmtHora12(confirmarFecha.hora) : "Sin hora"}</div>
-            <Button
-              className="w-full mt-4"
-              onClick={() => { setConfirmarFecha(null); guardarPedidoForm({ fechaConfirmada: true }); }}
-            >
-              Sí, así está
-            </Button>
-            <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFecha(null)}>
-              No, lo cambio
-            </Button>
-          </AlertDialogConfirmacion>
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setConfirmarFecha(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogMedia tono={confirmarFecha.fecha < todayISO() ? "aviso" : "default"}><CalendarDays /></AlertDialogMedia>
+              <AlertDialogTitle>¿Es para este día y hora?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="grid gap-1">
+                  <span className={cn("text-base font-semibold", confirmarFecha.fecha < todayISO() ? "text-aviso-fuerte" : "text-foreground")}>
+                    {diaRelativo(confirmarFecha.fecha)}{confirmarFecha.fecha < todayISO() && " — ese día ya pasó"}
+                  </span>
+                  <span>{fmtDateHuman(confirmarFecha.fecha)} · {confirmarFecha.hora ? fmtHora12(confirmarFecha.hora) : "sin hora"}</span>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>No, lo cambio</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setConfirmarFecha(null); guardarPedidoForm({ fechaConfirmada: true }); }}>Sí, así está</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
       )}
 
       {/* No alcanza lo que está hecho. Se avisa con números claros y se deja
           seguir: el pedido es real aunque haya que ponerse a cocinar. */}
       {faltaHechas && faltaHechas.length > 0 && (
-        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setFaltaHechas(null))?.(); }}>
-          <AlertDialogConfirmacion>
-            <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
-            <div className="af-alerta-titulo">No alcanza lo que hay hecho</div>
-            <div className="af-alerta-texto mb-3">
-              Este pedido pide más de lo que tienes:
-            </div>
-            <div className="af-dup-lista mb-3">
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setFaltaHechas(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogMedia tono="aviso"><TriangleAlert /></AlertDialogMedia>
+              <AlertDialogTitle>No alcanza lo que hay hecho</AlertDialogTitle>
+              <AlertDialogDescription>Este pedido pide más de lo que tienes:</AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="divide-y divide-border rounded-2xl text-sm ring-1 ring-foreground/10">
               {faltaHechas.map((f) => (
-                <div key={f.id} className="af-dup-item">
-                  <span>{f.nombre}</span>
-                  <span className="af-dup-monto">
+                <div key={f.id} className="flex items-center justify-between gap-3 px-4 py-2">
+                  <span className="text-foreground">{f.nombre}</span>
+                  <span className="text-right text-xs font-semibold text-aviso-fuerte">
                     {/* Con la cuenta ya en negativo, "quedan -1" no se
                         entiende: lo que pasa es que se debe de antes. */}
                     {f.hay < 0
@@ -15151,52 +15150,45 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <Button className="w-full" onClick={() => setFaltaHechas(null)}>
-              Mejor lo cambio
-            </Button>
-            <Button variant="secondary"
-              className="w-full mt-2"
-              onClick={() => { setFaltaHechas(null); guardarPedidoForm({ saltarAviso: true, fechaConfirmada: true }); }}
-            >
-              Las voy a hacer, guárdalo
-            </Button>
-          </AlertDialogConfirmacion>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Mejor lo cambio</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setFaltaHechas(null); guardarPedidoForm({ saltarAviso: true, fechaConfirmada: true }); }}>Las hago, guárdalo</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
       )}
 
       {borradorPendiente && view !== "nuevo" && (
         <AlertDialog open onOpenChange={() => {}}>
-          <AlertDialogConfirmacion onEscapeKeyDown={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
-            <div className="af-alerta-icon"><StickyNote size={26} /></div>
-            <div className="af-alerta-titulo">Se quedó algo a medias</div>
-            <p className="af-alerta-texto">
-              {borradorPendiente.modo === "presupuesto" ? "Un presupuesto" : "Un pedido"}
-              {borradorPendiente.form?.clienteNombre ? ` de ${borradorPendiente.form.clienteNombre}` : ""}
-              {(borradorPendiente.form?.items || []).length
-                ? ` con ${borradorPendiente.form.items.length} ${borradorPendiente.form.items.length === 1 ? "ítem" : "ítems"}`
-                : ""}
-              , sin guardar.
-            </p>
-            <Button
-              className="w-full"
-              onClick={() => {
-                setForm(borradorPendiente.form);
-                setFormModo(borradorPendiente.modo || "pedido");
-                setFormOrigen(borradorPendiente.origen || "hoy");
-                setBorradorPendiente(null);
-                setError("");
-                setView("nuevo");
-              }}
-            >
-              Seguir con él
-            </Button>
-            <Button variant="secondary"
-              className="w-full mt-2"
-              onClick={() => { olvidarBorrador(); setBorradorPendiente(null); }}
-            >
-              Descartarlo
-            </Button>
-          </AlertDialogConfirmacion>
+          <AlertDialogContent onEscapeKeyDown={(e) => e.preventDefault()}>
+            <AlertDialogHeader>
+              <AlertDialogMedia><StickyNote /></AlertDialogMedia>
+              <AlertDialogTitle>Se quedó algo a medias</AlertDialogTitle>
+              <AlertDialogDescription>
+                {borradorPendiente.modo === "presupuesto" ? "Un presupuesto" : "Un pedido"}
+                {borradorPendiente.form?.clienteNombre ? ` de ${borradorPendiente.form.clienteNombre}` : ""}
+                {(borradorPendiente.form?.items || []).length
+                  ? ` con ${borradorPendiente.form.items.length} ${borradorPendiente.form.items.length === 1 ? "ítem" : "ítems"}`
+                  : ""}
+                , sin guardar.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { olvidarBorrador(); setBorradorPendiente(null); }}>Descartarlo</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setForm(borradorPendiente.form);
+                  setFormModo(borradorPendiente.modo || "pedido");
+                  setFormOrigen(borradorPendiente.origen || "hoy");
+                  setBorradorPendiente(null);
+                  setError("");
+                  setView("nuevo");
+                }}
+              >
+                Seguir con él
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
       )}
 
