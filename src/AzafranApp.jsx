@@ -35,7 +35,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -4867,12 +4867,57 @@ const cambiosDePedidos = (antes, despues) => {
       quitados: (v.abonos || []).filter((a) => !idsAhora.has(a.id)),
       estado: (v.estado || "pendiente") !== (p.estado || "pendiente"),
       campos: CAMPOS_PEDIDO.filter(([k]) => !igual(normCampo(v[k]), normCampo(p[k]))).map(([, n]) => n),
+      claves: CAMPOS_PEDIDO.filter(([k]) => !igual(normCampo(v[k]), normCampo(p[k]))),
     });
   }
   const quedan = new Set((despues || []).map((p) => p.id));
   for (const v of antes || []) if (!quedan.has(v.id)) salida.push({ tipo: "borrado", v });
   return salida;
 };
+
+// Lo que se guarda en el Historial para poder enseñar después QUÉ cambió
+// (antes → ahora), ya en palabras: así se lee igual aunque el menú cambie.
+const corto = (x) => (typeof x === "string" && x.length > 300 ? x.slice(0, 300) + "…" : x);
+const nombreItemHist = (it) => (it.tipo === "paella" ? it.paellaNombre : it.nombre) || "Producto";
+const restoItemHist = (it) =>
+  it.tipo === "paella"
+    ? `${fmtKg(it.kg)}${resumenExtras(it)}${it.enPaellera ? " · paellera" : ""}${it.nota ? " · nota: " + it.nota : ""}`
+    : `${esPorKg(it) ? fmtKg(it.cantidad) : "× " + it.cantidad}${it.nota ? " · nota: " + it.nota : ""}`;
+const lineaItemHist = (it) => `${nombreItemHist(it)} — ${restoItemHist(it)}`;
+const valorCampoPedido = (k, x) => {
+  if (k === "entrega") return x ? "A domicilio" : "Recoger";
+  if (k === "iva" || k === "recogerPaellera") return x ? "Sí" : "No";
+  if (normCampo(x) === null) return "—";
+  if (k === "fecha") return fmtDateHuman(x);
+  if (k === "hora") return fmtHora12(x);
+  if (k === "envio") return money(parseFloat(x) || 0);
+  return corto(String(x));
+};
+// Productos: en vez de toda la lista dos veces, solo lo que se quitó y lo que se agregó.
+// Si el mismo platillo solo cambió de kilos, extras o nota, se dice como
+// cambio ("3 kg → 4 kg") y no como que se quitó uno y se agregó otro.
+const difItems = (antes, ahora) => {
+  const a = (antes || []).map(lineaItemHist);
+  const b = (ahora || []).map(lineaItemHist);
+  const resta = (xs, ys) => { const q = [...ys]; return xs.filter((x) => { const i = q.indexOf(x); if (i < 0) return true; q.splice(i, 1); return false; }); };
+  const quitados = resta(a, b);
+  const agregados = resta(b, a);
+  const nombre = (l) => l.split(" — ")[0];
+  const resto = (l) => l.split(" — ").slice(1).join(" — ");
+  const cambio = [];
+  const quito = [];
+  for (const q of quitados) {
+    const i = agregados.findIndex((x) => nombre(x) === nombre(q));
+    if (i < 0) { quito.push(q); continue; }
+    cambio.push({ nombre: nombre(q), antes: resto(q), ahora: resto(agregados[i]) });
+    agregados.splice(i, 1);
+  }
+  return { quito, agrego: agregados, cambio };
+};
+const resumenPedidoHist = (p) => ({
+  fecha: p.fecha, hora: p.hora, total: p.total, entrega: !!p.entrega,
+  productos: (p.items || []).map(lineaItemHist),
+});
 
 const deQuien = (p) => `${p.folio ? "#" + p.folio + " de " : "de "}${p.clienteNombre || "un cliente"}`;
 const sumaMontos = (xs) => xs.reduce((a, x) => a + (parseFloat(x.monto) || 0), 0);
@@ -4883,48 +4928,73 @@ const movimientosDePedidos = (antes, despues) =>
   cambiosDePedidos(antes, despues).flatMap((c) => {
     if (c.tipo === "nuevo") {
       return [{ tipo: "pedido-nuevo", texto: `Agregó el pedido ${deQuien(c.p)}`, ref_id: c.p.id,
-        detalle: { fecha: c.p.fecha, total: c.p.total } }];
+        detalle: resumenPedidoHist(c.p) }];
     }
     if (c.tipo === "borrado") {
       return [{ tipo: "pedido-borrado", texto: `Borró el pedido ${deQuien(c.v)}`, ref_id: c.v.id,
-        detalle: { fecha: c.v.fecha, total: c.v.total } }];
+        detalle: resumenPedidoHist(c.v) }];
     }
     const filas = [];
     if (c.pagos.length) {
       const m = metodoDe(c.pagos);
       filas.push({ tipo: "pago", texto: `Registró un pago de ${money(sumaMontos(c.pagos))}${m ? " en " + m : ""} del pedido ${deQuien(c.p)}`, ref_id: c.p.id,
-        detalle: { monto: sumaMontos(c.pagos) } });
+        detalle: { monto: sumaMontos(c.pagos), metodo: m, pagado: sumaMontos(c.p.abonos || []), total: c.p.total } });
     }
     if (c.quitados.length) {
       filas.push({ tipo: "pago-quitado", texto: `Quitó un pago de ${money(sumaMontos(c.quitados))} del pedido ${deQuien(c.p)}`, ref_id: c.p.id,
-        detalle: { monto: sumaMontos(c.quitados) } });
+        detalle: { monto: sumaMontos(c.quitados), metodo: metodoDe(c.quitados), pagado: sumaMontos(c.p.abonos || []), total: c.p.total } });
     }
     if (c.estado) {
-      filas.push({ tipo: "estado", texto: `Pasó el pedido ${deQuien(c.p)} a ${ESTADO_LABEL[c.p.estado || "pendiente"]}`, ref_id: c.p.id });
+      filas.push({ tipo: "estado", texto: `Pasó el pedido ${deQuien(c.p)} a ${ESTADO_LABEL[c.p.estado || "pendiente"]}`, ref_id: c.p.id,
+        detalle: { antes: ESTADO_LABEL[c.v.estado || "pendiente"], ahora: ESTADO_LABEL[c.p.estado || "pendiente"] } });
     }
     if (c.campos.length) {
-      filas.push({ tipo: "pedido-cambio", texto: `Cambió ${listaConY(c.campos)} del pedido ${deQuien(c.p)}`, ref_id: c.p.id });
+      filas.push({ tipo: "pedido-cambio", texto: `Cambió ${listaConY(c.campos)} del pedido ${deQuien(c.p)}`, ref_id: c.p.id,
+        detalle: { cambios: c.claves.map(([k, n]) => (k === "items"
+          ? { campo: n, ...difItems(c.v.items, c.p.items) }
+          : { campo: n, antes: valorCampoPedido(k, c.v[k]), ahora: valorCampoPedido(k, c.p[k]) })) } });
     }
     return filas;
   });
 
+const CAMPOS_GASTO = [
+  ["monto", "monto"], ["fecha", "fecha"], ["descripcion", "descripción"], ["tienda", "tienda"],
+  ["categoria", "categoría"], ["ambito", "de dónde sale"], ["metodo", "forma de pago"],
+];
+const valorCampoGasto = (k, g) => {
+  if (k === "ambito") return ambitoDe(g) === "familia" ? "Casa" : "Negocio";
+  const x = g[k];
+  if (normCampo(x) === null) return "—";
+  if (k === "monto") return money(parseFloat(x) || 0);
+  if (k === "fecha") return fmtDateHuman(x);
+  if (k === "metodo") return METODO_PAGO_LABEL[x] || String(x);
+  return corto(String(x));
+};
 const movimientosDeGastos = (antes, despues) => {
   const mapa = new Map((antes || []).map((g) => [g.id, g]));
   const nombre = (g) => g.descripcion || g.tienda || g.categoria || "sin nombre";
   const filas = [];
   for (const g of despues || []) {
     const v = mapa.get(g.id);
-    if (!v) filas.push({ tipo: "gasto-nuevo", texto: `Registró un gasto de ${money(g.monto)}: ${nombre(g)}`, ref_id: g.id, detalle: { monto: g.monto } });
-    else if (v !== g && !igual(v, g)) filas.push({ tipo: "gasto-cambio", texto: `Cambió el gasto ${nombre(g)} (${money(g.monto)})`, ref_id: g.id });
+    if (!v) filas.push({ tipo: "gasto-nuevo", texto: `Registró un gasto de ${money(g.monto)}: ${nombre(g)}`, ref_id: g.id,
+      detalle: { monto: g.monto, fecha: g.fecha, categoria: g.categoria, tienda: corto(g.tienda || ""), ambito: ambitoDe(g) === "familia" ? "Casa" : "Negocio" } });
+    else if (v !== g && !igual(v, g)) {
+      const cambios = CAMPOS_GASTO
+        .filter(([k]) => !igual(normCampo(v[k]), normCampo(g[k])))
+        .map(([k, n]) => ({ campo: n, antes: valorCampoGasto(k, v), ahora: valorCampoGasto(k, g) }));
+      filas.push({ tipo: "gasto-cambio", texto: `Cambió el gasto ${nombre(g)} (${money(g.monto)})`, ref_id: g.id, detalle: cambios.length ? { cambios } : undefined });
+    }
   }
   const quedan = new Set((despues || []).map((g) => g.id));
-  for (const v of antes || []) if (!quedan.has(v.id)) filas.push({ tipo: "gasto-borrado", texto: `Borró el gasto ${nombre(v)} (${money(v.monto)})`, ref_id: v.id });
+  for (const v of antes || []) if (!quedan.has(v.id)) filas.push({ tipo: "gasto-borrado", texto: `Borró el gasto ${nombre(v)} (${money(v.monto)})`, ref_id: v.id,
+    detalle: { monto: v.monto, fecha: v.fecha, categoria: v.categoria, tienda: corto(v.tienda || ""), ambito: ambitoDe(v) === "familia" ? "Casa" : "Negocio" } });
   return filas;
 };
 
 const movimientosDeClientes = (antes, despues) => {
   const ids = new Set((antes || []).map((c) => c.id));
-  return (despues || []).filter((c) => !ids.has(c.id)).map((c) => ({ tipo: "cliente-nuevo", texto: `Agregó al cliente ${c.nombre || "sin nombre"}`, ref_id: c.id }));
+  return (despues || []).filter((c) => !ids.has(c.id)).map((c) => ({ tipo: "cliente-nuevo", texto: `Agregó al cliente ${c.nombre || "sin nombre"}`, ref_id: c.id,
+    detalle: { telefono: c.telefono || "", direccion: corto(c.direccion || "") } }));
 };
 
 const GRUPOS_HISTORIAL = [
@@ -5096,14 +5166,84 @@ function InvitacionAvisos({ showToast }) {
   );
 }
 
+// Lo que se ve al tocar un movimiento del Historial: qué había antes y qué
+// quedó. Los movimientos de antes de que se guardara el detalle solo traen
+// lo poco que se apuntaba entonces.
+function DetalleMovimiento({ f }) {
+  const d = f.detalle || {};
+  const filas = [];
+  const Fila = ({ etiqueta, children }) => (
+    <>
+      <span className="text-muted-foreground">{etiqueta}</span>
+      <span className="min-w-0 break-words text-foreground">{children}</span>
+    </>
+  );
+  const AntesAhora = ({ antes, ahora }) => (
+    <>
+      <span className="text-muted-foreground line-through">{antes}</span>
+      <ArrowRight size={12} className="mx-1 inline align-[-1px] text-muted-foreground" />
+      <span className="font-semibold">{ahora}</span>
+    </>
+  );
+  const Lista = ({ xs }) => (xs.length ? <ul className="flex flex-col gap-1">{xs.map((x, i) => <li key={i}>{x}</li>)}</ul> : "—");
+
+  if (Array.isArray(d.cambios)) {
+    for (const c of d.cambios) {
+      if (c.quito || c.agrego) {
+        for (const x of c.cambio || []) filas.push(<Fila key={"c" + x.nombre} etiqueta={x.nombre}><AntesAhora antes={x.antes} ahora={x.ahora} /></Fila>);
+        if (c.quito?.length) filas.push(<Fila key={c.campo + "q"} etiqueta="Quitó"><span className="text-error-fuerte"><Lista xs={c.quito} /></span></Fila>);
+        if (c.agrego?.length) filas.push(<Fila key={c.campo + "a"} etiqueta="Agregó"><span className="text-exito-fuerte"><Lista xs={c.agrego} /></span></Fila>);
+        if (!c.quito?.length && !c.agrego?.length && !c.cambio?.length) filas.push(<Fila key={c.campo} etiqueta="Productos">Se reacomodaron, sin cambiar qué lleva</Fila>);
+      } else {
+        filas.push(
+          <Fila key={c.campo} etiqueta={c.campo.charAt(0).toUpperCase() + c.campo.slice(1)}>
+            <AntesAhora antes={c.antes} ahora={c.ahora} />
+          </Fila>
+        );
+      }
+    }
+  } else if (f.tipo === "estado" && d.antes) {
+    filas.push(
+      <Fila key="e" etiqueta="Estado"><AntesAhora antes={d.antes} ahora={d.ahora} /></Fila>
+    );
+  } else if (f.tipo === "pago" || f.tipo === "pago-quitado") {
+    if (d.monto != null) filas.push(<Fila key="m" etiqueta="Monto">{money(d.monto)}</Fila>);
+    if (d.metodo) filas.push(<Fila key="mt" etiqueta="Forma de pago">{d.metodo.charAt(0).toUpperCase() + d.metodo.slice(1)}</Fila>);
+    if (d.total != null) filas.push(<Fila key="p" etiqueta="Quedó pagado">{money(d.pagado || 0)} de {money(d.total)}</Fila>);
+  } else if (f.tipo === "pedido-nuevo" || f.tipo === "pedido-borrado") {
+    if (d.fecha) filas.push(<Fila key="f" etiqueta="Para el">{fmtDateHuman(d.fecha)}{d.hora ? " · " + fmtHora12(d.hora) : ""}</Fila>);
+    if (d.productos) filas.push(<Fila key="pr" etiqueta="Productos"><Lista xs={d.productos} /></Fila>);
+    if (d.entrega != null && d.productos) filas.push(<Fila key="en" etiqueta="Entrega">{d.entrega ? "A domicilio" : "Recoger"}</Fila>);
+    if (d.total != null) filas.push(<Fila key="t" etiqueta="Total">{money(d.total)}</Fila>);
+  } else if (f.tipo === "gasto-nuevo" || f.tipo === "gasto-borrado") {
+    if (d.monto != null) filas.push(<Fila key="m" etiqueta="Monto">{money(d.monto)}</Fila>);
+    if (d.fecha) filas.push(<Fila key="f" etiqueta="Fecha">{fmtDateHuman(d.fecha)}</Fila>);
+    if (d.tienda) filas.push(<Fila key="t" etiqueta="Tienda">{d.tienda}</Fila>);
+    if (d.categoria) filas.push(<Fila key="c" etiqueta="Categoría">{d.categoria}</Fila>);
+    if (d.ambito) filas.push(<Fila key="a" etiqueta="De dónde sale">{d.ambito}</Fila>);
+  } else if (f.tipo === "cliente-nuevo") {
+    if (d.telefono) filas.push(<Fila key="t" etiqueta="Teléfono">{d.telefono}</Fila>);
+    if (d.direccion) filas.push(<Fila key="d" etiqueta="Dirección">{d.direccion}</Fila>);
+  }
+
+  return (
+    filas.length ? (
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">{filas}</div>
+    ) : (
+      <p className="text-sm text-muted-foreground">Este movimiento es de antes de que la app guardara el detalle; solo se sabe lo que dice arriba.</p>
+    )
+  );
+}
+
 // Pantalla del Historial: lo más nuevo arriba, agrupado por día. Se puede
-// filtrar por persona y por tipo; tocar un movimiento de pedido lo abre.
+// filtrar por persona y por tipo; tocar un movimiento enseña qué cambió.
 function HistorialView({ cargar, pendientes, pedidos, onAbrirPedido }) {
   const [filas, setFilas] = useState(null);
   const [error, setError] = useState(false);
   const [hayMas, setHayMas] = useState(false);
   const [grupo, setGrupo] = useState("todo");
   const [persona, setPersona] = useState("");
+  const [abierto, setAbierto] = useState(null);
   const LIMITE = 150;
 
   const traer = async (antesDe) => {
@@ -5167,26 +5307,38 @@ function HistorialView({ cargar, pendientes, pedidos, onAbrirPedido }) {
             {g.filas.map((f, i) => {
               const Icono = ICONO_MOVIMIENTO[f.tipo] || History;
               const pedido = pedidoDe(f);
-              const contenido = (
-                <>
-                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                    <Icono size={16} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm text-foreground">{f.texto}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {f.usuario_nombre || "Alguien"} · {hora(f.creado_en)}{f.pendiente ? " · por subir" : ""}
+              const clave = f.id || f.clave_local || g.dia + i;
+              const visto = abierto === clave;
+              return (
+                <div key={clave}>
+                  <button
+                    type="button"
+                    aria-expanded={visto}
+                    className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-accent/40"
+                    onClick={() => setAbierto(visto ? null : clave)}
+                  >
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                      <Icono size={16} />
                     </span>
-                  </span>
-                  {pedido && <CircleChevronRight size={16} className="mt-2 shrink-0 text-muted-foreground" />}
-                </>
-              );
-              return pedido ? (
-                <button key={f.id || f.clave_local || i} type="button" className="flex w-full items-start gap-3 p-3 text-left hover:bg-accent/40" onClick={() => onAbrirPedido(pedido)}>
-                  {contenido}
-                </button>
-              ) : (
-                <div key={f.id || f.clave_local || i} className="flex items-start gap-3 p-3">{contenido}</div>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm text-foreground">{f.texto}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {f.usuario_nombre || "Alguien"} · {hora(f.creado_en)}{f.pendiente ? " · por subir" : ""}
+                      </span>
+                    </span>
+                    <ChevronDown size={16} className={cn("mt-2 shrink-0 text-muted-foreground transition-transform", visto && "rotate-180")} />
+                  </button>
+                  {visto && (
+                    <div className="mx-3 mb-3 ml-14 flex flex-col gap-3 rounded-xl bg-muted/60 p-3">
+                      <DetalleMovimiento f={f} />
+                      {pedido && (
+                        <Button variant="link" size="auto" className="self-start" onClick={() => onAbrirPedido(pedido)}>
+                          Abrir el pedido <CircleChevronRight size={14} />
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </Card>
