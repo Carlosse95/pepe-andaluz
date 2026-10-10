@@ -2689,7 +2689,7 @@ function NavButton({ active, icon, label, onClick, badge }) {
     <button className={"af-nav-btn" + (active ? " active" : "")} onClick={onClick}>
       <span className="af-nav-icono">
         {icon}
-        {badge > 0 && <span className="af-badge">{badge > 9 ? "9+" : badge}</span>}
+        {badge > 0 && <span className="af-nav-badge">{badge > 9 ? "9+" : badge}</span>}
       </span>
       <span>{label}</span>
     </button>
@@ -3673,10 +3673,10 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
 
 function PresupuestosView({ presupuestos, onAbrir, onAceptar, onNuevo }) {
   const botonNuevo = onNuevo && (
-    <div className="af-quick-row mb-4">
-      <button className="af-quick-btn" onClick={onNuevo}>
+    <div className="mb-4 flex justify-end">
+      <Button className="w-full sm:w-auto" onClick={onNuevo}>
         <FileText size={16} /> Nuevo presupuesto
-      </button>
+      </Button>
     </div>
   );
   if (presupuestos.length === 0) {
@@ -12420,7 +12420,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 como dos cobros separados ("Costo de envío" y "Costo de recoger
                 la paellera") para que sepa qué paga por cada cosa. */}
             <div className="af-envio-row">
-              <span className="af-mini-label" style={{ marginBottom: 0 }}>
+              <span className="af-mini-label min-w-0 flex-1" style={{ marginBottom: 0 }}>
                 {form.entrega && form.recogerPaellera && hayPaelleraEnForm
                   ? "Costo de envío (recoger cuesta lo mismo)"
                   : form.entrega
@@ -12430,7 +12430,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <NumberField
                 value={parseFloat(form.envio) || 0}
                 min={0}
-                className="af-input af-input-small"
+                className="af-input af-input-small w-32 shrink-0"
                 onChange={(v) => setForm((p) => ({ ...p, envio: String(v), costoRecoleccion: String(v) }))}
               />
             </div>
@@ -15624,8 +15624,10 @@ const AZAFRAN_CSS = `
 .af-dup-monto { font-size: var(--text-xs); color: var(--ink-soft); }
 
 /* Aviso de conversaciones esperando respuesta de Pepe. */
-.af-badge { position: absolute; top: -5px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--wine); color: #fff; font-size: var(--text-2xs); font-weight: 700; line-height: 16px; text-align: center; }
-.af-badge-topbar { position: static; margin-left: 8px; display: inline-block; }
+/* Numerito de la navegación. Antes se llamaba .af-badge igual que las
+   etiquetas de estado, y las sacaba flotando y cortadas en la esquina. */
+.af-nav-badge { position: absolute; top: -5px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--wine); color: #fff; font-size: var(--text-2xs); font-weight: 700; line-height: 16px; text-align: center; }
+.af-nav-badge.af-badge-topbar { position: static; margin-left: 8px; display: inline-block; }
 
 /* ---------------- Bandeja de WhatsApp ---------------- */
 .af-conv { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 8px; transition: transform 0.12s ease, box-shadow 0.12s ease; }
@@ -15913,7 +15915,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 }
 
 /* Botones de acción del formulario (WhatsApp, duplicar) */
-.af-btn-wa { background: hsl(var(--exito) / 0.12); color: hsl(var(--exito-fuerte)); font-weight: 700; border: none; border-radius: var(--radius-md); padding: 12px; font-size: var(--text-sm); font-family: var(--fuente-titulos); cursor: pointer; }
+.af-btn-wa { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 36px; background: hsl(var(--exito) / 0.12); color: hsl(var(--exito-fuerte)); font-weight: 600; border: none; border-radius: var(--radius-full); padding: 0 16px; font-size: var(--text-sm); cursor: pointer; }
 .af-folio-tag { font-family: var(--fuente-titulos); font-weight: 700; font-size: var(--text-xs); color: var(--ink-soft); background: var(--neutral-soft); border-radius: var(--radius-full); padding: 4px 8px; letter-spacing: 0.03em; }
 
 /* Accesos rápidos del dashboard */

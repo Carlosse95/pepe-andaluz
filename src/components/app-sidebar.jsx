@@ -21,14 +21,24 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
   // íconos), se ABRE sola al pasar el mouse o tocarla y se GUARDA sola al
   // salir o al elegir una sección. En celular sigue siendo el cajón.
   const ir = (fn) => () => { fn(); if (isMobile) setOpenMobile(false); else setOpen(false); };
+  // Con el menú de perfil abierto la barra NO se guarda: el menú vive fuera
+  // de la barra y, al pasar el mouse a él, la barra creía que la habían
+  // dejado y se cerraba y abría sin parar.
+  const [menuAbierto, setMenuAbierto] = React.useState(false);
+  const barra = React.useRef(null);
+  const alCambiarMenu = (abierto) => {
+    setMenuAbierto(abierto);
+    if (!abierto && !isMobile && !barra.current?.matches(":hover")) setOpen(false);
+  };
   const inicial = (usuario.nombre || "?").trim().charAt(0).toUpperCase();
 
   return (
     <Sidebar
       collapsible="icon"
       flotante
+      ref={barra}
       onMouseEnter={() => { if (!isMobile) setOpen(true); }}
-      onMouseLeave={() => { if (!isMobile) setOpen(false); }}
+      onMouseLeave={() => { if (!isMobile && !menuAbierto) setOpen(false); }}
       {...props}
     >
       <SidebarHeader>
@@ -61,7 +71,7 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
+            <DropdownMenu modal={false} onOpenChange={alCambiarMenu}>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
                   <Avatar className="h-8 w-8 rounded-md">
