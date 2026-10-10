@@ -3072,7 +3072,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia, onSaldarPedido }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onBuscar, onConfirmarTransferencia, onSaldarPedido }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
@@ -3164,6 +3164,15 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
         <StatPill label="Por cobrar hoy" value={money(porCobrarHoy)} warn={porCobrarHoy > 0} />
       </div>
 
+      {/* Buscar vive aquí (ya no en la barra lateral): Hoy es la pantalla
+          de entrada y aquí están también Nuevo pedido y Nuevo presupuesto. */}
+      <button
+        type="button"
+        onClick={onBuscar}
+        className="mb-3 flex h-10 w-full items-center gap-2 rounded-[2rem] border border-input bg-input/30 px-4 text-left text-sm text-muted-foreground"
+      >
+        <Search size={16} /> Buscar un pedido…
+      </button>
       <div className="af-quick-row">
         <button className="af-quick-btn" onClick={onNuevoPedido}>
           <CirclePlus size={16} /> Nuevo pedido
@@ -14268,9 +14277,6 @@ export default function App() {
         secciones={navItems.map((n) => ({ key: n.key, label: n.label, icono: n.icon, badge: n.badge }))}
         vista={view}
         onIr={irAVista}
-        onNuevoPedido={() => goToNuevoPedido()}
-        onNuevoPresupuesto={() => goToNuevoPresupuesto()}
-        onBuscar={() => irAVista("buscar")}
         usuario={{ nombre: nombreUsuario, email: perfil?.email || "", foto: fotoUsuario }}
         onPerfil={() => setPerfilAbierto(true)}
         onCerrarSesion={cerrarSesion}
@@ -14311,7 +14317,7 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onBuscar={() => irAVista("buscar")} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (

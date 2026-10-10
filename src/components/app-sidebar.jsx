@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-  CirclePlus, FilePlus, Search, ChevronsUpDown, LogOut, CircleUserRound,
+  ChevronsUpDown, LogOut, CircleUserRound,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -15,7 +15,7 @@ import {
 
 // Barra lateral de Pepe El Andaluz (base: sidebar-07 de shadcn/ui).
 // Se encoge a solo íconos en iPad/compu y en celular sale como cajón.
-export function AppSidebar({ secciones, vista, onIr, onNuevoPedido, onNuevoPresupuesto, onBuscar, usuario, onPerfil, onCerrarSesion, ...props }) {
+export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrarSesion, ...props }) {
   const { isMobile, setOpenMobile } = useSidebar();
   // En celular el cajón se cierra solo al elegir algo.
   const ir = (fn) => () => { fn(); if (isMobile) setOpenMobile(false); };
@@ -34,27 +34,6 @@ export function AppSidebar({ secciones, vista, onIr, onNuevoPedido, onNuevoPresu
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Rápido</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Nuevo pedido" onClick={ir(onNuevoPedido)} className="bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground font-semibold">
-                <CirclePlus /> <span>Nuevo pedido</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Nuevo presupuesto" onClick={ir(onNuevoPresupuesto)}>
-                <FilePlus /> <span>Nuevo presupuesto</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Buscar pedidos" isActive={vista === "buscar"} onClick={ir(onBuscar)} className="data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground">
-                <Search /> <span>Buscar pedidos</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
         <SidebarGroup>
           <SidebarGroupLabel>Secciones</SidebarGroupLabel>
           <SidebarMenu>
