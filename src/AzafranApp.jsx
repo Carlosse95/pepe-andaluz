@@ -8460,19 +8460,46 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
   const items = itemsDeInventario(config);
   const faltan = items.filter((it) => estadoInv(it) !== "bien");
   const q = normNombre(busca);
-  const visibles = items.filter(
-    (it) => (filtro === "todo" || (filtro === "falta" ? estadoInv(it) !== "bien" : it.grupo === filtro)) && (!q || normNombre(it.nombre).includes(q))
+  // Qué filas se ven y en qué orden (lo que falta primero) se decide UNA vez:
+  // al abrir, al cambiar el filtro o la búsqueda. Mientras se pica + o −, la
+  // lista se queda quieta; antes, al pasar algo a "Bien" la fila brincaba de
+  // lugar (o desaparecía en "Por comprar") y el siguiente toque caía en otra.
+  const llaveDe = (it) => it.lista + ":" + it.id;
+  const rango = { nada: 0, poco: 1, bien: 2 };
+  const orden = useMemo(
+    () =>
+      items
+        .filter((it) => (filtro === "todo" || (filtro === "falta" ? estadoInv(it) !== "bien" : it.grupo === filtro)) && (!q || normNombre(it.nombre).includes(q)))
+        .sort((a, b) => rango[estadoInv(a)] - rango[estadoInv(b)])
+        .map(llaveDe),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtro, q, items.length]
   );
+  const porLlave = new Map(items.map((it) => [llaveDe(it), it]));
+  const visibles = orden.map((k) => porLlave.get(k)).filter(Boolean);
 
-  // Se guarda sobre el config más reciente, solo cambiando ese número.
+  // Se guarda sobre el config más reciente, solo cambiando ese número. El
+  // más reciente es el de `ultimo` (no el de la pantalla): picando + muy
+  // rápido, el segundo toque llegaba antes de que se redibujara y sumaba
+  // sobre el número viejo, así que un toque se perdía.
+  const ultimo = useRef(config);
+  ultimo.current = config;
+  const hayAhora = (it) => {
+    const x = (ultimo.current[it.lista] || []).find((y) => y.id === it.id);
+    return Number(x?.stock) || 0;
+  };
   const fijar = (it, valor) => {
     const nuevo = Math.max(0, redondeaInv(valor));
-    if (nuevo === redondeaInv(it.hay)) return;
-    onGuardarConfig({
-      ...config,
-      [it.lista]: (config[it.lista] || []).map((x) => (x.id === it.id ? { ...x, stock: nuevo } : x)),
-    });
+    const base = ultimo.current;
+    if (nuevo === redondeaInv(hayAhora(it))) return;
+    const siguiente = {
+      ...base,
+      [it.lista]: (base[it.lista] || []).map((x) => (x.id === it.id ? { ...x, stock: nuevo } : x)),
+    };
+    ultimo.current = siguiente;
+    onGuardarConfig(siguiente);
   };
+  const sumar = (it, n) => fijar(it, hayAhora(it) + n);
 
   // Lista para mandar por WhatsApp o pegar en notas.
   const listaDeCompras = () => {
@@ -8528,8 +8555,7 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
 
       {GRUPOS_INV.map((g) => {
         const filas = visibles
-          .filter((it) => it.grupo === g.id)
-          .sort((a, b) => ["nada", "poco", "bien"].indexOf(estadoInv(a)) - ["nada", "poco", "bien"].indexOf(estadoInv(b)));
+          .filter((it) => it.grupo === g.id);
         if (!filas.length) return null;
         const pendientes = filas.filter((it) => estadoInv(it) !== "bien").length;
         return (
@@ -8561,14 +8587,14 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
                       </span>
                     </button>
                     <div className="flex shrink-0 items-center gap-1">
-                      <Button variant="secondary" size="icon-sm" aria-label={`Quitar ${it.paso}`} disabled={it.hay <= 0} onClick={() => fijar(it, it.hay - it.paso)}>
+                      <Button variant="secondary" size="icon-sm" aria-label={`Quitar ${it.paso}`} disabled={it.hay <= 0} onClick={() => sumar(it, -it.paso)}>
                         <CircleMinus size={16} />
                       </Button>
                       <div className="w-16 text-center">
                         <NumberField value={redondeaInv(it.hay)} min={0} className="af-input h-8 w-full px-1 text-center" onChange={(v) => fijar(it, v)} />
                         <span className="block truncate text-2xs text-muted-foreground">{it.unidad(it.hay)}</span>
                       </div>
-                      <Button variant="secondary" size="icon-sm" aria-label={`Sumar ${it.paso}`} onClick={() => fijar(it, it.hay + it.paso)}>
+                      <Button variant="secondary" size="icon-sm" aria-label={`Sumar ${it.paso}`} onClick={() => sumar(it, it.paso)}>
                         <CirclePlus size={16} />
                       </Button>
                     </div>
