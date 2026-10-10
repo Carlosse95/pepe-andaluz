@@ -15,3 +15,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 // index.html. Se hace aquí y no solo con CSS para que no quede colgada si el
 // navegador no entiende el selector.
 document.getElementById('arranque')?.remove()
+
+// Trabajador en segundo plano: solo para recibir avisos con la app cerrada.
+// No guarda nada en caché (ver public/sw.js).
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {})
+}

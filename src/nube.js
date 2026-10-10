@@ -634,3 +634,34 @@ export const listarMovimientos = async ({ antesDe, limite = 150 } = {}) => {
   if (error) throw error;
   return data || [];
 };
+
+// ---------- Avisos con la app cerrada (Web Push) ----------
+// La dirección de avisos de ESTE aparato queda a nombre de quien tiene la
+// sesión abierta (la función de la base la reasigna si el aparato es
+// compartido, como el iPad).
+export const guardarSuscripcionPush = async (sus, aparato) => {
+  if (!nubeActiva) return;
+  const j = sus.toJSON();
+  const { error } = await supabase.rpc("guardar_suscripcion_push", {
+    p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_aparato: aparato || "",
+  });
+  if (error) throw error;
+};
+
+export const borrarSuscripcionPush = async (endpoint) => {
+  if (!nubeActiva) return;
+  await supabase.from("push_suscripciones").delete().eq("endpoint", endpoint);
+};
+
+// Pide a la nube que avise a los demás de estos movimientos (ya subidos).
+export const pedirAvisos = async (claves) => {
+  if (!nubeActiva || !claves.length) return;
+  await supabase.functions.invoke("enviar-avisos", { body: { claves } });
+};
+
+export const probarAvisos = async () => {
+  if (!nubeActiva) return null;
+  const { data, error } = await supabase.functions.invoke("enviar-avisos", { body: { prueba_propia: true } });
+  if (error) throw error;
+  return data;
+};

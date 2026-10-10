@@ -1,0 +1,14 @@
+{
+  "name": "Pepe El Andaluz",
+  "short_name": "Pepe Andaluz",
+  "lang": "es-MX",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#B8CAFF",
+  "theme_color": "#B8CAFF",
+  "icons": [
+    { "src": "icono-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

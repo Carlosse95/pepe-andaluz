@@ -249,3 +249,13 @@ drop policy if exists "movimientos insertar" on public.movimientos;
 create policy "movimientos leer"     on public.movimientos for select using (public.es_usuario_activo());
 create policy "movimientos insertar" on public.movimientos for insert
   with check (public.es_usuario_activo() and usuario_id = auth.uid());
+
+-- ============================================================
+-- Avisos con la app cerrada (Web Push). Ver supabase/functions/enviar-avisos.
+-- push_suscripciones: una dirección por aparato (la guarda la RPC
+-- guardar_suscripcion_push, que la reasigna a quien tenga la sesión).
+-- push_llaves: llaves de firma; sin políticas, solo la lee el servidor.
+-- Las llaves se generan con `npx web-push generate-vapid-keys` y se meten
+-- con un INSERT a mano; la privada NUNCA va en este repo.
+-- ============================================================
+-- (Creado con las migraciones avisos_push y avisos_push_guardar.)

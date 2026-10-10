@@ -34,7 +34,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
@@ -45,8 +45,9 @@ import {
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
   subirTicket, verTicket, leerTicket, subirRecibo,
-  registrarMovimientos, listarMovimientos,
+  registrarMovimientos, listarMovimientos, pedirAvisos, probarAvisos,
 } from "./nube.js";
+import { estadoAvisos, activarAvisos, apagarAvisos, refrescarSuscripcion } from "./avisos.js";
 
 // Las claves del almacén que la app mantiene sincronizadas con la nube. Es la
 // lista que se revisa cada pocos segundos para ver cuál cambió. No están todas
@@ -3073,7 +3074,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onBuscar, onConfirmarTransferencia, onSaldarPedido }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onBuscar, onConfirmarTransferencia, onSaldarPedido, showToast }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
@@ -3164,6 +3165,8 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
         <StatPill label="Total del día" value={money(total)} />
         <StatPill label="Por cobrar hoy" value={money(porCobrarHoy)} warn={porCobrarHoy > 0} />
       </div>
+
+      <InvitacionAvisos showToast={showToast} />
 
       {/* Buscar vive aquí (ya no en la barra lateral): Hoy es la pantalla
           de entrada y aquí están también Nuevo pedido y Nuevo presupuesto. */}
@@ -4944,6 +4947,125 @@ const ICONO_MOVIMIENTO = {
   pago: Banknote, "pago-quitado": CircleMinus, "gasto-nuevo": Receipt, "gasto-cambio": Receipt,
   "gasto-borrado": Trash, "cliente-nuevo": Users,
 };
+
+// ---------- Avisos con la app cerrada (Web Push) ----------
+// De qué se avisa a los demás aparatos (igual que en la función del servidor).
+const TIPOS_AVISABLES = ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado", "pago", "pago-quitado"];
+
+// Lo que se le dice a cada quien según su aparato.
+const TEXTO_ESTADO_AVISOS = {
+  activos: "Activos: te llegan los pedidos y pagos que registren los demás, aunque la app esté cerrada.",
+  apagados: "Apagados en este aparato.",
+  bloqueados: "Este aparato tiene los avisos bloqueados. En iPhone/iPad: Ajustes → Notificaciones → Pepe El Andaluz. En la compu: permite las notificaciones de esta página en el navegador.",
+  instalar: "En iPhone y iPad los avisos solo funcionan con la app en la pantalla de inicio.",
+  "no-se-puede": "Este navegador no puede recibir avisos con la app cerrada.",
+};
+
+function PasosInstalar() {
+  return (
+    <ol className="ml-4 list-decimal space-y-1 text-sm text-foreground">
+      <li>Abre esta página en <strong>Safari</strong>.</li>
+      <li>Toca el botón <strong>Compartir</strong> (el cuadrito con la flecha hacia arriba).</li>
+      <li>Elige <strong>"Agregar a inicio"</strong> y luego <strong>Agregar</strong>.</li>
+      <li>Abre la app desde el ícono nuevo y vuelve aquí para activar los avisos.</li>
+    </ol>
+  );
+}
+
+// Apartado de Ajustes: estado de este aparato y botones.
+function AvisosAparato({ showToast }) {
+  const [estado, setEstado] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  useEffect(() => { estadoAvisos().then(setEstado).catch(() => setEstado("no-se-puede")); }, []);
+
+  const hacer = async (fn, ok) => {
+    setOcupado(true);
+    try {
+      const nuevo = await fn();
+      setEstado(nuevo);
+      if (ok && nuevo === "activos") showToast(ok);
+    } catch {
+      showToast("No se pudieron activar los avisos. Revisa la conexión.", "error");
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const probar = async () => {
+    setOcupado(true);
+    try {
+      await probarAvisos();
+      showToast("Listo: te debe llegar un aviso de prueba en unos segundos.");
+    } catch {
+      showToast("No se pudo mandar la prueba.", "error");
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  if (!estado) return null;
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex items-start gap-3">
+        <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full", estado === "activos" ? "bg-exito/15 text-exito-fuerte" : "bg-secondary text-secondary-foreground")}>
+          {estado === "activos" ? <BellRing size={18} /> : <BellOff size={18} />}
+        </span>
+        <p className="text-sm text-foreground">{TEXTO_ESTADO_AVISOS[estado]}</p>
+      </div>
+      {estado === "instalar" && <PasosInstalar />}
+      {estado === "apagados" && (
+        <Button className="w-full" disabled={ocupado} onClick={() => hacer(activarAvisos, "Avisos activados en este aparato")}>
+          <BellRing size={16} /> Activar avisos
+        </Button>
+      )}
+      {estado === "activos" && (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="secondary" className="flex-1" disabled={ocupado} onClick={probar}>Mandarme un aviso de prueba</Button>
+          <Button variant="link" size="auto" className="flex-1" disabled={ocupado} onClick={() => hacer(apagarAvisos)}>Apagar en este aparato</Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Invitación en Hoy, hasta que se activen o se cierre con la X.
+function InvitacionAvisos({ showToast }) {
+  const [estado, setEstado] = useState(null);
+  const [cerrada, setCerrada] = useState(() => {
+    try { return localStorage.getItem("invitacion-avisos-cerrada") === "1"; } catch { return false; }
+  });
+  const [verPasos, setVerPasos] = useState(false);
+  useEffect(() => { estadoAvisos().then(setEstado).catch(() => {}); }, []);
+  if (cerrada || (estado !== "apagados" && estado !== "instalar")) return null;
+  const cerrar = () => {
+    setCerrada(true);
+    try { localStorage.setItem("invitacion-avisos-cerrada", "1"); } catch { /* sin espacio */ }
+  };
+  const activar = async () => {
+    try {
+      const nuevo = await activarAvisos();
+      setEstado(nuevo);
+      if (nuevo === "activos") showToast("Avisos activados en este aparato");
+    } catch {
+      showToast("No se pudieron activar los avisos. Revisa la conexión.", "error");
+    }
+  };
+  return (
+    <Card className="mb-4 p-4">
+      <div className="flex items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"><BellRing size={18} /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">Entérate de pedidos y pagos al momento</p>
+          <p className="text-xs text-muted-foreground">Te llega un aviso cuando alguien registra algo, aunque tengas la app cerrada.</p>
+        </div>
+        <Button variant="ghost" size="icon-sm" aria-label="Cerrar" onClick={cerrar}><CircleX size={16} /></Button>
+      </div>
+      {estado === "apagados" && <Button className="mt-3 w-full" onClick={activar}>Activar avisos</Button>}
+      {estado === "instalar" && (
+        verPasos ? <div className="mt-3"><PasosInstalar /></div> : <Button variant="secondary" className="mt-3 w-full" onClick={() => setVerPasos(true)}>Cómo activarlos en iPhone</Button>
+      )}
+    </Card>
+  );
+}
 
 // Pantalla del Historial: lo más nuevo arriba, agrupado por día. Se puede
 // filtrar por persona y por tipo; tocar un movimiento de pedido lo abre.
@@ -9714,6 +9836,12 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
 
           </fieldset>
 
+          {/* Fuera del bloqueo de administrador: cada quien decide si su
+              aparato recibe avisos. */}
+          <Seccion id="ajustes-avisos" titulo="Avisos en este aparato" abiertaPorDefecto>
+            <AvisosAparato showToast={showToast} />
+          </Seccion>
+
           {/* Esta tarjeta queda FUERA del bloqueo de administrador a propósito.
              Es lo único de Ajustes que no cambia el negocio, solo qué pestañas
              ve cada quien; y dejarla bloqueada dejaba encerrado a quien no
@@ -13627,6 +13755,10 @@ export default function App() {
     subiendoMov.current = true;
     try {
       await registrarMovimientos(cola.map(({ pendiente, ...f }) => f));
+      // Ya están en la nube: se pide que avise a los demás aparatos. Si
+      // falla, no pasa nada grave (el cambio sí quedó; solo no sonó).
+      const avisables = cola.filter((f) => TIPOS_AVISABLES.includes(f.tipo)).map((f) => f.clave_local);
+      if (avisables.length) pedirAvisos(avisables).catch(() => {});
       const subidas = new Set(cola.map((f) => f.clave_local));
       const resto = leerColaMov().filter((f) => !subidas.has(f.clave_local));
       try { localStorage.setItem(COLA_MOV, JSON.stringify(resto)); } catch { /* sin espacio: se reintenta */ }
@@ -13653,6 +13785,9 @@ export default function App() {
     const t = setInterval(subirMovimientos, 30000);
     return () => clearInterval(t);
   }, []);
+  // Si este aparato ya tenía avisos, su dirección se vuelve a guardar a nombre
+  // de quien entró (el iPad lo usan varios).
+  useEffect(() => { if (perfil?.user_id) refrescarSuscripcion(); }, [perfil?.user_id]);
 
   // Cada pedido que cambia (y cada pago nuevo) lleva quién y cuándo. Con eso
   // los avisos de los demás aparatos dicen "Papá registró un pago…".
@@ -14851,7 +14986,7 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onBuscar={() => irAVista("buscar")} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onBuscar={() => irAVista("buscar")} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
