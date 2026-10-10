@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogConfirmacion } from "@/components/ui/alert-dialog";
@@ -36,7 +37,7 @@ import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/
 import {
   CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
-import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
   nubeActiva, almacen, copiaLocal, pendientesLocales, suscribirAlmacen, probarConexion, esperarApuntes,
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
@@ -5415,40 +5416,196 @@ const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 // de la dona.
 const COLORES_PASTEL = ["#212C59", "#FF5D37", "#F2A03D", "#31A66B", "#8B5CF6", "#0EA5E9", "#EC4899", "#84CC16"];
 
-// La dona, separada a propósito.
-//
-// Recharts vuelve a correr su animación cada vez que se le redibuja, y señalar
-// una rebanada con el dedo redibujaba TODA la pantalla: por eso la animación
-// se veía como un temblor. Aislada aquí y con React.memo, solo se redibuja
-// cuando cambian de verdad los datos —al cambiar de vista o de año— y ahí sí
-// entra animando, que es como se ve bien.
-//
-// Lo de resaltar la rebanada señalada se hace con CSS (ver .af-dona-grafica),
-// no con estado de React, justo para no redibujarla.
-const DonaProductos = React.memo(function DonaProductos({ datos, colores, alSeñalar, alSoltar, alto = 230, dentro = 62, fuera = 96 }) {
+// ---------- Gráfica de barras (estilo "Bar Chart" de shadcn) ----------
+// Todas las de barras de la app usan esta: tarjeta con título y descripción,
+// barras redondeadas, sin líneas de ejes, el globito al tocar y abajo una
+// frase con la tendencia. (Ingresos vs. gastos tiene la suya: va apilada.)
+//   series: [{ key, label, color }]   colorDe(d): color por barra (opcional)
+//   tendencia: { texto, sube }        vertical: barras acostadas
+function GraficaBarras({ titulo, descripcion, datos, x, series, formato = money, alto = 240, vertical = false, colorDe, tendencia, nota, leyenda, className }) {
+  const config = Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: s.color }]));
   return (
-    <ResponsiveContainer width="100%" height={alto}>
-      <PieChart>
-        <Pie
-          animationDuration={550}
-          data={datos}
-          dataKey="valor"
-          nameKey="nombre"
-          innerRadius={dentro}
-          outerRadius={fuera}
-          paddingAngle={2}
-          stroke="none"
-          onMouseEnter={(_, i) => alSeñalar(i)}
-          onMouseLeave={alSoltar}
-        >
-          {datos.map((d, i) => (
-            <Cell key={d.clave || d.nombre} fill={d.color || colores[i % colores.length]} />
-          ))}
-        </Pie>
-      </PieChart>
-    </ResponsiveContainer>
+    <Card className={cn("mb-5", className)}>
+      <CardHeader className="p-4 pb-0">
+        <CardTitle className="text-base">{titulo}</CardTitle>
+        {descripcion && <CardDescription>{descripcion}</CardDescription>}
+      </CardHeader>
+      <CardContent className="p-4">
+        <ChartContainer config={config} className="aspect-auto w-full" style={{ height: alto }}>
+          <BarChart accessibilityLayer data={datos} layout={vertical ? "vertical" : "horizontal"} margin={{ top: 8, right: vertical ? 16 : 0, left: 0, bottom: 0 }} barGap={4}>
+            <CartesianGrid vertical={vertical} horizontal={!vertical} />
+            {vertical ? (
+              <>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey={x} tickLine={false} axisLine={false} tickMargin={8} width={44} className="font-semibold" />
+              </>
+            ) : (
+              <XAxis dataKey={x} tickLine={false} tickMargin={10} axisLine={false} interval={0} fontSize={datos.length > 7 ? 10 : 12} />
+            )}
+            <ChartTooltip cursor={false} content={<ChartTooltipContent valueFormatter={formato} />} />
+            {series.map((s) => (
+              <Bar key={s.key} dataKey={s.key} fill={`var(--color-${s.key})`} radius={8}>
+                {colorDe && datos.map((d, i) => <Cell key={i} fill={colorDe(d)} />)}
+              </Bar>
+            ))}
+          </BarChart>
+        </ChartContainer>
+        {leyenda && (
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-3 text-xs">
+            {leyenda.map((l) => (
+              <span key={l.label} className="flex items-center gap-1.5">
+                <span className="size-2 shrink-0 rounded-[2px]" style={{ background: l.color }} />
+                {l.label}
+              </span>
+            ))}
+          </div>
+        )}
+      </CardContent>
+      {(tendencia || nota) && (
+        <CardFooter className="flex-col items-start gap-2 p-4 pt-0 text-sm">
+          {tendencia && (
+            <div className="font-medium leading-snug text-foreground">
+              {tendencia.texto}{" "}
+              {tendencia.sube === true && <TrendingUp className="inline size-4 align-text-bottom text-exito-fuerte" />}
+              {tendencia.sube === false && <TrendingDown className="inline size-4 align-text-bottom text-error-fuerte" />}
+            </div>
+          )}
+          {nota && <div className="leading-snug text-muted-foreground">{nota}</div>}
+        </CardFooter>
+      )}
+    </Card>
   );
-});
+}
+
+// El último mes ya cerrado contra el anterior: "Septiembre bajó 13% contra agosto".
+const tendenciaDelMes = (valores, anio, que = "", plural = false) => {
+  const hoy = new Date();
+  const m = anio < hoy.getFullYear() ? 11 : anio === hoy.getFullYear() ? hoy.getMonth() - 1 : -1;
+  if (m < 1 || !valores[m] || !valores[m - 1]) return null;
+  const pct = Math.round(((valores[m] - valores[m - 1]) / valores[m - 1]) * 100);
+  const verbo = pct === 0
+    ? (plural ? "quedaron igual que" : "quedó igual que")
+    : `${pct > 0 ? (plural ? "subieron" : "subió") : (plural ? "bajaron" : "bajó")} ${Math.abs(pct)}% contra`;
+  return { texto: `${que ? que + " de " : ""}${MESES[m].toLowerCase()} ${verbo} ${MESES[m - 1].toLowerCase()}`.replace(/^./, (c) => c.toUpperCase()), sube: pct === 0 ? null : pct > 0 };
+};
+
+// ---------- Ventas: qué se vendió (pastel interactivo de shadcn) ----------
+// Una rebanada por platillo. La elegida (con el selector o tocándola) sale
+// más grande y con un anillo, y su monto va en el centro. Debajo, la misma
+// información en números.
+function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
+  const [activo, setActivo] = useState(null);
+  const total = datos.reduce((a, x) => a + x.valor, 0);
+  const idx = Math.max(0, datos.findIndex((d) => d.clave === activo));
+  const elegido = datos[idx];
+  // Los mismos objetos mientras no cambien los datos: si en cada toque se le
+  // diera a la gráfica una lista "nueva", volvería a animar y se vería temblar.
+  const config = useMemo(() => Object.fromEntries(datos.map((d, i) => [d.clave, { label: d.nombre, color: COLORES_PASTEL[i % COLORES_PASTEL.length] }])), [datos]);
+  const conColor = useMemo(() => datos.map((d, i) => ({ ...d, fill: COLORES_PASTEL[i % COLORES_PASTEL.length] })), [datos]);
+
+  const forma = ({ index, outerRadius = 0, ...props }) =>
+    index === idx ? (
+      <g>
+        <Sector {...props} outerRadius={outerRadius + 8} />
+        <Sector {...props} outerRadius={outerRadius + 20} innerRadius={outerRadius + 11} />
+      </g>
+    ) : (
+      <Sector {...props} outerRadius={outerRadius} />
+    );
+
+  const cambiarVista = (v) => { setVista(v); setActivo(null); };
+
+  return (
+    <Card className="mb-5">
+      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0 p-4 pb-0">
+        <div className="grid gap-1">
+          <CardTitle className="text-base">Qué se vendió</CardTitle>
+          <CardDescription>Pedidos entregados en {anio}</CardDescription>
+        </div>
+        {datos.length > 0 && (
+          <NativeSelectS size="sm" envoltura="w-40 shrink-0" aria-label="Elegir platillo" value={elegido?.clave || ""} onChange={(e) => setActivo(e.target.value)}>
+            {datos.map((d) => <NativeSelectOption key={d.clave} value={d.clave}>{d.nombre}</NativeSelectOption>)}
+          </NativeSelectS>
+        )}
+      </CardHeader>
+      <CardContent className="p-4">
+        <Tabs value={vista} onValueChange={cambiarVista} className="mb-2">
+          <TabsList className="flex h-10 w-full">
+            <TabsTrigger value="paellas">Paellas</TabsTrigger>
+            {hayOtros && <TabsTrigger value="otros">Otros</TabsTrigger>}
+            <TabsTrigger value="todo">Todo</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {datos.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Todavía no hay ventas de esto en {anio}.</p>
+        ) : (
+          <>
+            <ChartContainer config={config} className="mx-auto aspect-square w-full max-w-[300px]">
+              <PieChart>
+                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel nameKey="clave" valueFormatter={money} />} />
+                <Pie
+                  data={conColor}
+                  dataKey="valor"
+                  nameKey="clave"
+                  innerRadius={64}
+                  outerRadius={96}
+                  strokeWidth={4}
+                  stroke="hsl(var(--card))"
+                  shape={forma}
+                  onClick={(_, i) => setActivo(datos[i]?.clave)}
+                >
+                  <EtiquetaPie
+                    content={({ viewBox }) =>
+                      viewBox && "cx" in viewBox ? (
+                        <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                          <tspan x={viewBox.cx} y={viewBox.cy - 6} className="fill-foreground text-xl font-bold">{money(elegido.valor)}</tspan>
+                          <tspan x={viewBox.cx} y={viewBox.cy + 18} className="fill-muted-foreground text-xs">
+                            {total ? Math.round((elegido.valor / total) * 100) : 0}% · {fmtCantidadVendida(elegido.cuanto, elegido.unidad)}
+                          </tspan>
+                        </text>
+                      ) : null
+                    }
+                  />
+                </Pie>
+              </PieChart>
+            </ChartContainer>
+            <p className="mb-3 text-center text-sm font-semibold text-foreground">{elegido.nombre}</p>
+
+            <div className="divide-y divide-border rounded-2xl ring-1 ring-foreground/10">
+              {conColor.map((d) => {
+                const pct = total ? Math.round((d.valor / total) * 100) : 0;
+                return (
+                  <button
+                    key={d.clave}
+                    type="button"
+                    onClick={() => setActivo(d.clave)}
+                    className={cn("block w-full px-4 py-3 text-left", d.clave === elegido.clave && "bg-secondary/60")}
+                  >
+                    <span className="mb-1 flex items-center justify-between gap-3 text-sm">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: d.fill }} />
+                        <span className="truncate text-foreground">{d.nombre}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold text-foreground">{money(d.valor)}</span>
+                    </span>
+                    <span className="block h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <span className="block h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, background: d.fill }} />
+                    </span>
+                    <span className="mt-1 flex justify-between text-xs text-muted-foreground">
+                      <span>{fmtCantidadVendida(d.cuanto, d.unidad)}</span>
+                      <span>{pct}% de lo vendido</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 // ---------- Reportes: comparar un día, una semana o un mes ----------
 // Lo que antes se buscaba en las libretas: "esta semana estuvimos bajos,
@@ -5684,23 +5841,31 @@ function ComparativoView({ pedidos, historico }) {
         </Card>
       )}
 
-      {datos.length > 0 && (
+      {datos.length > 0 && periodo === "semana" && (
+        <GraficaBarras
+          className="mb-4"
+          titulo="Ventas de la semana"
+          descripcion={antes?.porDia?.length > 0 ? `Esta semana contra ${etiquetaAntes.toLowerCase()}` : "Esta semana"}
+          datos={datos}
+          x="x"
+          alto={220}
+          series={[
+            { key: "esta", label: "Esta semana", color: COLOR_WINE },
+            ...(antes?.porDia?.length > 0 ? [{ key: "antes", label: etiquetaAntes, color: "#B8CAFF" }] : []),
+          ]}
+          leyenda={[
+            { label: "Esta semana", color: COLOR_WINE },
+            ...(antes?.porDia?.length > 0 ? [{ label: etiquetaAntes, color: "#B8CAFF" }] : []),
+          ]}
+        />
+      )}
+      {datos.length > 0 && periodo === "mes" && (
         <Card className="mb-4 p-4">
           <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><span className="inline-block size-3 rounded-full" style={{ background: COLOR_WINE }} /> {periodo === "semana" ? "Esta semana" : "Este mes (acumulado)"}</span>
             {antes?.porDia?.length > 0 && <span className="flex items-center gap-1"><span className="inline-block size-3 rounded-full" style={{ background: "#B8CAFF" }} /> {etiquetaAntes}</span>}
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            {periodo === "semana" ? (
-              <BarChart data={datos} margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke={COLOR_LINE_CHART} />
-                <XAxis dataKey="x" tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={miles} />
-                <Tooltip formatter={(v, n) => [money(v), n === "esta" ? "Esta semana" : etiquetaAntes]} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(74,95,140,0.08)" }} />
-                <Bar dataKey="esta" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
-                {antes?.porDia?.length > 0 && <Bar dataKey="antes" fill="#B8CAFF" radius={[6, 6, 0, 0]} />}
-              </BarChart>
-            ) : (
               <LineChart data={datos} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke={COLOR_LINE_CHART} />
                 <XAxis dataKey="x" tickLine={false} axisLine={false} fontSize={11} interval={4} />
@@ -5709,7 +5874,6 @@ function ComparativoView({ pedidos, historico }) {
                 <Line type="monotone" dataKey="esta" stroke={COLOR_WINE} strokeWidth={3} dot={false} />
                 {antes?.porDia?.length > 0 && <Line type="monotone" dataKey="antes" stroke="#8FA6F0" strokeWidth={3} dot={false} />}
               </LineChart>
-            )}
           </ResponsiveContainer>
         </Card>
       )}
@@ -5814,15 +5978,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [desdeGasto, setDesdeGasto] = useState("");
   const [hastaGasto, setHastaGasto] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("todas");
-  const [sectorPlatillo, setSectorPlatillo] = useState(null);
   const [vistaVentas, setVistaVentas] = useState("paellas");
   // Vacío = todos cerrados. Al entrar a un reporte se viene a ver un total,
   // no a leer gasto por gasto de los ocho meses: quien quiera el detalle de un
   // mes lo abre.
-  // Estables entre dibujados, si no React.memo no sirve de nada: una función
-  // nueva cada vez cuenta como propiedad cambiada y vuelve a animar.
-  const señalarPlatillo = React.useCallback((i) => setSectorPlatillo(i), []);
-  const soltarPlatillo = React.useCallback(() => setSectorPlatillo(null), []);
   const [verLibreta, setVerLibreta] = useState(false);
   const [posibleDuplicado, setPosibleDuplicado] = useState(null);
   // null = apartado cerrado; objeto = capturando o editando un gasto fijo.
@@ -7485,24 +7644,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         <Ayuda>Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</Ayuda>
       </Card>
 
-      <Card className="p-4 mb-5 af-chart-card">
-        <div className="af-chart-title">Cobrado por mes — {anio}</div>
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={datosMensuales} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
-            <XAxis dataKey="mes" tick={{ fontSize: "var(--text-2xs)", fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
-            <YAxis tick={{ fontSize: "var(--text-2xs)", fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
-            <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(33,44,89,0.06)" }} />
-            <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
-              {datosMensuales.map((d, i) => <Cell key={i} fill={d.esAuto ? COLOR_WINE : COLOR_GOLD} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-        <div className="af-chart-legend">
-          <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Pedidos reales</span>
-          <span><span className="af-legend-dot" style={{ background: COLOR_GOLD }} /> Registro de libreta</span>
-        </div>
-      </Card>
+      <GraficaBarras
+        titulo="Cobrado por mes"
+        descripcion={`Enero – diciembre ${anio}`}
+        datos={datosMensuales}
+        x="mes"
+        series={[{ key: "valor", label: "Cobrado", color: COLOR_WINE }]}
+        colorDe={(d) => (d.esAuto ? COLOR_WINE : COLOR_GOLD)}
+        leyenda={datosMensuales.some((d) => !d.esAuto && d.valor) ? [{ label: "Pedidos reales", color: COLOR_WINE }, { label: "Registro de libreta", color: COLOR_GOLD }] : null}
+        tendencia={tendenciaDelMes(datosMensuales.map((d) => d.valor), anio, "Lo cobrado")}
+        nota="Toca una barra para ver cuánto se cobró ese mes."
+      />
 
       {/* Doce casillas para capturar la libreta vieja, que se usan una vez y
           después estorban todo el año. Se abren cuando hacen falta. */}
@@ -7575,117 +7727,36 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           subtitle="Según vayan registrando pedidos, o si capturan meses de la libreta, aquí se va a poder comparar año contra año."
         />
       ) : (
-        <Card className="p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">{MESES[mesComparar]} — comparado entre años</div>
-          <ResponsiveContainer width="100%" height={Math.max(160, datosComparar.length * 46)}>
-            <BarChart data={datosComparar} layout="vertical" margin={{ top: 5, right: 24, left: 4, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: "var(--text-2xs)", fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} tickFormatter={miles} />
-              <YAxis type="category" dataKey="anio" tick={{ fontSize: "var(--text-xs)", fill: "#212C59", fontWeight: 700 }} axisLine={false} tickLine={false} width={44} />
-              <Tooltip formatter={(v) => money(v)} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(74,95,140,0.08)" }} />
-              <Bar dataKey="valor" radius={[0, 6, 6, 0]} fill={COLOR_AZUL} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
+        <GraficaBarras
+          titulo={`${MESES[mesComparar]}, año contra año`}
+          descripcion="Lo cobrado en ese mes de cada año"
+          datos={datosComparar}
+          x="anio"
+          vertical
+          alto={Math.max(160, datosComparar.length * 52)}
+          series={[{ key: "valor", label: "Cobrado", color: COLOR_AZUL }]}
+          tendencia={(() => {
+            const [a, b] = [...datosComparar].sort((p, q) => Number(q.anio) - Number(p.anio));
+            if (!a || !b || !b.valor || !a.valor) return null;
+            // El mes en curso va a medias: un porcentaje contra un mes entero
+            // asustaría sin razón. Para eso está la pestaña Comparar.
+            const hoyC = new Date();
+            if (Number(a.anio) === hoyC.getFullYear() && mesComparar === hoyC.getMonth()) {
+              return { texto: `${MESES[mesComparar]} ${a.anio} va a medias (${hoyC.getDate()} días); ${b.anio} cerró en ${money(b.valor)}.`, sube: null };
+            }
+            const pct = Math.round(((a.valor - b.valor) / b.valor) * 100);
+            return { texto: `${MESES[mesComparar]} ${a.anio} ${pct === 0 ? "quedó igual que" : pct > 0 ? `subió ${pct}% contra` : `bajó ${-pct}% contra`} ${b.anio}`, sube: pct === 0 ? null : pct > 0 };
+          })()}
+        />
       )}
 
-      {todosLosProductos.length > 0 && (
-        <Card className="p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">Qué se vendió — {anio}</div>
-
-          {/* Una cosa a la vez: juntas, las paellas aplastan a lo demás y el
-              pastel se vuelve ilegible. */}
-          <div className="af-ambito-switch mb-3">
-            <Toggle
-              variant="segmento" pressed={vistaVentas === "paellas"}
-              onClick={() => { setVistaVentas("paellas"); setSectorPlatillo(null); }}
-            >
-              Paellas
-            </Toggle>
-            {soloOtros.length > 0 && (
-              <Toggle
-                variant="segmento" pressed={vistaVentas === "otros"}
-                onClick={() => { setVistaVentas("otros"); setSectorPlatillo(null); }}
-              >
-                Otros platillos
-              </Toggle>
-            )}
-            <Toggle
-              variant="segmento" pressed={vistaVentas === "todo"}
-              onClick={() => { setVistaVentas("todo"); setSectorPlatillo(null); }}
-            >
-              Todo
-            </Toggle>
-          </div>
-
-          {datosPaella.length === 0 ? (
-            <p className="af-ink-soft text-sm">Todavía no hay ventas de esto en {anio}.</p>
-          ) : (
-          <>
-          <div className="af-dona-grafica">
-            <DonaProductos
-              // La llave por vista fuerza un dibujado nuevo al cambiar entre
-              // Paellas y Otros: sin ella recharts intenta "transformar" unas
-              // rebanadas en otras que no son las mismas, y se traba.
-              key={vistaVentas}
-              datos={datosPaella}
-              colores={COLORES_PASTEL}
-              alSeñalar={señalarPlatillo}
-              alSoltar={soltarPlatillo}
-            />
-            {/* El detalle va en el centro, quieto: una ventanita flotante se
-                encimaba con lo que ya decía ahí. */}
-            <div className="af-dona-centro">
-              {sectorPlatillo !== null && datosPaella[sectorPlatillo] ? (
-                <>
-                  <div className="af-dona-centro-label">{datosPaella[sectorPlatillo].nombre}</div>
-                  <div className="af-dona-centro-monto positivo">{money(datosPaella[sectorPlatillo].valor)}</div>
-                  <div className="af-dona-centro-pct">
-                    {fmtCantidadVendida(datosPaella[sectorPlatillo].cuanto, datosPaella[sectorPlatillo].unidad)}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="af-dona-centro-label">Vendido</div>
-                  <div className="af-dona-centro-monto positivo">{money(totalPorProducto)}</div>
-                  <div className="af-dona-centro-pct">en {datosPaella.length} platillos</div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* La misma información en números, que es lo que se acaba copiando
-              a la libreta. En tarjetas y no en columnas apretadas: en celular
-              el nombre, los pedidos y el monto se encimaban. */}
-          <div className="af-platillos">
-            {datosPaella.map((d, i) => {
-              const pct = totalPorProducto > 0 ? Math.round((d.valor / totalPorProducto) * 100) : 0;
-              const color = COLORES_PASTEL[i % COLORES_PASTEL.length];
-              return (
-                <div key={d.clave} className="af-platillo">
-                  <div className="af-platillo-arriba">
-                    <span className="af-punto-color" style={{ background: color }} />
-                    <span className="af-platillo-nombre">{d.nombre}</span>
-                    <span className="af-platillo-monto">{money(d.valor)}</span>
-                  </div>
-                  {/* La barra dice de un vistazo cuál se vende más, sin
-                      tener que comparar números uno por uno. */}
-                  <div className="af-platillo-barra">
-                    <div style={{ width: `${Math.max(pct, 2)}%`, background: color }} />
-                  </div>
-                  <div className="af-platillo-abajo">
-                    <span>{fmtCantidadVendida(d.cuanto, d.unidad)}</span>
-                    <span>{pct}% de lo vendido</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          </>
-          )}
-        </Card>
-      )}
       </Seccion>
+
+      {/* Qué se vendió: a la vista (antes quedó escondido dentro de la sección
+          cerrada de arriba). */}
+      {todosLosProductos.length > 0 && (
+        <PastelVentas anio={anio} vista={vistaVentas} setVista={setVistaVentas} hayOtros={soloOtros.length > 0} datos={datosPaella} />
+      )}
       </div>
       )}
 
@@ -8425,65 +8496,86 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </>
         )}
 
-        <Card className="p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">Ingresos vs. gastos por mes — {anio}</div>
-          <ResponsiveContainer width="100%" height={240}>
-            {/* Barras delgadas y muy juntas (`barSize` + `barGap`), con harto
-                aire entre un mes y otro (`barCategoryGap`): así el par de
-                barras se lee como un solo bloque encima de su mes. Con las
-                barras anchas de antes, un mes sin gastos capturados dejaba la
-                de ingresos cargada a la izquierda y parecía de otro mes. */}
-            <BarChart data={datosFinanzasMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }} barGap={2} barCategoryGap="42%">
-              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
-              <XAxis dataKey="mes" tick={{ fontSize: "var(--text-2xs)", fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
-              <YAxis tick={{ fontSize: "var(--text-2xs)", fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={44} tickFormatter={miles} />
-              {/* Al tocar una barra se ve también lo que quedó ese mes, que es
-                  el dato que de verdad importa. */}
-              <Tooltip
-                contentStyle={chartTooltipStyle}
-                cursor={{ fill: "rgba(33,44,89,0.06)" }}
-                formatter={(v, nombre) => [money(v), nombre]}
-                labelFormatter={(mes) => {
-                  const d = datosFinanzasMensual.find((x) => x.mes === mes);
-                  if (!d) return mes;
-                  // Lo que queda es después de TODO, negocio y casa: es el
-                  // dinero que de verdad sobró ese mes.
-                  const queda = (d.ingreso || 0) - (d.gasto || 0) - (d.casa || 0);
-                  return `${mes} · quedan ${money(queda)}`;
-                }}
-              />
-              {/* `stackId` aunque va sola: sin él, Recharts pone las barras
-                  apiladas antes que las sueltas y los gastos salían a la
-                  izquierda de los ingresos, al revés de como se leen. Con las
-                  dos declaradas como pila, respeta este orden. */}
-              <Bar stackId="ingresos" dataKey="ingreso" name="Ingresos" fill={COLOR_WINE} radius={[4, 4, 0, 0]} barSize={11} />
-              {/* Mismo stackId: las dos se apilan en una sola barra de gastos,
-                  junto a la de ingresos. El redondeo va solo en la de arriba,
-                  que es la que remata la barra. */}
-              <Bar stackId="gastos" dataKey="gasto" name="Gastos del negocio" fill={COLOR_GASTO} barSize={11} />
-              <Bar stackId="gastos" dataKey="casa" name="Gastos de la casa" fill={COLOR_CASA} radius={[4, 4, 0, 0]} barSize={11} />
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="af-chart-legend">
-            <span><span className="af-legend-dot" style={{ background: COLOR_WINE }} /> Ingresos</span>
-            <span><span className="af-legend-dot" style={{ background: COLOR_GASTO }} /> Gastos del negocio</span>
-            <span><span className="af-legend-dot" style={{ background: COLOR_CASA }} /> Gastos de la casa</span>
-          </div>
+        {/* Estilo "Chart" de shadcn (barras apiladas con leyenda): ingresos en
+            una barra; en la otra, gastos del negocio + de la casa apilados. */}
+        {(() => {
+          const config = {
+            ingreso: { label: "Ingresos", color: COLOR_WINE },
+            gasto: { label: "Gastos del negocio", color: COLOR_GASTO },
+            casa: { label: "Gastos de la casa", color: COLOR_CASA },
+          };
+          // La tendencia: el último mes ya cerrado contra el anterior.
+          const hoyF = new Date();
+          const ultimo = anio < hoyF.getFullYear() ? 11 : anio === hoyF.getFullYear() ? hoyF.getMonth() - 1 : -1;
+          const a = ultimo >= 0 ? datosFinanzasMensual[ultimo].ingreso : 0;
+          const b = ultimo >= 1 ? datosFinanzasMensual[ultimo - 1].ingreso : 0;
+          const pct = a && b ? Math.round(((a - b) / b) * 100) : null;
+          return (
+            <Card className="mb-5">
+              <CardHeader className="p-4 pb-0">
+                <CardTitle className="text-base">Ingresos vs. gastos</CardTitle>
+                <CardDescription>Enero – diciembre {anio}</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4">
+                <ChartContainer config={config} className="aspect-auto h-64 w-full">
+                  <BarChart accessibilityLayer data={datosFinanzasMensual} margin={{ top: 8, right: 0, left: 0, bottom: 0 }} barGap={2} barCategoryGap="16%">
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="mes" tickLine={false} tickMargin={10} axisLine={false} interval={0} fontSize={10} />
+                    <ChartTooltip
+                      cursor={{ fill: "hsl(var(--muted))" }}
+                      content={
+                        <ChartTooltipContent
+                          valueFormatter={money}
+                          labelFormatter={(_, p) => {
+                            const d = p?.[0]?.payload;
+                            if (!d) return "";
+                            // Lo que quedó después de TODO (negocio y casa).
+                            return `${d.mes} · quedan ${money((d.ingreso || 0) - (d.gasto || 0) - (d.casa || 0))}`;
+                          }}
+                        />
+                      }
+                    />
+                    {/* Cada barra con su propio stackId: así quedan lado a lado y
+                        en este orden (ingresos primero). */}
+                    <Bar dataKey="ingreso" stackId="ingresos" fill="var(--color-ingreso)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="gasto" stackId="gastos" fill="var(--color-gasto)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="casa" stackId="gastos" fill="var(--color-casa)" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+                {/* La guía va aparte para que salga en el orden en que se leen las
+                    barras (la de Recharts la ponía al revés). */}
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-3 text-xs">
+                  {Object.entries(config).map(([k, c]) => (
+                    <span key={k} className="flex items-center gap-1.5">
+                      <span className="size-2 shrink-0 rounded-[2px]" style={{ background: c.color }} />
+                      {c.label}
+                    </span>
+                  ))}
+                </div>
+              </CardContent>
+              <CardFooter className="flex-col items-start gap-2 p-4 pt-0 text-sm">
+                {pct != null && (
+                  <div className="font-medium leading-snug text-foreground">
+                    Los ingresos de {MESES[ultimo].toLowerCase()} {pct >= 0 ? "subieron" : "bajaron"} {Math.abs(pct)}% contra {MESES[ultimo - 1].toLowerCase()}{" "}
+                    {pct >= 0 ? <TrendingUp className="inline size-4 align-text-bottom text-exito-fuerte" /> : <TrendingDown className="inline size-4 align-text-bottom text-error-fuerte" />}
+                  </div>
+                )}
+                <div className="leading-snug text-muted-foreground">Toca una barra para ver cuánto quedó ese mes.</div>
+              </CardFooter>
+            </Card>
+          );
+        })()}
 
-        </Card>
-
-        <Card className="p-4 mb-5 af-chart-card">
-          <div className="af-chart-title">Clientes nuevos por mes — {anio}</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={datosClientesMensual} margin={{ top: 10, right: 8, left: 4, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={COLOR_LINE_CHART} vertical={false} />
-              <XAxis dataKey="mes" tick={{ fontSize: "var(--text-2xs)", fill: COLOR_INK_SOFT }} axisLine={{ stroke: COLOR_LINE_CHART }} tickLine={false} />
-              <YAxis tick={{ fontSize: "var(--text-2xs)", fill: COLOR_INK_SOFT }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-              <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(31,169,113,0.08)" }} />
-              <Bar dataKey="nuevos" name="Clientes nuevos" radius={[6, 6, 0, 0]} fill={COLOR_OLIVE} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
+        <GraficaBarras
+          titulo="Clientes nuevos por mes"
+          descripcion={`Enero – diciembre ${anio} · cuentan desde su primer pedido entregado`}
+          datos={datosClientesMensual}
+          x="mes"
+          alto={200}
+          formato={(v) => `${v}`}
+          series={[{ key: "nuevos", label: "Clientes nuevos", color: COLOR_OLIVE }]}
+          tendencia={tendenciaDelMes(datosClientesMensual.map((d) => d.nuevos), anio, "Los clientes nuevos", true)}
+        />
 
 
         {/* Quitar los tipos que se inventaron y ya no se quieren. */}
