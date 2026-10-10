@@ -2084,8 +2084,8 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
   // perdiendo cualquier estado propio antes de que el botón llegue a mostrarse.
   return (
     <Card className="af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
-      <div className="flex items-start justify-between gap-2">
-        <div>
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="min-w-0 flex-1 basis-36">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="af-hora">{fmtHora12(pedido.hora)}</span>
             <span className="af-cliente-nombre">{pedido.clienteNombre}</span>
@@ -2846,7 +2846,7 @@ function PerfilDialog({ abierto, onCerrar, nombre, email, foto, onGuardar }) {
 
   return (
     <DialogS open={abierto} onOpenChange={(o) => { if (!o) onCerrar(); }}>
-      <DialogSContent className="sm:max-w-[425px]">
+      <DialogSContent className="max-w-sm">
         <DialogSHeader>
           <DialogSTitle>Mi perfil</DialogSTitle>
           <DialogSDescription>Cambia tu foto y tu nombre. Así te ven los demás en la app.</DialogSDescription>
@@ -3171,10 +3171,12 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
       <div className="af-quick-row">
         <button className="af-quick-btn" onClick={onNuevoPedido}>
-          <CirclePlus size={16} /> Nuevo pedido
+          {/* En pantallas muy angostas (iPhone chico) "Nuevo" no cabe: el
+              ícono ya dice que es nuevo. */}
+          <CirclePlus size={16} /> <span className="hidden min-[360px]:inline">Nuevo</span> <span className="min-[360px]:lowercase">Pedido</span>
         </button>
         <button className="af-quick-btn" onClick={onNuevoPresupuesto}>
-          <FileText size={16} /> Nuevo presupuesto
+          <FileText size={16} /> <span className="hidden min-[360px]:inline">Nuevo</span> <span className="min-[360px]:lowercase">Presupuesto</span>
         </button>
       </div>
 
@@ -3381,13 +3383,24 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
 
 // Panel plegable con un mismo aspecto para todos los avisos de "Hoy", para que
 // la pantalla no se sienta revuelta con cada bloque hecho a su manera.
-function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, children }) {
+// apilado: el resumen va DEBAJO del título (en Agenda la fecha es larga y
+// junto al resumen se partía en tres renglones en el celular).
+function PanelPlegable({ icono, titulo, resumen, tono, abierto, onToggle, apilado = false, children }) {
   return (
     <div className={"af-plegable" + (tono === "alerta" ? " af-plegable-alerta" : "") + (abierto ? " abierto" : "")}>
       <button className="af-plegable-cabecera" onClick={onToggle}>
         <span className="af-plegable-icono">{icono}</span>
-        <span className="af-plegable-titulo">{titulo}</span>
-        {resumen && <span className="af-plegable-resumen">{resumen}</span>}
+        {apilado ? (
+          <span className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
+            <span className="af-plegable-titulo w-full">{titulo}</span>
+            {resumen && <span className="af-plegable-resumen">{resumen}</span>}
+          </span>
+        ) : (
+          <>
+            <span className="af-plegable-titulo">{titulo}</span>
+            {resumen && <span className="af-plegable-resumen">{resumen}</span>}
+          </>
+        )}
         <CircleChevronRight size={16} className={"af-plegable-flecha" + (abierto ? " abierta" : "")} />
       </button>
       {abierto && <div className="af-plegable-cuerpo">{children}</div>}
@@ -3590,6 +3603,7 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
             resumen={
               `${pedidosDelDia.length} ${pedidosDelDia.length === 1 ? "pedido" : "pedidos"} · ${money(totalDelDia)}`
             }
+            apilado
           >
             {tab === "pendientes" && (
               <ProduccionDelDiaBox
@@ -3622,8 +3636,8 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
 function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
   return (
     <Card className="af-ticket p-4 mb-3 cursor-pointer" onClick={onClick}>
-      <div className="flex items-start justify-between gap-2">
-        <div>
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="min-w-0 flex-1 basis-36">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="af-hora">{fmtHora12(presupuesto.hora)}</span>
             <span className="af-cliente-nombre">{presupuesto.clienteNombre}</span>
@@ -12089,14 +12103,14 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           <Label>Estado del pedido</Label>
           {/* Cápsula de cuatro (como Día/Semana/Mes): todos en un renglón y
               el elegido resaltado en blanco, sin colores sueltos. */}
-          <div className="grid h-11 grid-cols-4 gap-1 rounded-full bg-muted p-1 ring-1 ring-foreground/10">
+          <div className="grid grid-cols-2 gap-1 rounded-3xl bg-muted p-1 ring-1 ring-foreground/10 min-[360px]:h-11 min-[360px]:grid-cols-4 min-[360px]:rounded-full">
             {ESTADOS_PEDIDO.map((e) => (
               <button
                 key={e.id}
                 type="button"
                 aria-pressed={form.estado === e.id}
                 className={cn(
-                  "truncate rounded-full px-1 text-xs font-semibold text-muted-foreground transition-all",
+                  "h-9 truncate rounded-full px-1 text-xs font-semibold text-muted-foreground transition-all min-[360px]:h-auto",
                   form.estado === e.id && "bg-card text-foreground shadow-sm ring-1 ring-foreground/10"
                 )}
                 onClick={() => setForm((p) => {
@@ -12450,19 +12464,19 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             después pasar por la paellera; cuesta un viaje más (mismo precio). */}
         <div className="af-entrega-opciones">
           <Toggle
-            variant="segmento" className="h-auto flex-col gap-1 !whitespace-nowrap px-1 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={!form.entrega}
+            variant="segmento" className="h-auto flex-col gap-1 !whitespace-normal text-center leading-tight px-2 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={!form.entrega}
             onClick={() => setForm((p) => ({ ...p, entrega: false, recogerPaellera: false }))}
           >
             <Store size={16} className="shrink-0" /> Recoger
           </Toggle>
           <Toggle
-            variant="segmento" className="h-auto flex-col gap-1 !whitespace-nowrap px-1 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && !form.recogerPaellera}
+            variant="segmento" className="h-auto flex-col gap-1 !whitespace-normal text-center leading-tight px-2 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && !form.recogerPaellera}
             onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: false }))}
           >
             <Truck size={16} className="shrink-0" /> A domicilio
           </Toggle>
           <Toggle
-            variant="segmento" className="h-auto flex-col gap-1 !whitespace-nowrap px-1 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && form.recogerPaellera}
+            variant="segmento" className="h-auto flex-col gap-1 !whitespace-normal text-center leading-tight px-2 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && form.recogerPaellera}
             onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: true, costoRecoleccion: p.envio }))}
           >
             <ChefHat size={16} className="shrink-0" /> Llevar y recoger
@@ -12542,12 +12556,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             {saldo > 0.5 && (
               <div className="mt-2">
                 {!mostrarAbono ? (
-                  <div className="flex gap-2">
-                    {/* Mismo tamaño que "Registrar cobro", que va al lado. */}
-                    <Button variant="exito" className="flex-1" onClick={marcarPagadoCompleto}>
+                  <div className="flex flex-wrap gap-2">
+                    {/* Mismo tamaño que "Registrar cobro", que va al lado
+                        (o abajo, si la pantalla no da para los dos). */}
+                    <Button variant="exito" className="flex-1 basis-32" onClick={marcarPagadoCompleto}>
                       <Wallet size={16} /> Todo en efectivo
                     </Button>
-                    <Button variant="secondary" className="flex-1" onClick={() => { setAbonoDraft({ monto: saldo, metodo: "efectivo" }); setMostrarAbono(true); }}>
+                    <Button variant="secondary" className="flex-1 basis-32" onClick={() => { setAbonoDraft({ monto: saldo, metodo: "efectivo" }); setMostrarAbono(true); }}>
                       Registrar cobro
                     </Button>
                   </div>
@@ -12634,20 +12649,27 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             </Button>
           )}
           {editando && (
-            <Button variant="destructive-outline"
-              className="w-full mt-2"
-              onClick={() => {
-                if (confirmarBorrar) {
-                  onEliminar();
-                } else {
-                  setConfirmarBorrar(true);
-                  setTimeout(() => setConfirmarBorrar(false), 3000);
-                }
-              }}
-            >
-              <Trash size={14} className="inline mr-1" />
-              {confirmarBorrar ? "¿Seguro? Toca para confirmar" : "Eliminar presupuesto"}
-            </Button>
+            <>
+              <Button variant="destructive-outline" className="w-full mt-2" onClick={() => setConfirmarBorrar(true)}>
+                <Trash size={14} className="inline mr-1" /> Eliminar presupuesto
+              </Button>
+              <AlertDialog open={confirmarBorrar} onOpenChange={setConfirmarBorrar}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogMedia tono="error"><Trash /></AlertDialogMedia>
+                    <AlertDialogTitle>¿Eliminar este presupuesto?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {form.clienteNombre && <strong className="text-foreground">{form.clienteNombre}</strong>}
+                      {form.clienteNombre && " · "}{fmtDateHuman(form.fecha)}. Se quita de la app y no se puede deshacer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Mejor no</AlertDialogCancel>
+                    <AlertDialogAction variant="destructive" onClick={() => { setConfirmarBorrar(false); onEliminar(); }}>Sí, elimínalo</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
           )}
         </>
       ) : (
@@ -12670,20 +12692,27 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           </Button>
 
           {editando && (
-            <Button variant="destructive-outline"
-              className="w-full mt-2"
-              onClick={() => {
-                if (confirmarBorrar) {
-                  onEliminar();
-                } else {
-                  setConfirmarBorrar(true);
-                  setTimeout(() => setConfirmarBorrar(false), 3000);
-                }
-              }}
-            >
-              <Trash size={14} className="inline mr-1" />
-              {confirmarBorrar ? "¿Seguro? Toca para confirmar" : "Eliminar pedido"}
-            </Button>
+            <>
+              <Button variant="destructive-outline" className="w-full mt-2" onClick={() => setConfirmarBorrar(true)}>
+                <Trash size={14} className="inline mr-1" /> Eliminar pedido
+              </Button>
+              <AlertDialog open={confirmarBorrar} onOpenChange={setConfirmarBorrar}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogMedia tono="error"><Trash /></AlertDialogMedia>
+                    <AlertDialogTitle>¿Eliminar este pedido?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {form.clienteNombre && <strong className="text-foreground">{form.clienteNombre}</strong>}
+                      {form.clienteNombre && " · "}{fmtDateHuman(form.fecha)}. Se quita de la app y no se puede deshacer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Mejor no</AlertDialogCancel>
+                    <AlertDialogAction variant="destructive" onClick={() => { setConfirmarBorrar(false); onEliminar(); }}>Sí, elimínalo</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
           )}
         </>
       )}
@@ -15981,7 +16010,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-folio-tag { font-family: var(--fuente-titulos); font-weight: 700; font-size: var(--text-xs); color: var(--ink-soft); background: var(--neutral-soft); border-radius: var(--radius-full); padding: 4px 8px; letter-spacing: 0.03em; }
 
 /* Accesos rápidos del dashboard */
-.af-quick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0 4px; }
+.af-quick-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin: 16px 0 4px; }
 .af-quick-btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: var(--text-sm); color: var(--wine); cursor: pointer; font-family: var(--fuente-titulos); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
 
 /* Overlay invisible para cerrar dropdowns al hacer clic fuera */
@@ -16095,9 +16124,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-badge.sin-dato { background: var(--neutral-soft); color: var(--ink-soft); }
 
 .af-rent-cifras { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px 24px; align-items: end; }
+@media (max-width: 400px) { .af-rent-cifras { column-gap: 12px; } }
 .af-rent-cifra { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .af-rent-cifra-label { font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); }
-.af-rent-cifra-valor { font-family: var(--fuente-titulos); font-weight: 700; font-size: clamp(13px, 3.4vw, 16px); }
+.af-rent-cifra-valor { font-family: var(--fuente-titulos); font-weight: 700; font-size: clamp(var(--text-xs), 3.4vw, var(--text-base)); white-space: nowrap; }
 .af-rent-cifra-valor small { font-weight: 600; font-size: var(--text-2xs); color: var(--ink-soft); }
 .af-rent-input { padding: 8px 12px !important; font-size: var(--text-sm) !important; text-align: left; }
 
@@ -16126,8 +16156,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-kpi-inline { display: grid; grid-template-columns: auto 1fr 1fr; gap: 0; margin-bottom: 16px; }
 .af-kpi-inline-item { display: flex; flex-direction: column; gap: 4px; padding: 0 12px; min-width: 0; border-left: 1px solid var(--line); }
 .af-kpi-inline-item:first-child { border-left: none; padding-left: 0; }
+@media (max-width: 360px) { .af-kpi-inline-item { padding: 0 8px; } .af-kpi-inline-item:first-child { padding-left: 0; } }
 .af-kpi-inline-label { font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
-.af-kpi-inline-valor { font-family: var(--fuente-titulos); font-weight: 700; font-size: clamp(var(--text-sm), 3.8vw, var(--text-xl)); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.af-kpi-inline-valor { font-family: var(--fuente-titulos); font-weight: 700; font-size: clamp(var(--text-xs), 3.6vw, var(--text-xl)); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Tabla de montos: cifras alineadas a la derecha con ancho de dígito fijo */
 .af-tabla-montos { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
@@ -16373,8 +16404,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-rent-mes { padding: 12px 0; border-top: 1px solid var(--line); }
 .af-rent-mes:first-child { border-top: none; }
 .af-rent-mes-fila { display: flex; align-items: center; gap: 12px; }
-.af-rent-mes-nombre { flex: 1; min-width: 0; font-weight: 700; color: var(--ink); font-size: var(--text-sm); }
-.af-rent-mes-curso { margin-left: 8px; padding: 1px 8px; border-radius: var(--radius-full); font-size: var(--text-2xs); font-weight: 700; color: var(--wine); background: var(--wine-soft); vertical-align: 2px; }
+.af-rent-mes-nombre { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-weight: 700; color: var(--ink); font-size: var(--text-sm); }
+.af-rent-mes-curso { white-space: nowrap; padding: 1px 8px; border-radius: var(--radius-full); font-size: var(--text-2xs); font-weight: 700; color: var(--wine); background: var(--wine-soft); vertical-align: 2px; }
 .af-rent-mes-valor { font-family: var(--fuente-titulos); font-weight: 700; font-size: var(--text-base); color: var(--olive); white-space: nowrap; }
 .af-rent-margen-badge.chico { font-size: var(--text-2xs); padding: 2px 8px; }
 .af-rent-mes-barra { height: 6px; border-radius: var(--radius-full); background: var(--neutral-soft); overflow: hidden; margin: 8px 0 8px; }
