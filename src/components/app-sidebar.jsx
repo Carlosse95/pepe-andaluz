@@ -16,13 +16,21 @@ import {
 // Barra lateral de Pepe El Andaluz (base: sidebar-07 de shadcn/ui).
 // Se encoge a solo íconos en iPad/compu y en celular sale como cajón.
 export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrarSesion, ...props }) {
-  const { isMobile, setOpenMobile } = useSidebar();
-  // En celular el cajón se cierra solo al elegir algo.
-  const ir = (fn) => () => { fn(); if (isMobile) setOpenMobile(false); };
+  const { isMobile, setOpenMobile, setOpen } = useSidebar();
+  // Como la barra de Aceternity UI: en iPad y compu vive angosta (solo
+  // íconos), se ABRE sola al pasar el mouse o tocarla y se GUARDA sola al
+  // salir o al elegir una sección. En celular sigue siendo el cajón.
+  const ir = (fn) => () => { fn(); if (isMobile) setOpenMobile(false); else setOpen(false); };
   const inicial = (usuario.nombre || "?").trim().charAt(0).toUpperCase();
 
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar
+      collapsible="icon"
+      flotante
+      onMouseEnter={() => { if (!isMobile) setOpen(true); }}
+      onMouseLeave={() => { if (!isMobile) setOpen(false); }}
+      {...props}
+    >
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>

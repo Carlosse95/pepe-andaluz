@@ -14960,7 +14960,7 @@ export default function App() {
     <div className="af-app">
       <style>{AZAFRAN_CSS}</style>
 
-      <SidebarProvider className="af-con-sidebar">
+      <SidebarProvider className="af-con-sidebar" defaultOpen={false}>
       <AppSidebar
         secciones={navItems.map((n) => ({ key: n.key, label: n.label, icono: n.icon, badge: n.badge, badgeSuave: n.badgeSuave }))}
         vista={view}
