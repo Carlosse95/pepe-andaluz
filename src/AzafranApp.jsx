@@ -16,6 +16,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SwitchVista } from "@/components/ui/switch";
@@ -3075,7 +3076,7 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onBuscar, onConfirmarTransferencia, onSaldarPedido, showToast }) {
+function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onBuscar, onConfirmarTransferencia, onSaldarPedido, showToast, inventario, onVerInventario }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
@@ -3168,6 +3169,21 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
       </div>
 
       <InvitacionAvisos showToast={showToast} />
+
+      {/* Lo de inventario ya no va en la campana (ahí solo van las novedades
+          de los demás): aquí, que es donde se planea el día. */}
+      {inventario && (inventario.porHacer > 0 || inventario.porComprar > 0) && (
+        <Alert variant="aviso" className="mb-4">
+          <TriangleAlert />
+          <AlertTitle>Inventario</AlertTitle>
+          <AlertDescription>
+            <p>
+              {[inventario.porHacer > 0 && `${inventario.porHacer} por hacer`, inventario.porComprar > 0 && `${inventario.porComprar} por comprar`].filter(Boolean).join(" · ")}
+            </p>
+            <Button size="sm" variant="secondary" className="mt-1" onClick={onVerInventario}>Ver inventario</Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Buscar vive aquí (ya no en la barra lateral): Hoy es la pantalla
           de entrada y aquí están también Nuevo pedido y Nuevo presupuesto. */}
@@ -5484,7 +5500,7 @@ const tendenciaDelMes = (valores, anio, que = "", plural = false) => {
 // Una rebanada por platillo. La elegida (con el selector o tocándola) sale
 // más grande y con un anillo, y su monto va en el centro. Debajo, la misma
 // información en números.
-function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
+function PastelVentas({ anio, vista, setVista, hayOtros, datos, mes, setMes, mesesConVentas }) {
   const [activo, setActivo] = useState(null);
   const total = datos.reduce((a, x) => a + x.valor, 0);
   const idx = Math.max(0, datos.findIndex((d) => d.clave === activo));
@@ -5511,13 +5527,20 @@ function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
       <CardHeader className="flex-row items-start justify-between gap-3 space-y-0 p-4 pb-0">
         <div className="grid gap-1">
           <CardTitle className="text-base">Qué se vendió</CardTitle>
-          <CardDescription>Pedidos entregados en {anio}</CardDescription>
+          <CardDescription>{mes === "todo" ? `Todo ${anio}` : `${MESES[mes]} ${anio}`} · {money(total)}</CardDescription>
         </div>
-        {datos.length > 0 && (
-          <NativeSelectS size="sm" envoltura="w-40 shrink-0" aria-label="Elegir platillo" value={elegido?.clave || ""} onChange={(e) => setActivo(e.target.value)}>
-            {datos.map((d) => <NativeSelectOption key={d.clave} value={d.clave}>{d.nombre}</NativeSelectOption>)}
-          </NativeSelectS>
-        )}
+        <NativeSelectS
+          size="sm"
+          envoltura="w-36 shrink-0"
+          aria-label="Elegir mes"
+          value={String(mes)}
+          onChange={(e) => { setMes(e.target.value === "todo" ? "todo" : Number(e.target.value)); setActivo(null); }}
+        >
+          <NativeSelectOption value="todo">Todo el año</NativeSelectOption>
+          {MESES.map((m, i) => (
+            <NativeSelectOption key={m} value={String(i)} disabled={!mesesConVentas[i]}>{m}</NativeSelectOption>
+          ))}
+        </NativeSelectS>
       </CardHeader>
       <CardContent className="p-4">
         <Tabs value={vista} onValueChange={cambiarVista} className="mb-2">
@@ -5529,7 +5552,7 @@ function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
         </Tabs>
 
         {datos.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Todavía no hay ventas de esto en {anio}.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">No hay ventas de esto en {mes === "todo" ? anio : MESES[mes].toLowerCase()}.</p>
         ) : (
           <>
             <ChartContainer config={config} className="mx-auto aspect-square w-full max-w-[300px]">
@@ -5549,10 +5572,14 @@ function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
                   <EtiquetaPie
                     content={({ viewBox }) =>
                       viewBox && "cx" in viewBox ? (
+                        // Solo el % y un nombre corto: un monto con centavos no
+                        // cabía y se salía de la dona en el celular.
                         <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                          <tspan x={viewBox.cx} y={viewBox.cy - 6} className="fill-foreground text-xl font-bold">{money(elegido.valor)}</tspan>
+                          <tspan x={viewBox.cx} y={viewBox.cy - 8} className="fill-foreground text-3xl font-bold">
+                            {total ? Math.round((elegido.valor / total) * 100) : 0}%
+                          </tspan>
                           <tspan x={viewBox.cx} y={viewBox.cy + 18} className="fill-muted-foreground text-xs">
-                            {total ? Math.round((elegido.valor / total) * 100) : 0}% · {fmtCantidadVendida(elegido.cuanto, elegido.unidad)}
+                            {elegido.nombre.length > 14 ? elegido.nombre.slice(0, 13) + "…" : elegido.nombre}
                           </tspan>
                         </text>
                       ) : null
@@ -5561,7 +5588,9 @@ function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
                 </Pie>
               </PieChart>
             </ChartContainer>
-            <p className="mb-3 text-center text-sm font-semibold text-foreground">{elegido.nombre}</p>
+            <p className="mb-3 text-center text-sm text-muted-foreground">
+              <strong className="text-foreground">{elegido.nombre}</strong> · {money(elegido.valor)} · {fmtCantidadVendida(elegido.cuanto, elegido.unidad)}
+            </p>
 
             <div className="divide-y divide-border rounded-2xl ring-1 ring-foreground/10">
               {conColor.map((d) => {
@@ -5578,14 +5607,14 @@ function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
                         <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: d.fill }} />
                         <span className="truncate text-foreground">{d.nombre}</span>
                       </span>
-                      <span className="shrink-0 font-semibold text-foreground">{money(d.valor)}</span>
+                      <span className="shrink-0 font-semibold text-foreground">{pct}%</span>
                     </span>
                     <span className="block h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <span className="block h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, background: d.fill }} />
                     </span>
                     <span className="mt-1 flex justify-between text-xs text-muted-foreground">
                       <span>{fmtCantidadVendida(d.cuanto, d.unidad)}</span>
-                      <span>{pct}% de lo vendido</span>
+                      <span>{money(d.valor)}</span>
                     </span>
                   </button>
                 );
@@ -5961,6 +5990,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [hastaGasto, setHastaGasto] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("todas");
   const [vistaVentas, setVistaVentas] = useState("paellas");
+  // "todo" = el año entero; 0-11 = solo ese mes.
+  const [mesVentas, setMesVentas] = useState("todo");
   // Vacío = todos cerrados. Al entrar a un reporte se viene a ver un total,
   // no a leer gasto por gasto de los ocho meses: quien quiera el detalle de un
   // mes lo abre.
@@ -6107,6 +6138,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   pedidos.forEach((p) => {
     const [y] = p.fecha.split("-").map(Number);
     if (y !== anio || !esVentaHecha(p)) return;
+    if (mesVentas !== "todo" && Number(p.fecha.slice(5, 7)) - 1 !== mesVentas) return;
     p.items.forEach((it) => {
       const clave = it.tipo === "paella" ? "paella:" + it.paellaId : "extra:" + it.extraId;
       const nombre = nombreDeHoy[clave] || (it.tipo === "paella" ? it.paellaNombre : it.nombre);
@@ -6133,7 +6165,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const datosPaella = useMemo(
     () => (vistaVentas === "paellas" ? soloPaellas : vistaVentas === "otros" ? soloOtros : todosLosProductos),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [vistaVentas, JSON.stringify(todosLosProductos)]
+    [vistaVentas, mesVentas, JSON.stringify(todosLosProductos)]
   );
   const totalPorProducto = datosPaella.reduce((a, x) => a + x.valor, 0);
 
@@ -7736,8 +7768,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
       {/* Qué se vendió: a la vista (antes quedó escondido dentro de la sección
           cerrada de arriba). */}
-      {todosLosProductos.length > 0 && (
-        <PastelVentas anio={anio} vista={vistaVentas} setVista={setVistaVentas} hayOtros={soloOtros.length > 0} datos={datosPaella} />
+      {pedidos.some((p) => p.fecha.startsWith(anio + "-") && esVentaHecha(p)) && (
+        <PastelVentas
+          anio={anio}
+          vista={vistaVentas}
+          setVista={setVistaVentas}
+          hayOtros={soloOtros.length > 0}
+          datos={datosPaella}
+          mes={mesVentas}
+          setMes={setMesVentas}
+          mesesConVentas={MESES.map((_, i) => pedidos.some((p) => p.fecha.startsWith(`${anio}-${String(i + 1).padStart(2, "0")}`) && esVentaHecha(p)))}
+        />
       )}
       </div>
       )}
@@ -12726,6 +12767,14 @@ export default function App() {
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
   const [cobroModal, setCobroModal] = useState(null); // { pedido, faltante } o null
   const [verAvisos, setVerAvisos] = useState(false);
+  // Lo que cambió OTRO aparato mientras se usa la app: se queda arriba hasta
+  // cerrarlo (el aviso flotante de antes se iba solo y se perdía).
+  const [alertaInterna, setAlertaInterna] = useState(null);
+  // Campana = novedades: lo que registraron los DEMÁS (del Historial).
+  const [novedades, setNovedades] = useState([]);
+  const [vistasHasta, setVistasHasta] = useState(() => {
+    try { return localStorage.getItem("novedades-vistas-hasta") || ""; } catch { return ""; }
+  });
   // Cerrar los avisos al tocar fuera. No se puede con la capa invisible de
   // siempre: el topbar lleva desenfoque y eso encierra a los position:fixed
   // dentro de la barra, así que la capa solo tapaba la barra y tocar el resto
@@ -13717,6 +13766,17 @@ export default function App() {
     const t = setInterval(subirMovimientos, 30000);
     return () => clearInterval(t);
   }, []);
+  const cargarNovedades = async () => {
+    try {
+      const filas = await listarMovimientos({ limite: 40 });
+      const yo = yoRef.current.email;
+      setNovedades(filas.filter((f) => f.usuario_email !== yo && TIPOS_AVISABLES.includes(f.tipo)).slice(0, 20));
+    } catch { /* sin señal: se queda lo que había */ }
+  };
+  const cargarNovedadesRef = useRef(null);
+  cargarNovedadesRef.current = cargarNovedades;
+  useEffect(() => { if (perfil?.user_id) cargarNovedades(); }, [perfil?.user_id]);
+
   // Si este aparato ya tenía avisos, su dirección se vuelve a guardar a nombre
   // de quien entró (el iPad lo usan varios).
   useEffect(() => { if (perfil?.user_id) refrescarSuscripcion(); }, [perfil?.user_id]);
@@ -14271,18 +14331,10 @@ export default function App() {
       if (!quedan.has(v.id)) avisos.push({ p: null, icono: <Trash className="size-4" />, texto: `Se borró el pedido de ${v.clienteNombre || "un cliente"}` });
     }
     if (!avisos.length) return;
-    if (avisos.length > 3) {
-      toast(`${avisos.length} cambios en pedidos`, { description: avisos.slice(0, 3).map((a) => a.texto).join(" · ") + "…", duration: 6000 });
-      return;
-    }
-    avisos.forEach((a) =>
-      toast(a.texto, {
-        icon: a.icono,
-        description: a.detalle,
-        duration: 6000,
-        action: a.p ? { label: "Ver", onClick: () => irAEditarRef.current?.(a.p) } : undefined,
-      })
-    );
+    setAlertaInterna({ avisos, en: Date.now() });
+    // El otro aparato sube su movimiento al Historial un instante después de
+    // guardar: se espera tantito y se trae para la campana.
+    setTimeout(() => cargarNovedadesRef.current?.(), 2500);
   };
 
   const irAEditar = (pedido) => {
@@ -14820,50 +14872,67 @@ export default function App() {
   // solo en la primera, que no se muestra por debajo de 700px — o sea que en
   // el celular, que es donde se trabaja, no existía y sus avisos no los veía
   // nadie.
+  const sinVer = novedades.filter((f) => f.creado_en > vistasHasta).length;
+  const abrirCampana = () => {
+    setVerAvisos((v) => {
+      if (!v) {
+        cargarNovedades();
+        const ahora = new Date().toISOString();
+        setVistasHasta(ahora);
+        try { localStorage.setItem("novedades-vistas-hasta", ahora); } catch { /* sin espacio */ }
+      }
+      return !v;
+    });
+  };
+  const haceCuanto = (iso) => {
+    const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 1) return "ahora";
+    if (min < 60) return `hace ${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `hace ${h} h`;
+    return fmtDateHuman(iso.slice(0, 10));
+  };
   const campana = (
     <div className="af-campana">
-      <Button variant="ghost" size="icon-sm" title="Avisos" onClick={() => setVerAvisos((v) => !v)}>
+      <Button variant="ghost" size="icon-sm" title="Novedades" className="relative" onClick={abrirCampana}>
         <Bell size={20} />
-        {(porComprar.length > 0 || porHacer.length > 0) && <span className="af-campana-punto" />}
+        {sinVer > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-pimenton px-1 text-2xs font-bold text-white">
+            {sinVer > 9 ? "9+" : sinVer}
+          </span>
+        )}
       </Button>
       {verAvisos && (
         <div className="af-avisos-panel">
-          {porComprar.length === 0 && porHacer.length === 0 ? (
-            <>
-              <div className="af-avisos-titulo">Avisos</div>
-              <div className="af-avisos-vacio">Todo tiene existencia. Nada urgente.</div>
-            </>
+          <div className="af-avisos-titulo">Novedades</div>
+          {novedades.length === 0 ? (
+            <div className="af-avisos-vacio">Nada nuevo de los demás.</div>
           ) : (
-            <>
-              {/* Lo que hay que hacer va primero: se resuelve hoy mismo en la
-                  cocina, y sin ello no se puede vender. Lo de comprar puede
-                  esperar a la siguiente vuelta al súper. */}
-              {porHacer.length > 0 && (
-                <>
-                  <div className="af-avisos-titulo">Por hacer</div>
-                  <div className="af-avisos-cuerpo">
-                    {porHacer.map((x) => (
-                      <div key={x.id} className="af-aviso-linea">
-                        {x.nombre}: <strong>{x.texto}</strong> (aviso en {x.minimo})
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-              {porComprar.length > 0 && (
-                <>
-                  <div className="af-avisos-titulo">Por comprar</div>
-                  <div className="af-avisos-cuerpo">
-                    {porComprar.map((x) => (
-                      <div key={x.id} className="af-aviso-linea">
-                        {x.nombre}: quedan <strong>{x.texto}</strong> (aviso en {x.minimo})
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </>
+            <div className="max-h-[60vh] divide-y divide-border overflow-y-auto">
+              {novedades.slice(0, 15).map((f) => {
+                const Icono = ICONO_MOVIMIENTO[f.tipo] || History;
+                const pedido = f.ref_id ? pedidos.find((p) => p.id === f.ref_id) : null;
+                return (
+                  <button
+                    key={f.id || f.clave_local}
+                    type="button"
+                    disabled={!pedido}
+                    onClick={() => { setVerAvisos(false); irAEditar(pedido); }}
+                    className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-accent/40 disabled:cursor-default"
+                  >
+                    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"><Icono size={14} /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm text-foreground"><strong>{f.usuario_nombre || "Alguien"}</strong> {f.texto.charAt(0).toLowerCase() + f.texto.slice(1)}</span>
+                      <span className="block text-xs text-muted-foreground">{haceCuanto(f.creado_en)}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
+          <button type="button" className="w-full border-t border-border px-4 py-3 text-sm font-semibold text-foreground hover:bg-accent/40" onClick={() => { setVerAvisos(false); irAVista("historial"); }}>
+            Ver todo el historial
+          </button>
         </div>
       )}
     </div>
@@ -14918,7 +14987,28 @@ export default function App() {
         </div>
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onBuscar={() => irAVista("buscar")} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
+          {alertaInterna && (
+            <Alert variant="info" className="mb-4">
+              <BellRing />
+              <AlertTitle>
+                {alertaInterna.avisos.length === 1 ? alertaInterna.avisos[0].texto : `${alertaInterna.avisos.length} cambios en pedidos`}
+              </AlertTitle>
+              <AlertDescription>
+                <p>
+                  {alertaInterna.avisos.length === 1
+                    ? alertaInterna.avisos[0].detalle || "Lo acaba de cambiar otro aparato."
+                    : alertaInterna.avisos.slice(0, 3).map((a) => a.texto).join(" · ") + (alertaInterna.avisos.length > 3 ? "…" : "")}
+                </p>
+                <div className="mt-1 flex gap-2">
+                  {alertaInterna.avisos.length === 1 && alertaInterna.avisos[0].p && (
+                    <Button size="sm" onClick={() => { const p = alertaInterna.avisos[0].p; setAlertaInterna(null); irAEditar(p); }}>Ver pedido</Button>
+                  )}
+                  <Button size="sm" variant="secondary" onClick={() => setAlertaInterna(null)}>Entendido</Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} onBuscar={() => irAVista("buscar")} showToast={showToast} inventario={{ porHacer: porHacer.length, porComprar: porComprar.length }} onVerInventario={() => irAVista("inventario")} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
@@ -15160,7 +15250,8 @@ const AZAFRAN_CSS = `
      los estados (pagado, pendiente, error): la paleta de marca no trae verde
      y "pagado" tiene que leerse de un vistazo. */
   --marca: hsl(var(--lavanda));
-  --pimenton: hsl(var(--pimenton));
+  /* (--pimenton NO se redefine aquí: apuntaba a sí misma, eso la anula y
+     todo lo pimentón de la app salía sin color.) */
   --glass: rgba(255,255,255,0.7);
   /* Para barras fijas: OPACO, sin nada de transparencia.
      Con 0.94 quedaba un 6% de translucidez, y en Safari de iPad el desenfoque
