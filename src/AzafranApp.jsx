@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -5327,9 +5328,330 @@ const DonaProductos = React.memo(function DonaProductos({ datos, colores, alSeñ
   );
 });
 
+// ---------- Reportes: comparar un día, una semana o un mes ----------
+// Lo que antes se buscaba en las libretas: "esta semana estuvimos bajos,
+// ¿cuánto se hizo la misma semana el año pasado?".
+// - Día y semana se comparan contra hace 52 semanas (364 días): así se
+//   compara lunes con lunes, sábado con sábado.
+// - Mes contra el mismo mes de otro año (o el mes pasado). Los meses de antes
+//   de la app (2023) solo tienen el total de la libreta.
+// - Si el periodo todavía no termina, los dos se cortan en el mismo punto
+//   ("van 4 de 7 días") para no comparar medio periodo contra uno entero.
+const DIAS_CORTOS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const DIAS_LARGOS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+const partesISO = (iso) => iso.split("-").map(Number);
+const diaSemana = (iso) => { const [a, m, d] = partesISO(iso); return (new Date(a, m - 1, d).getDay() + 6) % 7; };
+const lunesDe = (iso) => moverFechaISO(iso, -diaSemana(iso));
+const primeroDeMes = (iso) => iso.slice(0, 8) + "01";
+const moverMes = (iso, n) => {
+  const [a, m] = partesISO(iso);
+  const d = new Date(a, m - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+};
+const diasDelMes = (iso) => { const [a, m] = partesISO(iso); return new Date(a, m, 0).getDate(); };
+const fechaCorta = (iso) => {
+  const [a, m, d] = partesISO(iso);
+  return new Date(a, m - 1, d).toLocaleDateString("es-MX", { day: "numeric", month: "short" }).replace(".", "");
+};
+
+// Los días de un periodo, a partir de su primer día.
+const diasDePeriodo = (periodo, inicio) => {
+  const n = periodo === "dia" ? 1 : periodo === "semana" ? 7 : diasDelMes(inicio);
+  return Array.from({ length: n }, (_, i) => moverFechaISO(inicio, i));
+};
+const inicioDe = (periodo, iso) => (periodo === "dia" ? iso : periodo === "semana" ? lunesDe(iso) : primeroDeMes(iso));
+const moverPeriodo = (periodo, inicio, n) =>
+  periodo === "dia" ? moverFechaISO(inicio, n) : periodo === "semana" ? moverFechaISO(inicio, 7 * n) : moverMes(inicio, n);
+
+const resumenDias = (porFecha, dias, hasta) => {
+  const r = { vendido: 0, pedidos: 0, kg: 0, porDia: dias.map(() => 0), platillos: new Map(), hayPedidos: false };
+  dias.forEach((f, i) => {
+    if (i > hasta) return;
+    (porFecha.get(f) || []).forEach((p) => {
+      const t = parseFloat(p.total) || 0;
+      r.vendido += t;
+      r.porDia[i] += t;
+      r.pedidos += 1;
+      r.hayPedidos = true;
+      (p.items || []).forEach((it) => {
+        const nombre = it.tipo === "paella" ? it.paellaNombre || "Paella" : it.nombre;
+        if (!nombre) return;
+        const cant = it.tipo === "paella" ? parseFloat(it.kg) || 0 : parseFloat(it.cantidad) || 0;
+        if (it.tipo === "paella") r.kg += cant;
+        const ya = r.platillos.get(nombre);
+        r.platillos.set(nombre, { cant: (ya?.cant || 0) + cant, unidad: it.tipo === "paella" ? "kg" : "pzas" });
+      });
+    });
+  });
+  return r;
+};
+
+function Cambio({ ahora, antes, dinero }) {
+  if (antes == null) return <span className="text-xs text-muted-foreground">sin datos</span>;
+  if (!antes) return <span className="text-xs text-muted-foreground">antes: 0</span>;
+  const pct = Math.round(((ahora - antes) / antes) * 100);
+  if (pct === 0) return <span className="text-xs text-muted-foreground"><span className="rounded-full bg-secondary px-2 py-0.5 font-semibold text-secondary-foreground">= igual</span> vs {dinero ? money(antes) : Math.round(antes * 10) / 10}</span>;
+  const sube = pct > 0;
+  return (
+    <span className="flex flex-wrap items-center gap-1 text-xs">
+      <span className={cn("rounded-full px-2 py-0.5 font-semibold", sube ? "bg-exito/15 text-exito-fuerte" : "bg-error/15 text-error-fuerte")}>
+        {sube ? "▲" : "▼"} {Math.abs(pct)}%
+      </span>
+      <span className="text-muted-foreground">vs {dinero ? money(antes) : Math.round(antes * 10) / 10}</span>
+    </span>
+  );
+}
+
+function ComparativoView({ pedidos, historico }) {
+  const hoy = todayISO();
+  const [periodo, setPeriodo] = useState("semana");
+  const [ancla, setAncla] = useState(hoy);
+  const [contra, setContra] = useState("anio1");
+
+  const porFecha = useMemo(() => {
+    const m = new Map();
+    pedidos.forEach((p) => { if (p.fecha) (m.get(p.fecha) || m.set(p.fecha, []).get(p.fecha)).push(p); });
+    return m;
+  }, [pedidos]);
+  const primeraFecha = useMemo(() => pedidos.reduce((min, p) => (p.fecha && p.fecha < min ? p.fecha : min), "9999"), [pedidos]);
+
+  const inicio = inicioDe(periodo, ancla);
+  const dias = diasDePeriodo(periodo, inicio);
+  const idxHoy = dias.indexOf(hoy);
+  const enCurso = idxHoy >= 0;
+  const hasta = enCurso ? idxHoy : dias.length - 1;
+  const enFuturo = dias[0] > hoy;
+
+  // Contra qué se compara, según el periodo.
+  const anioDe = (iso) => iso.slice(0, 4);
+  const opcionesTodas =
+    periodo === "mes"
+      ? [
+          { id: "pasada", label: "Mes pasado", inicio: moverMes(inicio, -1) },
+          ...[1, 2, 3].map((n) => ({ id: "anio" + n, label: anioDe(moverMes(inicio, -12 * n)), inicio: moverMes(inicio, -12 * n) })),
+        ]
+      : [
+          { id: "pasada", label: periodo === "dia" ? "Hace una semana" : "Semana pasada", inicio: moverFechaISO(inicio, -7) },
+          ...[1, 2].map((n) => ({ id: "anio" + n, label: anioDe(moverFechaISO(inicio, -364 * n)), inicio: moverFechaISO(inicio, -364 * n) })),
+        ];
+  // Hay datos si el periodo ya existía en la app, o (en mes) en la libreta.
+  const libretaDe = (ini) => historico?.[ini.slice(0, 7)];
+  const opciones = opcionesTodas.filter((o) => {
+    const fin = diasDePeriodo(periodo, o.inicio).slice(-1)[0];
+    return fin >= primeraFecha || (periodo === "mes" && libretaDe(o.inicio));
+  });
+  const elegida = opciones.find((o) => o.id === contra) || opciones.find((o) => o.id === "anio1") || opciones[0];
+
+  const ahora = resumenDias(porFecha, dias, hasta);
+  let antes = null;
+  let soloLibreta = false;
+  if (elegida) {
+    const diasAntes = diasDePeriodo(periodo, elegida.inicio);
+    antes = resumenDias(porFecha, diasAntes, Math.min(hasta, diasAntes.length - 1));
+    // Mes viejo sin pedidos en la app: se usa el total de la libreta (y solo
+    // se puede comparar si el mes ya terminó; la libreta no dice por día).
+    if (periodo === "mes" && !antes.hayPedidos && libretaDe(elegida.inicio)) {
+      soloLibreta = true;
+      antes = { vendido: enCurso ? null : libretaDe(elegida.inicio), pedidos: null, kg: null, porDia: [], platillos: new Map() };
+    }
+  }
+  const etiquetaAntes = elegida
+    ? elegida.id === "pasada"
+      ? elegida.label
+      : `${periodo === "dia" ? "Mismo día" : periodo === "semana" ? "Misma semana" : "Mismo mes"} ${elegida.label}`
+    : "";
+
+  // Lo ya apuntado para lo que falta del periodo en curso.
+  let resto = 0;
+  let restoN = 0;
+  if (enCurso) {
+    dias.slice(hasta + 1).forEach((f) => (porFecha.get(f) || []).forEach((p) => { resto += parseFloat(p.total) || 0; restoN += 1; }));
+  }
+
+  const promedio = (r) => (r && r.pedidos ? r.vendido / r.pedidos : r && r.pedidos === 0 ? 0 : null);
+  const tarjetas = [
+    { label: "Vendido", valor: money(ahora.vendido), a: ahora.vendido, b: antes?.vendido, dinero: true },
+    { label: "Pedidos", valor: ahora.pedidos, a: ahora.pedidos, b: antes?.pedidos },
+    { label: "Kilos de paella", valor: `${Math.round(ahora.kg * 10) / 10} kg`, a: ahora.kg, b: antes?.kg },
+    { label: "Pedido promedio", valor: money(promedio(ahora)), a: promedio(ahora), b: promedio(antes), dinero: true },
+  ];
+
+  // Título del periodo.
+  const titulo =
+    periodo === "dia"
+      ? (() => { const t = fmtDateHuman(inicio); return t.charAt(0).toUpperCase() + t.slice(1); })()
+      : periodo === "semana"
+        ? `${fechaCorta(dias[0])} – ${fechaCorta(dias[6])} ${anioDe(inicio)}`
+        : `${MESES[partesISO(inicio)[1] - 1]} ${anioDe(inicio)}`;
+  const unidadTexto = periodo === "dia" ? "Hoy" : periodo === "semana" ? `Esta semana · van ${hasta + 1} de 7 días` : `Este mes · van ${hasta + 1} de ${dias.length} días`;
+  const esActual = inicio === inicioDe(periodo, hoy);
+
+  // Gráfica: semana = barras por día; mes = lo acumulado día a día.
+  let acumA = 0;
+  let acumB = 0;
+  const datos =
+    periodo === "semana"
+      ? DIAS_CORTOS.map((d, i) => ({ x: d, esta: i <= hasta ? ahora.porDia[i] : null, antes: antes?.porDia?.length && i <= hasta ? antes.porDia[i] : null }))
+      : periodo === "mes"
+        ? dias.map((f, i) => {
+            if (i <= hasta) acumA += ahora.porDia[i];
+            if (antes?.porDia?.length && i < antes.porDia.length && i <= hasta) acumB += antes.porDia[i];
+            return { x: String(i + 1), esta: i <= hasta ? acumA : null, antes: antes?.porDia?.length && i <= hasta && i < antes.porDia.length ? acumB : null };
+          })
+        : [];
+
+  const nombres = [...new Set([...ahora.platillos.keys(), ...(antes ? antes.platillos.keys() : [])])]
+    .map((n) => ({ n, a: ahora.platillos.get(n), b: antes?.platillos.get(n) }))
+    .sort((x, y) => (y.a?.cant || 0) - (x.a?.cant || 0) || (y.b?.cant || 0) - (x.b?.cant || 0));
+  const cant = (v) => (v ? `${Math.round(v.cant * 10) / 10} ${v.unidad}` : "—");
+
+  const cambiarPeriodo = (p) => { setPeriodo(p); setAncla(hoy); };
+
+  return (
+    <div>
+      <Tabs value={periodo} onValueChange={cambiarPeriodo} className="mb-4">
+        <TabsList className="flex w-full">
+          <TabsTrigger value="dia">Día</TabsTrigger>
+          <TabsTrigger value="semana">Semana</TabsTrigger>
+          <TabsTrigger value="mes">Mes</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <Button variant="ghost" size="icon-sm" aria-label="Anterior" onClick={() => setAncla(moverPeriodo(periodo, inicio, -1))}><CircleChevronLeft size={20} /></Button>
+        <div className="text-center">
+          <div className="text-base font-semibold text-foreground">{titulo}</div>
+          <div className="text-xs text-muted-foreground">{enCurso ? unidadTexto : enFuturo ? "Todavía no llega" : periodo === "dia" ? "Día completo" : periodo === "semana" ? "Semana completa" : "Mes completo"}</div>
+        </div>
+        <Button variant="ghost" size="icon-sm" aria-label="Siguiente" onClick={() => setAncla(moverPeriodo(periodo, inicio, 1))}><CircleChevronRight size={20} /></Button>
+      </div>
+      {!esActual && (
+        <div className="mb-3 text-center">
+          <Button variant="link" size="auto" onClick={() => setAncla(hoy)}>Volver a {periodo === "dia" ? "hoy" : periodo === "semana" ? "esta semana" : "este mes"}</Button>
+        </div>
+      )}
+
+      {opciones.length > 0 && (
+        <>
+          <div className="mb-1 text-xs text-muted-foreground">Comparar con</div>
+          <div className="af-category-pills mb-3">
+            {opciones.map((o) => (
+              <Toggle key={o.id} variant="pastilla" pressed={elegida?.id === o.id} onClick={() => setContra(o.id)}>
+                {o.id === "pasada" ? o.label : `${periodo === "dia" ? "Mismo día" : periodo === "semana" ? "Misma semana" : "Mismo mes"} ${o.label}`}
+              </Toggle>
+            ))}
+          </div>
+        </>
+      )}
+
+      {enCurso && periodo !== "dia" && hasta < dias.length - 1 && !soloLibreta && (
+        <p className="mb-3 text-xs text-muted-foreground">
+          {periodo === "semana"
+            ? `Se compara de lunes a ${DIAS_LARGOS[hasta]} en las dos semanas, para que sea parejo.`
+            : `Se comparan los primeros ${hasta + 1} días de los dos meses, para que sea parejo.`}
+        </p>
+      )}
+      {soloLibreta && (
+        <p className="mb-3 text-xs text-muted-foreground">
+          {etiquetaAntes} es de la libreta: solo tiene el total del mes{enCurso ? ", así que se podrá comparar cuando este mes termine" : ""}.
+        </p>
+      )}
+
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        {tarjetas.map((t) => (
+          <Card key={t.label} className="p-4">
+            <div className="text-xs text-muted-foreground">{t.label}</div>
+            <div className="mb-1 text-xl font-semibold text-foreground">{t.valor}</div>
+            {antes && <Cambio ahora={t.a} antes={t.b} dinero={t.dinero} />}
+          </Card>
+        ))}
+      </div>
+
+      {enCurso && restoN > 0 && (
+        <Card className="mb-4 p-4 text-sm">
+          Ya hay <strong>{restoN} {restoN === 1 ? "pedido apuntado" : "pedidos apuntados"}</strong> para lo que resta {periodo === "semana" ? "de la semana" : "del mes"}, por <strong>{money(resto)}</strong>.
+        </Card>
+      )}
+
+      {datos.length > 0 && (
+        <Card className="mb-4 p-4">
+          <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="inline-block size-3 rounded-full" style={{ background: COLOR_WINE }} /> {periodo === "semana" ? "Esta semana" : "Este mes (acumulado)"}</span>
+            {antes?.porDia?.length > 0 && <span className="flex items-center gap-1"><span className="inline-block size-3 rounded-full" style={{ background: "#B8CAFF" }} /> {etiquetaAntes}</span>}
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            {periodo === "semana" ? (
+              <BarChart data={datos} margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke={COLOR_LINE_CHART} />
+                <XAxis dataKey="x" tickLine={false} axisLine={false} fontSize={12} />
+                <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={miles} />
+                <Tooltip formatter={(v, n) => [money(v), n === "esta" ? "Esta semana" : etiquetaAntes]} contentStyle={chartTooltipStyle} cursor={{ fill: "rgba(74,95,140,0.08)" }} />
+                <Bar dataKey="esta" fill={COLOR_WINE} radius={[6, 6, 0, 0]} />
+                {antes?.porDia?.length > 0 && <Bar dataKey="antes" fill="#B8CAFF" radius={[6, 6, 0, 0]} />}
+              </BarChart>
+            ) : (
+              <LineChart data={datos} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke={COLOR_LINE_CHART} />
+                <XAxis dataKey="x" tickLine={false} axisLine={false} fontSize={11} interval={4} />
+                <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={miles} />
+                <Tooltip formatter={(v, n) => [money(v), n === "esta" ? "Este mes" : etiquetaAntes]} labelFormatter={(d) => `Día ${d}`} contentStyle={chartTooltipStyle} />
+                <Line type="monotone" dataKey="esta" stroke={COLOR_WINE} strokeWidth={3} dot={false} />
+                {antes?.porDia?.length > 0 && <Line type="monotone" dataKey="antes" stroke="#8FA6F0" strokeWidth={3} dot={false} />}
+              </LineChart>
+            )}
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {periodo !== "dia" && (
+        <Seccion id={"comparar-dias-" + periodo} titulo="Día por día" abiertaPorDefecto={periodo === "semana"}>
+          <Card className="divide-y divide-border">
+            {dias.map((f, i) => (
+              <div key={f} className={cn("flex items-center justify-between gap-3 px-4 py-3 text-sm", i > hasta && "opacity-50")}>
+                <span className="text-foreground">{DIAS_CORTOS[diaSemana(f)]} {fechaCorta(f)}</span>
+                <span className="flex items-center gap-3">
+                  <span className="font-semibold text-foreground">{i <= hasta ? money(ahora.porDia[i]) : "—"}</span>
+                  {antes?.porDia?.length > 0 && i <= hasta && i < antes.porDia.length && (
+                    <span className="w-24 text-right text-xs text-muted-foreground">{money(antes.porDia[i])}</span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </Card>
+        </Seccion>
+      )}
+
+      <Seccion id={"comparar-platillos-" + periodo} titulo="Qué se vendió" cuenta={nombres.length || null} abiertaPorDefecto={periodo === "dia"}>
+        {nombres.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hay pedidos en estos días.</p>
+        ) : (
+          <Card className="divide-y divide-border">
+            <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs text-muted-foreground">
+              <span>Platillo</span>
+              <span className="flex gap-3">
+                <span className="w-16 text-right">Ahora</span>
+                {antes && !soloLibreta && <span className="w-16 text-right">{elegida.id === "pasada" ? "Antes" : elegida.label}</span>}
+              </span>
+            </div>
+            {nombres.map(({ n, a, b }) => (
+              <div key={n} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <span className="min-w-0 truncate text-foreground">{n}</span>
+                <span className="flex shrink-0 gap-3">
+                  <span className="w-16 text-right font-semibold text-foreground">{cant(a)}</span>
+                  {antes && !soloLibreta && <span className="w-16 text-right text-muted-foreground">{cant(b)}</span>}
+                </span>
+              </div>
+            ))}
+          </Card>
+        )}
+      </Seccion>
+    </div>
+  );
+}
+
 function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig, showToast }) {
   const esAdmin = !perfil || perfil.rol === "admin";
-  const [tab, setTab] = useState("ventas");
+  const [tab, setTab] = useState("comparar");
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [mesComparar, setMesComparar] = useState(new Date().getMonth());
   const [diaSel, setDiaSel] = useState(todayISO());
@@ -6496,10 +6818,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   return (
     <div>
       <div className="af-subtabs mb-4">
-        <Toggle variant="segmento" pressed={tab === "ventas"} onClick={() => setTab("ventas")}>Ventas</Toggle>
-        <Toggle variant="segmento" pressed={tab === "rentabilidad"} onClick={() => setTab("rentabilidad")}>Rentabilidad</Toggle>
-        <Toggle variant="segmento" pressed={tab === "finanzas"} onClick={() => setTab("finanzas")}>Finanzas</Toggle>
+        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "comparar"} onClick={() => setTab("comparar")}>Comparar</Toggle>
+        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "ventas"} onClick={() => setTab("ventas")}>Ventas</Toggle>
+        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "rentabilidad"} onClick={() => setTab("rentabilidad")}>Rentabilidad</Toggle>
+        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "finanzas"} onClick={() => setTab("finanzas")}>Finanzas</Toggle>
       </div>
+
+      {tab === "comparar" && <ComparativoView pedidos={pedidos} historico={historico} />}
 
       {tab === "rentabilidad" && (
         <div>
