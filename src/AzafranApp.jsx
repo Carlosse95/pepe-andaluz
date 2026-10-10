@@ -3216,13 +3216,6 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
               ? "¡Todo lo de hoy está entregado!"
               : "Todavía no hay pedidos hoy"
           }
-          subtitle={
-            activosHoy.length > 0
-              ? 'Prueba con otro filtro o toca "Todos".'
-              : entregadosHoy.length > 0
-              ? "Buen trabajo. Los entregados están aquí abajo."
-              : "Usa 'Nuevo pedido' para registrar la primera llamada del día."
-          }
         />
       ) : (
         <div className="af-card-grid">
@@ -3567,7 +3560,6 @@ function AgendaView({ pedidos, config, onAbrir, onCambiarEstado, onEnviarAvisoWh
           <EmptyState
             icon={<CalendarDays size={28} />}
             title="Nada pendiente por entregar"
-            subtitle="Los pedidos que registres aparecerán aquí, ordenados por fecha."
           />
         ) : (
           <EmptyState
@@ -3703,7 +3695,6 @@ function PresupuestosView({ presupuestos, onAbrir, onAceptar, onNuevo }) {
         <EmptyState
           icon={<FileText size={28} />}
           title="Aún no hay presupuestos"
-          subtitle="Arma una cotización y mándala por WhatsApp o en PDF."
         />
       </div>
     );
@@ -5617,7 +5608,6 @@ function PastelVentas({ anio, vista, setVista, hayOtros, datos }) {
 // - Si el periodo todavía no termina, los dos se cortan en el mismo punto
 //   ("van 4 de 7 días") para no comparar medio periodo contra uno entero.
 const DIAS_CORTOS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-const DIAS_LARGOS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
 const partesISO = (iso) => iso.split("-").map(Number);
 const diaSemana = (iso) => { const [a, m, d] = partesISO(iso); return (new Date(a, m - 1, d).getDay() + 6) % 7; };
 const lunesDe = (iso) => moverFechaISO(iso, -diaSemana(iso));
@@ -5691,7 +5681,11 @@ function ComparativoView({ pedidos, historico }) {
   const dias = diasDePeriodo(periodo, inicio);
   const idxHoy = dias.indexOf(hoy);
   const enCurso = idxHoy >= 0;
-  const hasta = enCurso ? idxHoy : dias.length - 1;
+  // Se compara el periodo COMPLETO, también en curso: los días fuertes son
+  // el fin de semana y casi todo se apunta con anticipación, así que los días
+  // que faltan cuentan con los pedidos ya apuntados.
+  const hasta = dias.length - 1;
+  const faltanDias = enCurso && idxHoy < dias.length - 1;
   const enFuturo = dias[0] > hoy;
 
   // Contra qué se compara, según el periodo.
@@ -5733,13 +5727,6 @@ function ComparativoView({ pedidos, historico }) {
       : `${periodo === "dia" ? "Mismo día" : periodo === "semana" ? "Misma semana" : "Mismo mes"} ${elegida.label}`
     : "";
 
-  // Lo ya apuntado para lo que falta del periodo en curso.
-  let resto = 0;
-  let restoN = 0;
-  if (enCurso) {
-    dias.slice(hasta + 1).forEach((f) => (porFecha.get(f) || []).forEach((p) => { resto += parseFloat(p.total) || 0; restoN += 1; }));
-  }
-
   const promedio = (r) => (r && r.pedidos ? r.vendido / r.pedidos : r && r.pedidos === 0 ? 0 : null);
   const tarjetas = [
     { label: "Vendido", valor: money(ahora.vendido), a: ahora.vendido, b: antes?.vendido, dinero: true },
@@ -5755,7 +5742,7 @@ function ComparativoView({ pedidos, historico }) {
       : periodo === "semana"
         ? `${fechaCorta(dias[0])} – ${fechaCorta(dias[6])} ${anioDe(inicio)}`
         : `${MESES[partesISO(inicio)[1] - 1]} ${anioDe(inicio)}`;
-  const unidadTexto = periodo === "dia" ? "Hoy" : periodo === "semana" ? `Esta semana · van ${hasta + 1} de 7 días` : `Este mes · van ${hasta + 1} de ${dias.length} días`;
+  const unidadTexto = periodo === "dia" ? "Hoy" : periodo === "semana" ? `Esta semana · van ${idxHoy + 1} de 7 días` : `Este mes · van ${idxHoy + 1} de ${dias.length} días`;
   const esActual = inicio === inicioDe(periodo, hoy);
 
   // Gráfica: semana = barras por día; mes = lo acumulado día a día.
@@ -5812,11 +5799,9 @@ function ComparativoView({ pedidos, historico }) {
         </>
       )}
 
-      {enCurso && periodo !== "dia" && hasta < dias.length - 1 && !soloLibreta && (
+      {faltanDias && periodo !== "dia" && !soloLibreta && (
         <p className="mb-3 text-xs text-muted-foreground">
-          {periodo === "semana"
-            ? `Se compara de lunes a ${DIAS_LARGOS[hasta]} en las dos semanas, para que sea parejo.`
-            : `Se comparan los primeros ${hasta + 1} días de los dos meses, para que sea parejo.`}
+          {periodo === "semana" ? "Semana completa, de lunes a domingo." : "Mes completo."} Los días que faltan cuentan con los pedidos ya apuntados.
         </p>
       )}
       {soloLibreta && (
@@ -5834,12 +5819,6 @@ function ComparativoView({ pedidos, historico }) {
           </Card>
         ))}
       </div>
-
-      {enCurso && restoN > 0 && (
-        <Card className="mb-4 p-4 text-sm">
-          Ya hay <strong>{restoN} {restoN === 1 ? "pedido apuntado" : "pedidos apuntados"}</strong> para lo que resta {periodo === "semana" ? "de la semana" : "del mes"}, por <strong>{money(resto)}</strong>.
-        </Card>
-      )}
 
       {datos.length > 0 && periodo === "semana" && (
         <GraficaBarras
@@ -5891,8 +5870,11 @@ function ComparativoView({ pedidos, historico }) {
               </span>
             </div>
             {dias.map((f, i) => (
-              <div key={f} className={cn("flex items-center justify-between gap-3 px-4 py-3 text-sm", i > hasta && "opacity-50")}>
-                <span className="text-foreground">{DIAS_CORTOS[diaSemana(f)]} {fechaCorta(f)}</span>
+              <div key={f} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <span className="text-foreground">
+                  {DIAS_CORTOS[diaSemana(f)]} {fechaCorta(f)}
+                  {f > hoy && <span className="ml-1 text-xs text-muted-foreground">· apuntado</span>}
+                </span>
                 <span className="flex items-center gap-3">
                   <span className="font-semibold text-foreground">{i <= hasta ? money(ahora.porDia[i]) : "—"}</span>
                   {antes?.porDia?.length > 0 && i <= hasta && i < antes.porDia.length && (
