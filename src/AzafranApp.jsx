@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SwitchVista } from "@/components/ui/switch";
 import { Ayuda } from "@/components/ayuda";
+import { Seccion } from "@/components/seccion";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -4363,7 +4364,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
           </div>
         )}
 
-        <div className="af-section-title">Historial ({historial.length})</div>
+        <Seccion id="cliente-historial" titulo="Pedidos de este cliente" cuenta={historial.length} abiertaPorDefecto>
         {historial.length === 0 ? (
           <EmptyState icon={<Users size={24} />} title="Sin pedidos todavía" />
         ) : (
@@ -4371,6 +4372,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
             {historial.map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrirPedido(p)} showFecha onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />)}
           </div>
         )}
+        </Seccion>
 
         {/* Borrar va hasta abajo y en discreto, lejos de "+ Pedido" y
             "Guardar cambios": es lo que menos se usa y lo único que no se
@@ -4998,10 +5000,9 @@ function HistorialView({ cargar, pendientes, pedidos, onAbrirPedido }) {
         <EmptyState icon={<History size={32} />} title="Sin movimientos" subtitle="Aquí aparece cada pedido, pago, gasto y cliente que alguien agregue o cambie." />
       )}
 
-      {porDia.map((g) => (
-        <div key={g.dia}>
-          <div className="af-section-title">{fmtDateHuman(g.dia)}</div>
-          <Card className="mb-4 divide-y divide-border">
+      {porDia.map((g, n) => (
+        <Seccion key={g.dia} titulo={fmtDateHuman(g.dia)} cuenta={g.filas.length} abiertaPorDefecto={n === 0}>
+          <Card className="divide-y divide-border">
             {g.filas.map((f, i) => {
               const Icono = ICONO_MOVIMIENTO[f.tipo] || History;
               const pedido = pedidoDe(f);
@@ -5028,7 +5029,7 @@ function HistorialView({ cargar, pendientes, pedidos, onAbrirPedido }) {
               );
             })}
           </Card>
-        </div>
+        </Seccion>
       ))}
 
       {hayMas && (
@@ -6534,7 +6535,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {/* Lo mismo de la tarjeta de arriba, pero mes por mes. */}
           {rentPorMes.length > 0 && (
             <>
-              <div className="af-section-title">Mes por mes</div>
+              <Seccion id="reportes-mes-por-mes" titulo="Mes por mes">
               <Card className="mb-4 af-rent-meses">
                 {rentPorMes.map((m) => {
                   const enCurso = anio === hoyAnio && m.mes === hoyMes;
@@ -6563,14 +6564,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   );
                 })}
               </Card>
+              </Seccion>
             </>
           )}
 
-          <div className="af-section-title">Producto por producto<Ayuda enLinea>
+          <Seccion id="reportes-productos" titulo="Producto por producto" ayuda={<Ayuda enLinea>
             Cada producto saca su costo del inventario: lo que compras, cuánto usas y cuánto
             se va en merma. Ábrelo para agregarle el envase, el gas y la mano de obra, y para
             ver a cuánto conviene venderlo.
-          </Ayuda></div>
+          </Ayuda>}>
           
 
           {esAdmin && (
@@ -6923,6 +6925,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               );
             })
           )}
+          </Seccion>
         </div>
       )}
 
@@ -7061,7 +7064,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         </Card>
       )}
 
-      <div className="af-section-title">Comparar un mes entre años</div>
+      <Seccion id="reportes-comparar" titulo="Comparar un mes entre años">
       <div className="af-mes-pills mb-3">
         {MESES.map((nombre, i) => (
           <button key={i} className={"af-mes-pill" + (mesComparar === i ? " active" : "")} onClick={() => setMesComparar(i)}>
@@ -7187,6 +7190,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           )}
         </Card>
       )}
+      </Seccion>
       </div>
       )}
 
@@ -8331,7 +8335,7 @@ function UsuariosPanel({ perfil, showToast }) {
 
   return (
     <div>
-      <div className="af-section-title">Usuarios con acceso</div>
+      <Seccion id="usuarios-lista" titulo="Usuarios con acceso">
       {usuarios === null ? (
         <div className="af-hint mb-4">Cargando usuarios...</div>
       ) : (
@@ -8359,8 +8363,9 @@ function UsuariosPanel({ perfil, showToast }) {
           ))}
         </div>
       )}
+      </Seccion>
 
-      <div className="af-section-title">Dar de alta un usuario</div>
+      <Seccion id="usuarios-alta" titulo="Dar de alta un usuario">
       <Card className="p-4">
         <div className="af-field">
           <Label>Nombre</Label>
@@ -8380,6 +8385,7 @@ function UsuariosPanel({ perfil, showToast }) {
           {creando ? "Creando..." : "Crear usuario"}
         </Button>
       </Card>
+      </Seccion>
     </div>
   );
 }
@@ -8516,10 +8522,17 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
           .filter((it) => it.grupo === g.id)
           .sort((a, b) => ["nada", "poco", "bien"].indexOf(estadoInv(a)) - ["nada", "poco", "bien"].indexOf(estadoInv(b)));
         if (!filas.length) return null;
+        const pendientes = filas.filter((it) => estadoInv(it) !== "bien").length;
         return (
-          <div key={g.id}>
-            <div className="af-section-title">{g.label}</div>
-            <Card className="mb-4 divide-y divide-border">
+          <Seccion
+            key={g.id}
+            id={"inv-" + g.id}
+            titulo={g.label}
+            cuenta={filas.length}
+            alerta={pendientes ? `${pendientes} por ${g.id === "hechos" ? "hacer" : "comprar"}` : null}
+            forzarAbierta={!!q || filtro !== "todo"}
+          >
+            <Card className="divide-y divide-border">
               {filas.map((it) => {
                 const e = estadoInv(it);
                 const tope = it.minimo ? it.minimo * 2 : Math.max(it.hay, 1);
@@ -8554,7 +8567,7 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
                 );
               })}
             </Card>
-          </div>
+          </Seccion>
         );
       })}
     </div>
@@ -9084,10 +9097,10 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             <div className="af-hint mb-4">Solo el administrador puede modificar los ajustes. Lo que sí puedes cambiar es <strong>qué se ve en el menú</strong>, más abajo.</div>
           )}
           <fieldset disabled={!esAdmin} className="af-fieldset-reset">
-          <div className="af-section-title">Datos de pago para clientes<Ayuda enLinea>
+          <Seccion id="ajustes-pago" titulo="Datos de pago para clientes" ayuda={<Ayuda enLinea>
               Estos datos se anexan al mensaje de WhatsApp y al PDF para que el cliente
               pueda dejar su anticipo por transferencia. Déjalos vacíos si no quieres enviarlos.
-            </Ayuda></div>
+            </Ayuda>}>
           <Card className="p-4 mb-4">
             
             <div className="af-field">
@@ -9106,11 +9119,12 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar datos de pago"}
             </Button>
           </Card>
+          </Seccion>
 
-          <div className="af-section-title">Datos para pedir facturas<Ayuda enLinea>
+          <Seccion id="ajustes-facturas" titulo="Datos para pedir facturas" ayuda={<Ayuda enLinea>
               Se capturan una vez y después se copian de un toque en el portal de cada tienda.
               Viven solo en tu base de datos, nunca en el código de la app.
-            </Ayuda></div>
+            </Ayuda>}>
           <Card className="p-4 mb-4">
             
             {[
@@ -9153,6 +9167,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar datos fiscales"}
             </Button>
           </Card>
+          </Seccion>
 
           </fieldset>
 
@@ -9161,11 +9176,11 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
              ve cada quien; y dejarla bloqueada dejaba encerrado a quien no
              fuera admin: con Presupuestos apagado no podía entrar a
              Presupuestos ni volver a encenderlo. */}
-          <div className="af-section-title">Qué se ve en el menú<Ayuda enLinea>
+          <Seccion id="ajustes-menu-visible" titulo="Qué se ve en el menú" ayuda={<Ayuda enLinea>
               Apaga lo que no uses y desaparece de tu barra. <strong>Esto es solo tuyo</strong>:
               a los demás no les cambia nada, y te sigue a cualquier aparato donde entres.
               No se borra nada — lo que hubiera ahí sigue guardado y vuelve a aparecer al encenderlo.
-            </Ayuda></div>
+            </Ayuda>}>
           <Card className="p-4 mb-4">
             
             {NAV_ESCONDIBLES.map((n) => {
@@ -9201,14 +9216,15 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar el menú"}
             </Button>
           </Card>
+          </Seccion>
 
           <fieldset disabled={!esAdmin} className="af-fieldset-reset">
 
-          <div className="af-section-title">Dónde recoger<Ayuda enLinea>
+          <Seccion id="ajustes-recoger" titulo="Dónde recoger" ayuda={<Ayuda enLinea>
               Esto se le manda al cliente <strong>desde que aparta su pedido</strong> y otra vez
               cuando le avisas que ya está listo, para que no tenga que esperar a buscar la
               dirección. Solo se envía en los pedidos para recoger. Deja vacío lo que no quieras mandar.
-            </Ayuda></div>
+            </Ayuda>}>
           <Card className="p-4 mb-4">
             
             <div className="af-field">
@@ -9245,12 +9261,13 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar dónde recoger"}
             </Button>
           </Card>
+          </Seccion>
 
-          <div className="af-section-title">Mensajes de WhatsApp<Ayuda enLinea>
+          <Seccion id="ajustes-mensajes" titulo="Mensajes de WhatsApp" ayuda={<Ayuda enLinea>
               Así se redactan los mensajes automáticos. Puedes usar <strong>{"{nombre}"}</strong> y{" "}
               <strong>{"{folio}"}</strong> y se rellenan solos. El detalle del pedido (platillos, total, folio)
               se agrega aparte, no hace falta escribirlo aquí.
-            </Ayuda></div>
+            </Ayuda>}>
           <Card className="p-4 mb-4">
             
             <div className="af-field">
@@ -9367,12 +9384,13 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar mensajes"}
             </Button>
           </Card>
+          </Seccion>
 
   
         {/* En su propio apartado y siempre visible, aunque no haya pasado nada:
             si solo apareciera después de un tropiezo, nadie sabría que existe
             justo cuando hace falta. Carlos fue a buscarlo y no lo encontró. */}
-        <div className="af-section-title">Si la app se atora</div>
+        <Seccion id="ajustes-atora" titulo="Si la app se atora">
         <Card className="p-4 mb-4">
               {(() => {
                 let ultimo = null;
@@ -9402,11 +9420,12 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
                 );
               })()}
         </Card>
+        </Seccion>
 
-        <div className="af-section-title">Respaldo de información<Ayuda enLinea>
+        <Seccion id="ajustes-respaldo" titulo="Respaldo de información" ayuda={<Ayuda enLinea>
               Toda la información vive en este dispositivo. Descarga un respaldo cada cierto tiempo
               y guárdalo donde no se pierda (Drive, correo, etc.).
-            </Ayuda></div>
+            </Ayuda>}>
           <Card className="p-4 mb-4">
             
             <Button className="w-full" onClick={exportarRespaldo}>
@@ -9443,6 +9462,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               </div>
             )}
           </Card>
+        </Seccion>
           </fieldset>
         </div>
       )}
@@ -9577,14 +9597,14 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
           {/* Va PRIMERO porque es lo que se toca a diario: se hacen croquetas
               por la mañana y se apunta cuántas salieron. Los ingredientes se
               revisan de vez en cuando; esto, cada día. */}
-          <div className="af-section-title">Lo que ya está hecho<Ayuda enLinea>
+          <Seccion id="conf-hechos" titulo="Lo que ya está hecho" forzarAbierta={!!soloInv} ayuda={<Ayuda enLinea>
             Aquí van solo los platillos que preparas <strong>por adelantado</strong>. Apunta
             cuántos te salieron y cada pedido los va descontando solo: en "Hoy" te avisa cuando
             queden pocos, y al guardar un pedido que pide más de los que hay, te lo dice antes.
             <br />
             Cada uno se cuenta <strong>como tú lo cuentas</strong>: las croquetas por pieza, el
             alioli por frasco, el bacalao por kilo. Lo eliges en cada tarjeta.
-          </Ayuda></div>
+          </Ayuda>}>
           
           <div className="af-menu-grid mb-4">
             {/* Solo los que de verdad llevan cuenta. La lista entera del menú
@@ -9770,14 +9790,15 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               </Ayuda>
             </label>
           )}
+          </Seccion>
 
           </>)}
           {(!soloInv || itemsDeInventario(draft).find((it) => it.id === soloInv)?.lista === "ingredientes") && (<>
-          <div className="af-section-title">Ingredientes<Ayuda enLinea>
+          <Seccion id="conf-ingredientes" titulo="Ingredientes" forzarAbierta={!!soloInv} ayuda={<Ayuda enLinea>
             Dile a la app cómo COMPRAS cada ingrediente (ej. bolsa de 1.5 kilos) y cuánto USAS
             por cada kilo de paella (ej. 150 gramos, o 4 piezas). Ella hace la conversión y
             descuenta solita al guardar pedidos; en "Hoy" te avisa cuando algo esté por acabarse.
-          </Ayuda></div>
+          </Ayuda>}>
           
           {(draft.ingredientes || []).length > 6 && (
             <div className="af-buscador-gastos mb-3">
@@ -10085,15 +10106,16 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <span>Añadir ingrediente</span>
             </button>
           </div>
+          </Seccion>
 
           </>)}
           {(!soloInv || itemsDeInventario(draft).find((it) => it.id === soloInv)?.lista === "desechables") && (<>
-          <div className="af-section-title">Envases desechables<Ayuda enLinea>
+          <Seccion id="conf-desechables" titulo="Envases desechables" forzarAbierta={!!soloInv} ayuda={<Ayuda enLinea>
             Cada envase cubre una medida exacta o un rango. Los de <strong>kilos</strong> los toman
             solas las paellas que no van en paellera; los de <strong>piezas</strong> hay que
             vincularlos desde el platillo (Menú → ese platillo → Empaque). Abajo de cada uno dice en
             qué se está usando hoy.
-          </Ayuda></div>
+          </Ayuda>}>
           
           <div className="af-menu-grid">
             {(draft.desechables || []).map(normalizarDesechable).map((d, i) => {
@@ -10246,16 +10268,17 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <span>Añadir envase</span>
             </button>
           </div>
+          </Seccion>
 
           </>)}
           {(!soloInv || itemsDeInventario(draft).find((it) => it.id === soloInv)?.lista === "paelleras") && (<>
-          <div className="af-section-title">Paelleras<Ayuda enLinea>
+          <Seccion id="conf-paelleras" titulo="Paelleras" forzarAbierta={!!soloInv} ayuda={<Ayuda enLinea>
             Ponle nombre a cada tamaño para identificarlo más fácil (si lo dejas vacío se usa el
             rango de kilos). Cada tamaño cubre un rango de kilos: al guardar un pedido, según los
             kilos de cada paella se sabe qué tamaño se necesita — se ve en Producción del día, en
             Agenda. Las paellas de {PAELLA_SUELTA_MAX_KG} kg o menos son muy chicas para cualquier
             paellera y se cuentan aparte como "sueltas".
-          </Ayuda></div>
+          </Ayuda>}>
           
           <div className="af-menu-grid">
             {(draft.paelleras || []).map((t, i) => {
@@ -10338,6 +10361,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <span>Añadir paellera</span>
             </button>
           </div>
+          </Seccion>
           </>)}
         </fieldset>
       )}
