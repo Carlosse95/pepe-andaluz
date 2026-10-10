@@ -2784,7 +2784,7 @@ function AvatarButton({ nombre, foto, onGuardar, size = 34, sinBoton = false, pe
                 <div className="af-avatar-preview">
                   {fotoDraft ? <img src={fotoDraft} alt="" /> : <span>{(nombreDraft || "U")[0]?.toUpperCase() || "U"}</span>}
                 </div>
-                <label className={cn(buttonVariants({ variant: "secondary" }), "w-full text-center mb-2")} style={{ display: "block", cursor: "pointer" }}>
+                <label className={cn(buttonVariants({ variant: "secondary" }), "af-boton-archivo w-full mb-2 cursor-pointer")}>
                   {subiendo ? "Subiendo..." : "Cambiar foto"}
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={onArchivo} disabled={subiendo} />
                 </label>
@@ -5599,7 +5599,7 @@ function PastelVentas({ anio, vista, setVista, hayOtros, datos, mes, setMes, mes
               <strong className="text-foreground">{elegido.nombre}</strong> · {money(elegido.valor)} · {fmtCantidadVendida(elegido.cuanto, elegido.unidad)}
             </p>
 
-            <div className="divide-y divide-border rounded-2xl ring-1 ring-foreground/10">
+            <div className="divide-y divide-border overflow-hidden rounded-2xl ring-1 ring-foreground/10">
               {conColor.map((d) => {
                 const pct = total ? Math.round((d.valor / total) * 100) : 0;
                 return (
@@ -7148,10 +7148,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   return (
     <div>
       <div className="af-subtabs mb-4">
-        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "comparar"} onClick={() => setTab("comparar")}>Comparar</Toggle>
-        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "ventas"} onClick={() => setTab("ventas")}>Ventas</Toggle>
-        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "rentabilidad"} onClick={() => setTab("rentabilidad")}>Rentabilidad</Toggle>
-        <Toggle variant="segmento" className="px-2 text-xs sm:text-sm" pressed={tab === "finanzas"} onClick={() => setTab("finanzas")}>Finanzas</Toggle>
+        <Toggle variant="segmento" className="flex-auto px-2 text-xs sm:text-sm" pressed={tab === "comparar"} onClick={() => setTab("comparar")}>Comparar</Toggle>
+        <Toggle variant="segmento" className="flex-auto px-2 text-xs sm:text-sm" pressed={tab === "ventas"} onClick={() => setTab("ventas")}>Ventas</Toggle>
+        <Toggle variant="segmento" className="flex-auto px-2 text-xs sm:text-sm" pressed={tab === "rentabilidad"} onClick={() => setTab("rentabilidad")}>Rentabilidad</Toggle>
+        <Toggle variant="segmento" className="flex-auto px-2 text-xs sm:text-sm" pressed={tab === "finanzas"} onClick={() => setTab("finanzas")}>Finanzas</Toggle>
       </div>
 
       {tab === "comparar" && <ComparativoView pedidos={pedidos} historico={historico} />}
@@ -7368,8 +7368,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                         className="af-rent-desglose-btn"
                         onClick={() => setRentAbierta((prev) => ({ ...prev, [f.clave]: !prev[f.clave] }))}
                       >
-                        <PackageSearch size={14} />
-                        Sacar el costo con ingredientes
+                        <PackageSearch size={14} className="shrink-0" />
+                        <span className="min-w-0 flex-1 text-left">Sacar el costo con ingredientes</span>
                         {(f.usaTanda || f.costoAuto > 0) && <span className="af-rent-desglose-chip">{money(f.costo)}/{f.unidad}</span>}
                         <span className="af-rent-desglose-flecha">{rentAbierta[f.clave] ? <CircleChevronUp size={14} /> : <CircleChevronDown size={14} />}</span>
                       </button>
@@ -7649,7 +7649,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       </div>
 
       <Card className="af-year-total-card mb-5">
-        <div className="af-ink-soft text-sm">{comparaAnio?.enCurso ? `Llevamos en ${anio}` : `Total de ${anio}`}</div>
+        {/* La "i" va junto al título, no sola en un renglón al final. */}
+        <div className="af-ink-soft text-sm">
+          {comparaAnio?.enCurso ? `Llevamos en ${anio}` : `Total de ${anio}`}
+          <Ayuda enLinea>Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</Ayuda>
+        </div>
         <div className="af-year-total">{money(comparaAnio?.enCurso ? comparaAnio.ahora : totalAnio)}</div>
         {comparaAnio && comparaAnio.antes > 0 && (() => {
           const p = Math.round(((comparaAnio.ahora - comparaAnio.antes) / comparaAnio.antes) * 100);
@@ -7662,7 +7666,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </div>
           );
         })()}
-        <Ayuda>Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</Ayuda>
       </Card>
 
       <GraficaBarras
@@ -7910,7 +7913,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             )}
           </div>
           <div className="af-field af-ticket-campo">
-            <Label>Foto del ticket</Label>
+            <Label>
+              Foto del ticket
+              {/* La "i" junto al título, no sola debajo del botón. */}
+              <Ayuda enLinea>
+                Al subirla se lee sola y llena la tienda, la fecha y el monto. Revísalos
+                antes de guardar, y corrige lo que haga falta.
+              </Ayuda>
+            </Label>
             {nuevoGasto.ticket ? (
               <div className="af-ticket-listo">
                 <Receipt size={15} /> Ticket guardado
@@ -7919,12 +7929,12 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </Button>
               </div>
             ) : (
-              <label className={cn(buttonVariants({ variant: "secondary" }), "w-full")} style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
+              <label className={cn(buttonVariants({ variant: "secondary" }), "af-boton-archivo w-full cursor-pointer")}>
                 {subiendoTicket
                   ? "Subiendo…"
                   : leyendoTicket
                     ? "Leyendo el ticket…"
-                    : <><Camera size={15} className="inline mr-1" /> Tomar o elegir foto</>}
+                    : <><Camera size={15} /> Tomar o elegir foto</>}
                 {/* Sin "capture". Ese atributo manda al iPhone directo a la
                     cámara y ESCONDE la galería: no había forma de subir un
                     ticket que te mandaron por WhatsApp, aunque el botón dice
@@ -7993,10 +8003,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 />
               </label>
             )}
-            <Ayuda className="mt-1">
-              Al subirla se lee sola y llena la tienda, la fecha y el monto. Revísalos
-              antes de guardar, y corrige lo que haga falta.
-            </Ayuda>
           </div>
 
 
@@ -8241,10 +8247,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <div className="af-tabla-pista">
             <CircleArrowRight size={14} /> Desliza la tabla de lado para ver todo
           </div>
-          <ScrollArea type="auto" horizontal className="af-tabla-scroll mb-4 w-full min-w-0 max-w-full rounded-md border" viewportClassName="max-h-[min(62vh,620px)]">
+          {/* Sin alto máximo: la tabla mide lo que sus renglones y solo se
+              desliza de lado. Con alto tope quedaba un desliz dentro de otro
+              (en el celular se atoraba el dedo) y los renglones de abajo, ocultos,
+              seguían ocupando lugar encima de "A dónde se fue el dinero". */}
+          <ScrollArea type="auto" horizontal className="af-tabla-scroll mb-4 w-full min-w-0 max-w-full rounded-2xl border">
           <Table sinMarco className="af-tabla-gastos">
-            {/* Los títulos de las columnas se quedan fijos arriba al bajar. */}
-            <TableHeader className="sticky top-0 z-10 bg-background">
+            <TableHeader className="bg-background">
               <TableRow>
                 <TableHead>Fecha</TableHead>
                 <TableHead>En qué</TableHead>
@@ -8253,7 +8262,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <TableHead className="af-col-cadames">Cada mes</TableHead>
                 <TableHead className="text-right">Monto</TableHead>
                 <TableHead>Factura</TableHead>
-                <TableHead><span className="sr-only">Acciones</span></TableHead>
+                <TableHead aria-label="Acciones" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -8338,7 +8347,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {/* Minimizado por omisión: son una regla que ya funciona sola, se
             entra a revisarlos de vez en cuando, no todos los días. */}
         <div className="af-encabezado-accion">
-          <div className="af-section-title" style={{ margin: 0 }}>Gastos fijos del mes</div>
+          <div className="af-section-title" style={{ margin: 0 }}>
+            Gastos fijos del mes
+            {/* La "i" junto al título, en vez de sola arriba de la lista. */}
+            {abrirFijos && (
+              <Ayuda enLinea>
+                Se registran solos cada mes. Revisa que los montos estén al día: si sube la
+                renta o cambia un sueldo, corrígelo aquí.
+              </Ayuda>
+            )}
+          </div>
           <button className="af-btn-accion" onClick={() => setAbrirFijos((v) => !v)}>
             {abrirFijos ? <><CircleX size={15} /> Cerrar</> : <><SquarePen size={15} /> Revisar</>}
           </button>
@@ -8362,11 +8380,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {abrirFijos && (
         <Card className="p-4 mb-5">
-          <Ayuda className="mb-3">
-            Se registran solos cada mes. Revisa que los montos estén al día: si sube la
-            renta o cambia un sueldo, corrígelo aquí.
-          </Ayuda>
-
           {gastosFijos.length === 0 ? (
             <div className="af-hint mb-3" style={{ textAlign: "center" }}>
               Todavía no hay gastos fijos.
@@ -8514,7 +8527,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </div>
           ) : (
             <Button variant="secondary"
-              className="w-full"
+              className="w-full mt-3"
               onClick={() => setDraftFijo({ id: null, descripcion: "", categoria: CATEGORIAS_GASTO[0], ambito: "negocio", porDia: 0, monto: "", dia: 1 })}
             >
               <CirclePlus size={16} className="inline mr-1" /> Agregar gasto fijo
@@ -8950,7 +8963,7 @@ function UsuariosPanel({ perfil, showToast }) {
       ) : (
         <div className="mb-4">
           {usuarios.map((u) => (
-            <Card key={u.user_id} className="p-3 mb-2 af-usuario-row">
+            <Card key={u.user_id} className="p-4 mb-2 af-usuario-row">
               <div className="flex-1 min-w-0">
                 <div className="af-cliente-nombre">
                   {u.nombre || u.email}
@@ -9599,7 +9612,17 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             "piezas por orden" a secas y no se entendía: parecía que
             había que llenarlo siempre, y que de ahí salía el descuento
             de envases, que sale del Empaque de abajo. */}
-        <div className="af-mini-label mt-1">¿Una orden trae varias piezas?</div>
+        {/* Las "i" van junto a su título, no solas en un renglón. */}
+        <div className="af-mini-label mt-1">
+          ¿Una orden trae varias piezas?
+          <Ayuda enLinea>
+            {ex.piezasPorUnidad > 1
+              ? `Al pedir 2 saldrán ${2 * ex.piezasPorUnidad} piezas en la producción del día y en el WhatsApp del cliente.`
+              : ex.piezasPorUnidad === 1
+                ? "Poner 1 es lo mismo que poner 0: déjalo en 0 y te evitas la duda."
+                : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
+          </Ayuda>
+        </div>
         <div className="af-menu-card-row">
           <NumberField
             value={ex.piezasPorUnidad || 0}
@@ -9614,14 +9637,16 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             {ex.piezasPorUnidad > 0 ? "piezas en cada orden" : "déjalo en 0 si se vende por pieza"}
           </span>
         </div>
-        <Ayuda>
-          {ex.piezasPorUnidad > 1
-            ? `Al pedir 2 saldrán ${2 * ex.piezasPorUnidad} piezas en la producción del día y en el WhatsApp del cliente.`
-            : ex.piezasPorUnidad === 1
-              ? "Poner 1 es lo mismo que poner 0: déjalo en 0 y te evitas la duda."
-              : "Solo para lo que va en paquete: una orden de croquetas trae 6. No tiene que ver con el descuento de envases, eso se define abajo en Empaque."}
-        </Ayuda>
-        <div className="af-mini-label mt-1">Empaque (envase que descuenta del inventario)</div>
+        <div className="af-mini-label mt-1">
+          Empaque (envase que descuenta del inventario)
+          {ex.empaqueTipo === "rango" && (
+            <Ayuda enLinea>
+              Se usará el envase (medido en piezas) cuyo rango incluya el total de piezas del pedido
+              ({ex.piezasPorUnidad > 0 ? `${ex.piezasPorUnidad} por orden` : "define las piezas por orden arriba"}).
+              Configura esos envases en <strong>Inventario → Envases desechables</strong>.
+            </Ayuda>
+          )}
+        </div>
         <Combobox
          
           value={ex.empaqueTipo || "ninguno"}
@@ -9646,13 +9671,6 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             <option value="">Elige el envase...</option>
             {(draft.desechables || []).map((d) => (<option key={d.id} value={d.id}>{d.nombre}</option>))}
           </Combobox>
-        )}
-        {ex.empaqueTipo === "rango" && (
-          <Ayuda>
-            Se usará el envase (medido en piezas) cuyo rango incluya el total de piezas del pedido
-            ({ex.piezasPorUnidad > 0 ? `${ex.piezasPorUnidad} por orden` : "define las piezas por orden arriba"}).
-            Configura esos envases en <strong>Inventario → Envases desechables</strong>.
-          </Ayuda>
         )}
       </div>
     );
@@ -9915,7 +9933,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <Label>Saludo al crear un pedido</Label>
               <Textarea
                
-                rows={2}
+                rows={3}
                 value={(draft.mensajes || MENSAJES_DEFAULT).saludoPedido}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), saludoPedido: e.target.value } })}
               />
@@ -9924,7 +9942,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <Label>Despedida al crear un pedido</Label>
               <Textarea
                
-                rows={2}
+                rows={3}
                 value={(draft.mensajes || MENSAJES_DEFAULT).cierrePedido}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), cierrePedido: e.target.value } })}
               />
@@ -9946,20 +9964,21 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <Label>Al avisar — pedido a domicilio</Label>
               <Textarea
                
-                rows={2}
+                rows={3}
                 value={(draft.mensajes || MENSAJES_DEFAULT).avisadoDomicilio}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), avisadoDomicilio: e.target.value } })}
               />
             </div>
             <div className="af-field">
-              <Label>Cuando el pedido cambia después de avisarle<Ayuda enLinea>
+              {/* La última palabra va pegada a la "i" para que no baje sola a otro renglón. */}
+              <Label>Cuando el pedido cambia después de <span className="whitespace-nowrap">avisarle<Ayuda enLinea>
                 Se ofrece al guardar un pedido al que ya le habías avisado al cliente y que
                 cambió de platillos, total, día, hora o forma de entrega. Abajo va el resumen
                 completo ya actualizado.
-              </Ayuda></Label>
+              </Ayuda></span></Label>
               <Textarea
                
-                rows={2}
+                rows={3}
                 value={(draft.mensajes || MENSAJES_DEFAULT).cambioPedido || MENSAJES_DEFAULT.cambioPedido}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), cambioPedido: e.target.value } })}
               />
@@ -9972,7 +9991,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               </Ayuda></Label>
               <Textarea
                
-                rows={2}
+                rows={3}
                 value={(draft.mensajes || MENSAJES_DEFAULT).llegue || MENSAJES_DEFAULT.llegue}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), llegue: e.target.value } })}
               />
@@ -9982,7 +10001,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <Label>Al marcar Entregado</Label>
               <Textarea
                
-                rows={2}
+                rows={3}
                 value={(draft.mensajes || MENSAJES_DEFAULT).entregado || MENSAJES_DEFAULT.entregado}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), entregado: e.target.value } })}
               />
@@ -10079,8 +10098,8 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               Restaurar un respaldo <strong>reemplaza</strong> todos los datos actuales
               (pedidos, clientes, menú, presupuestos y reportes).
             </p>
-            <label className={cn(buttonVariants({ variant: "secondary" }), "w-full block text-center cursor-pointer")}>
-              <Upload size={15} className="inline mr-1" /> Elegir archivo de respaldo
+            <label className={cn(buttonVariants({ variant: "secondary" }), "af-boton-archivo w-full cursor-pointer")}>
+              <Upload size={15} /> Elegir archivo de respaldo
               <input type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(e) => { leerArchivo(e.target.files[0]); e.target.value = ""; }} />
             </label>
             {importError && <div className="af-error mt-3">{importError}</div>}
@@ -10408,7 +10427,12 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
           )}
           {(draft.extras || []).some((e) => !e.llevaInventario) && (
             <label className="af-field mb-4">
-              <span className="af-mini-label">Llevar la cuenta de otro platillo</span>
+              <span className="af-mini-label">
+                Llevar la cuenta de otro platillo
+                <Ayuda enLinea>
+                  Para quitar uno de la lista, apaga su interruptor: el número se guarda por si lo vuelves a encender.
+                </Ayuda>
+              </span>
               <Combobox
                
                 value=""
@@ -10430,9 +10454,6 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
                   <option key={x.id} value={x.id}>{x.nombre}</option>
                 ))}
               </Combobox>
-              <Ayuda className="mt-1">
-                Para quitar uno de la lista, apaga su interruptor: el número se guarda por si lo vuelves a encender.
-              </Ayuda>
             </label>
           )}
           </Seccion>
@@ -10736,7 +10757,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             })()}
 
             <button
-              className="af-add-card"
+              className="af-add-card af-add-card-row"
               onClick={() => {
                 const nuevo = { id: uid(), nombre: "", familia: "otros", presentacionNombre: "bolsa", presentacionCantidad: 1, presentacionUnidad: "kg", usoUnidad: "g", stock: 0, minimo: 1, porKg: {} };
                 setDraft((prev) => ({ ...prev, ingredientes: [...(prev.ingredientes || []), nuevo] }));
@@ -10901,7 +10922,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               );
             })}
             <button
-              className="af-add-card"
+              className="af-add-card af-add-card-row"
               onClick={() =>
                 setDraft({
                   ...draft,
@@ -10994,7 +11015,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               );
             })}
             <button
-              className="af-add-card"
+              className="af-add-card af-add-card-row"
               onClick={() =>
                 setDraft({
                   ...draft,
@@ -12520,8 +12541,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <div className="mt-2">
                 {!mostrarAbono ? (
                   <div className="flex gap-2">
-                    <Button variant="exito" size="sm" className="flex-1" style={{ justifyContent: "center", display: "flex" }} onClick={marcarPagadoCompleto}>
-                      <Wallet size={14} /> Todo en efectivo
+                    {/* Mismo tamaño que "Registrar cobro", que va al lado. */}
+                    <Button variant="exito" className="flex-1" onClick={marcarPagadoCompleto}>
+                      <Wallet size={16} /> Todo en efectivo
                     </Button>
                     <Button variant="secondary" className="flex-1" onClick={() => { setAbonoDraft({ monto: saldo, metodo: "efectivo" }); setMostrarAbono(true); }}>
                       Registrar cobro
@@ -15888,7 +15910,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-pane-hide-mobile { display: none; }
 .af-modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 16px; border-top: 1px solid var(--line); background: var(--surface); flex-shrink: 0; }
 
-.af-category-pills { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; margin: 12px 0 0; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none; }
+.af-category-pills { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; margin-top: 12px; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none; }
 .af-category-pills::-webkit-scrollbar { display: none; }
 
 .af-picker-group-title { font-family: var(--fuente-titulos); font-weight: 700; font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin: 16px 2px 8px; }
@@ -16260,7 +16282,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
      abajo: puesto ahí, ese "130px" no era el ancho sino el ALTO, y en el
      iPhone las listas salían como globos de 200px de altura. */
   .af-filtro { flex: 1 1 130px; min-width: 0; }
-  .af-filtros-fila .af-input { width: 100%; height: var(--alto-campo); flex: none; }
+  /* min-width 0: el de 172px de la compu hacía que la lista de la derecha
+     se saliera unos pixeles de la orilla en el celular. */
+  .af-filtros-fila .af-input { width: 100%; min-width: 0; height: var(--alto-campo); flex: none; }
   .af-filtro-busca { flex: 1 1 100%; min-width: 0; }
   .af-aviso-facturar { order: 3; width: 100%; justify-content: center; margin: 4px 0 0; }
   .af-encabezado-accion { flex-wrap: wrap; }
@@ -16512,10 +16536,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   position: sticky; top: 0; z-index: 2;
   background: color-mix(in srgb, var(--ink-soft) 7%, var(--surface));
 }
-/* Un aviso discreto de que hay más a la derecha. Solo en el celular: de 701px
-   para arriba la tabla ya cabe entera y no hay nada que deslizar. */
+/* Un aviso discreto de que hay más a la derecha. En el celular y en el iPad de
+   pie (con la barra de íconos al lado la tabla tampoco cabe: le faltan ~100px
+   y Factura y los botones quedaban escondidos sin aviso). De 1024px para
+   arriba ya cabe entera. */
 .af-tabla-pista { display: none; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--ink-soft); margin: 0 0 8px 2px; }
-@media (max-width: 729px) {
+@media (max-width: 1023px) {
   .af-tabla-pista { display: flex; }
 }
 
@@ -16815,4 +16841,48 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-tabla-gastos .af-col-cadames { display: none; }
 }
 @media (min-width: 1024px) { .af-tabla-scroll table.af-tabla-gastos { min-width: 0; } }
+/* "Añadir paella / extra / ingrediente / envase / paellera": renglón a lo ancho.
+   La regla .af-add-card venía DESPUÉS de .af-add-card-row y la volvía un
+   cuadrito de 96px alto pegado a la izquierda. */
+.af-add-card { border-radius: var(--radius-lg); }
+.af-add-card.af-add-card-row { flex-direction: row; min-height: 0; width: 100%; padding: 12px; margin-top: 8px; }
+/* Buscadores (Menú, Inventario, Rentabilidad): la lupa va DENTRO del campo,
+   como en Clientes, y no suelta a la izquierda. */
+.af-buscador-gastos { position: relative; }
+.af-buscador-gastos > svg:first-child { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 1; }
+.af-buscador-gastos > svg:first-child + .af-input { padding-left: 40px; }
+/* Cabeceras de grupo (Menú, meses de gastos): misma esquina que las tarjetas
+   y el número en pastilla, como los demás contadores. */
+.af-grupo-cabecera, .af-mes-cabecera, .af-ing-row, .af-menu-card { border-radius: var(--radius-lg); }
+/* Platillo abierto en el Menú: el mismo hueco abajo que los renglones cerrados
+   (antes quedaba pegado al siguiente). */
+.af-grupo > .af-menu-card { margin-bottom: 8px; }
+.af-mes-cuenta { border-radius: var(--radius-full); }
+/* Inventario → Configurar → lo ya hecho: los campos ya se separan con el gap
+   de la columna; el margen propio de .af-field duplicaba el hueco. */
+.af-hecho-campos { gap: 12px; }
+.af-hecho-campos > .af-field { margin-bottom: 0; }
+/* Flechas de "un día antes / después" junto a la fecha: redondas, del mismo
+   relleno que el campo píldora (antes cuadradas con esquina de 12px). */
+.af-fecha-paso { width: 36px; height: 36px; border-radius: var(--radius-full); border: 1px solid hsl(var(--input)); background: hsl(var(--input) / 0.3); color: hsl(var(--foreground)); }
+/* Filas de filtros: el "margin: 12px 0 0" de antes se comía el mb-3/mb-4 de
+   cada pantalla (quedaban pegadas a lo de abajo). Ahora solo se fija el de
+   arriba, y si la fila abre la pantalla (Historial) no lleva hueco extra. */
+.af-category-pills:first-child { margin-top: 0; }
+/* Recuadro de la foto del ticket: misma esquina que las tarjetas. */
+.af-ticket-campo { border-radius: var(--radius-lg); }
+/* Botones de elegir archivo (foto del ticket, foto de perfil, respaldo): son un
+   <label> que abre el archivo. Antes iban como bloque y el texto quedaba
+   pegado arriba; doble clase para ganarle también a ".af-field label". */
+label.af-boton-archivo { display: flex; line-height: 1.25; }
+.af-field label.af-boton-archivo { display: flex; margin-bottom: 0; }
+/* Gastos fijos: el último renglón de cada bolsa ya no lleva raya (antes salían
+   dos rayas juntas encima del total, porque el total también es un div). */
+.af-fijos-row:has(+ .af-fijos-total) { border-bottom: none; }
+/* Botón "Sacar el costo con ingredientes": el texto a la izquierda (antes
+   quedaba centrado en dos renglones) y la cifra sin partirse. */
+.af-rent-desglose-btn { border-radius: var(--radius-xl); }
+.af-rent-desglose-chip { white-space: nowrap; flex-shrink: 0; }
+/* Botón de pegar ubicación: redondo y del mismo alto que el campo píldora de al lado. */
+.af-paste-btn { width: 36px; height: 36px; border-radius: var(--radius-full); border: 1px solid hsl(var(--input)); background: hsl(var(--input) / 0.3); color: hsl(var(--foreground)); }
 `;
