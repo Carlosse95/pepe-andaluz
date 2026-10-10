@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogConfirmacion, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel, AlertDialogMedia } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel, AlertDialogMedia } from "@/components/ui/alert-dialog";
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -2919,21 +2919,20 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
         <CircleCheck size={14} /> Devuelta
       </Button>
       {confirmando && (
-        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmando(false))?.(); }}>
-          <AlertDialogConfirmacion>
-            <div className="af-alerta-icon"><ChefHat size={26} /></div>
-            <div className="af-alerta-titulo">¿Marcar paellera devuelta?</div>
-            <p className="af-alerta-texto">
-              {item.clienteNombre} · {item.paellaNombre}<br />{fmtDateHuman(item.fecha)} · {item.hora}
-            </p>
-            <Button
-              className="w-full"
-              onClick={() => { onMarcarDevuelta(item.pedidoId, item.itemId); setConfirmando(false); }}
-            >
-              Sí, ya se devolvió
-            </Button>
-            <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmando(false)}>Cancelar</Button>
-          </AlertDialogConfirmacion>
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setConfirmando(false); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogMedia><ChefHat /></AlertDialogMedia>
+              <AlertDialogTitle>¿Marcar paellera devuelta?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {item.clienteNombre} · {item.paellaNombre}<br />{fmtDateHuman(item.fecha)} · {item.hora}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { onMarcarDevuelta(item.pedidoId, item.itemId); setConfirmando(false); }}>Sí, ya volvió</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
       )}
     </Card>
@@ -4089,20 +4088,22 @@ function DeudasView({ deudas, onGuardar, showToast }) {
         )}
 
         {porBorrar && (
-          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
-            <AlertDialogConfirmacion>
-              <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
-              <div className="af-alerta-titulo">
-                {porBorrar.tipo === "deuda" ? "¿Borrar esta deuda?" : "¿Borrar este pago?"}
-              </div>
-              <div className="af-alerta-texto mb-3">
-                {porBorrar.tipo === "deuda"
-                  ? `Se va ${porBorrar.deuda.quien} con todos sus pagos apuntados. No se puede deshacer.`
-                  : `${money(porBorrar.pago.monto)} del ${fmtDateHuman(porBorrar.pago.fecha)}. El total que falta vuelve a subir.`}
-              </div>
-              <Button variant="destructive-outline" className="w-full" onClick={borrar}>Sí, bórralo</Button>
-              <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Mejor no</Button>
-            </AlertDialogConfirmacion>
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setPorBorrar(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogMedia tono="error"><Trash /></AlertDialogMedia>
+                <AlertDialogTitle>{porBorrar.tipo === "deuda" ? "¿Borrar esta deuda?" : "¿Borrar este pago?"}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {porBorrar.tipo === "deuda"
+                    ? `Se va ${porBorrar.deuda.quien} con todos sus pagos apuntados. No se puede deshacer.`
+                    : `${money(porBorrar.pago.monto)} del ${fmtDateHuman(porBorrar.pago.fecha)}. El total que falta vuelve a subir.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Mejor no</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={borrar}>Sí, bórralo</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
           </AlertDialog>
         )}
       </>
@@ -4396,52 +4397,43 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         </Button>
 
         {confirmBorrar && (
-          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmBorrar(null))?.(); }}>
-            <AlertDialogConfirmacion>
-              <div className="af-alerta-icon"><Trash size={26} /></div>
-              <div className="af-alerta-titulo">¿Borrar a {confirmBorrar.cliente.nombre}?</div>
-
-              {/* Lo que más tranquiliza al borrar es saber qué NO se va. */}
-              {confirmBorrar.pedidos === 0 ? (
-                <p className="af-alerta-texto">Nunca ha hecho un pedido. Solo se quita de la lista.</p>
-              ) : (
-                <p className="af-alerta-texto">
-                  Sus <strong>{confirmBorrar.pedidos} pedido{confirmBorrar.pedidos === 1 ? "" : "s"} no se borran</strong>:
-                  siguen en el historial y en las cuentas del mes, con su nombre. Lo que se pierde es su ficha
-                  —teléfono, dirección y notas— y ya no vas a poder abrirla desde sus pedidos.
-                </p>
-              )}
-
-              {/* Lo que está abierto se enseña aparte y en rojo: si debe dinero
-                  o trae una paellera, casi siempre es que NO había que borrarlo. */}
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setConfirmBorrar(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogMedia tono="error"><Trash /></AlertDialogMedia>
+                <AlertDialogTitle>¿Borrar a {confirmBorrar.cliente.nombre}?</AlertDialogTitle>
+                {/* Lo que más tranquiliza al borrar es saber qué NO se va. */}
+                <AlertDialogDescription>
+                  {confirmBorrar.pedidos === 0
+                    ? "Nunca ha hecho un pedido. Solo se quita de la lista."
+                    : <>Sus <strong>{confirmBorrar.pedidos} pedido{confirmBorrar.pedidos === 1 ? "" : "s"} no se borran</strong>: siguen en el historial y en las cuentas del mes. Se pierde su ficha (teléfono, dirección y notas). No se puede deshacer.</>}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {/* Si debe dinero o trae una paellera, casi siempre es que NO había que borrarlo. */}
               {(confirmBorrar.paelleras > 0 || confirmBorrar.debe > 0 || confirmBorrar.pendientes > 0) && (
-                <div className="af-borrar-pendiente">
-                  <strong>Ojo, tiene cosas abiertas:</strong>
-                  <ul>
-                    {confirmBorrar.paelleras > 0 && (
-                      <li>{confirmBorrar.paelleras} paellera{confirmBorrar.paelleras === 1 ? "" : "s"} sin devolver</li>
-                    )}
+                <div className="rounded-2xl bg-error/10 px-4 py-3 text-sm text-foreground ring-1 ring-error/30">
+                  <strong className="text-error-fuerte">Ojo, tiene cosas abiertas:</strong>
+                  <ul className="ml-4 mt-1 list-disc">
+                    {confirmBorrar.paelleras > 0 && <li>{confirmBorrar.paelleras} paellera{confirmBorrar.paelleras === 1 ? "" : "s"} sin devolver</li>}
                     {confirmBorrar.debe > 0 && <li>Debe {money(confirmBorrar.debe)}</li>}
-                    {confirmBorrar.pendientes > 0 && (
-                      <li>{confirmBorrar.pendientes} pedido{confirmBorrar.pendientes === 1 ? "" : "s"} sin entregar</li>
-                    )}
+                    {confirmBorrar.pendientes > 0 && <li>{confirmBorrar.pendientes} pedido{confirmBorrar.pendientes === 1 ? "" : "s"} sin entregar</li>}
                   </ul>
                 </div>
               )}
-
-              <p className="af-ink-soft text-sm mb-3">No se puede deshacer.</p>
-              <Button
-                className="w-full"
-                onClick={() => {
-                  onEliminarCliente(confirmBorrar.cliente.id);
-                  setConfirmBorrar(null);
-                  setDetalleId(null);
-                }}
-              >
-                Sí, bórralo
-              </Button>
-              <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmBorrar(null)}>Mejor no</Button>
-            </AlertDialogConfirmacion>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Mejor no</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={() => {
+                    onEliminarCliente(confirmBorrar.cliente.id);
+                    setConfirmBorrar(null);
+                    setDetalleId(null);
+                  }}
+                >
+                  Sí, bórralo
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
           </AlertDialog>
         )}
       </div>
@@ -8649,23 +8641,21 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         )}
 
         {confirmarBorrarGasto && (
-          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarBorrarGasto(null))?.(); }}>
-            <AlertDialogConfirmacion>
-              <div className="af-alerta-icon"><Trash size={26} /></div>
-              <div className="af-alerta-titulo">¿Borrar este gasto?</div>
-              <p className="af-alerta-texto">
-                <strong>{confirmarBorrarGasto.tienda || confirmarBorrarGasto.descripcion || confirmarBorrarGasto.categoria}</strong>
-                {" · "}{money(confirmarBorrarGasto.monto)} · {fmtDateHuman(confirmarBorrarGasto.fecha)}
-              </p>
-              <p className="af-ink-soft text-sm mb-3">Se quita de tus cuentas y no se puede deshacer.</p>
-              <Button
-                className="w-full"
-                onClick={() => { eliminarGasto(confirmarBorrarGasto.id); setConfirmarBorrarGasto(null); showToast("Gasto borrado"); }}
-              >
-                Sí, bórralo
-              </Button>
-              <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarBorrarGasto(null)}>Mejor no</Button>
-            </AlertDialogConfirmacion>
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setConfirmarBorrarGasto(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogMedia tono="error"><Trash /></AlertDialogMedia>
+                <AlertDialogTitle>¿Borrar este gasto?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  <strong className="text-foreground">{confirmarBorrarGasto.tienda || confirmarBorrarGasto.descripcion || confirmarBorrarGasto.categoria}</strong>
+                  {" · "}{money(confirmarBorrarGasto.monto)} · {fmtDateHuman(confirmarBorrarGasto.fecha)}. Se quita de tus cuentas y no se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Mejor no</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={() => { eliminarGasto(confirmarBorrarGasto.id); setConfirmarBorrarGasto(null); showToast("Gasto borrado"); }}>Sí, bórralo</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
           </AlertDialog>
         )}
 
@@ -8762,26 +8752,21 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {/* Marcar facturado saca la compra de pendientes, así que conviene
             preguntar: se cambia desde una lista y es fácil darle sin querer. */}
         {confirmarFactura && (
-          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setConfirmarFactura(null))?.(); }}>
-            <AlertDialogConfirmacion>
-              <div className="af-alerta-icon"><Receipt size={26} /></div>
-              <div className="af-alerta-titulo">¿Ya la facturaste?</div>
-              <p className="af-alerta-texto">
-                <strong>{confirmarFactura.tienda}</strong> · {money(confirmarFactura.monto)} ·{" "}
-                {fmtDateHuman(confirmarFactura.fecha)}
-              </p>
-              <p className="af-ink-soft text-sm mb-3">
-                Sale de la lista de pendientes y ya no se te vuelve a recordar. El gasto
-                {confirmarFactura.ticket ? " y la foto del ticket se quedan" : " se queda"} en tus cuentas.
-              </p>
-              <Button
-                className="w-full"
-                onClick={() => { marcarFacturado(confirmarFactura.id); setConfirmarFactura(null); }}
-              >
-                Sí, ya la facturé
-              </Button>
-              <Button variant="secondary" className="w-full mt-2" onClick={() => setConfirmarFactura(null)}>Todavía no</Button>
-            </AlertDialogConfirmacion>
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setConfirmarFactura(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogMedia><Receipt /></AlertDialogMedia>
+                <AlertDialogTitle>¿Ya la facturaste?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  <strong className="text-foreground">{confirmarFactura.tienda}</strong> · {money(confirmarFactura.monto)} · {fmtDateHuman(confirmarFactura.fecha)}.
+                  Sale de los pendientes y ya no se te recuerda. El gasto{confirmarFactura.ticket ? " y la foto del ticket se quedan" : " se queda"} en tus cuentas.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Todavía no</AlertDialogCancel>
+                <AlertDialogAction onClick={() => { marcarFacturado(confirmarFactura.id); setConfirmarFactura(null); }}>Sí, ya la facturé</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
           </AlertDialog>
         )}
 
@@ -8807,32 +8792,29 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
 
         {/* Aviso antes de guardar algo que parece ya estar apuntado. */}
         {posibleDuplicado && (
-          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setPosibleDuplicado(null))?.(); }}>
-            <AlertDialogConfirmacion>
-              <div className="af-alerta-icon af-alerta-icon-aviso"><TriangleAlert size={26} /></div>
-              <div className="af-alerta-titulo">¿No lo apuntaste ya?</div>
-              <div className="af-alerta-texto mb-3">
-                Vas a guardar <strong>{posibleDuplicado.nuevo.descripcion || posibleDuplicado.nuevo.categoria}</strong> por{" "}
-                <strong>{money(posibleDuplicado.nuevo.monto)}</strong>, y ya hay algo muy parecido:
-              </div>
-              <div className="af-dup-lista mb-3">
+          <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setPosibleDuplicado(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogMedia tono="aviso"><TriangleAlert /></AlertDialogMedia>
+                <AlertDialogTitle>¿No lo apuntaste ya?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vas a guardar <strong className="text-foreground">{posibleDuplicado.nuevo.descripcion || posibleDuplicado.nuevo.categoria}</strong> por{" "}
+                  <strong className="text-foreground">{money(posibleDuplicado.nuevo.monto)}</strong>, y ya hay algo muy parecido:
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="divide-y divide-border rounded-2xl text-sm ring-1 ring-foreground/10">
                 {posibleDuplicado.parecidos.map((p) => (
-                  <div key={p.id} className="af-dup-item">
-                    <span>{p.descripcion || p.categoria}</span>
-                    <span className="af-dup-monto">{money(p.monto)} · {fmtDateHuman(p.fecha)}</span>
+                  <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-2">
+                    <span className="text-foreground">{p.descripcion || p.categoria}</span>
+                    <span className="text-right text-xs text-muted-foreground">{money(p.monto)} · {fmtDateHuman(p.fecha)}</span>
                   </div>
                 ))}
               </div>
-              <Button className="w-full" onClick={() => setPosibleDuplicado(null)}>
-                Mejor no, ya estaba
-              </Button>
-              <Button variant="secondary"
-                className="w-full mt-2"
-                onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo, posibleDuplicado.parecidos)}
-              >
-                Sí es otro, guárdalo
-              </Button>
-            </AlertDialogConfirmacion>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Ya estaba</AlertDialogCancel>
+                <AlertDialogAction onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo, posibleDuplicado.parecidos)}>Es otro, guárdalo</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
           </AlertDialog>
         )}
 
@@ -11094,22 +11076,21 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
       })()}
 
       {porBorrar && (
-        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) (() => setPorBorrar(null))?.(); }}>
-          <AlertDialogConfirmacion>
-            <div className="af-alerta-icon"><Trash size={26} /></div>
-            <div className="af-alerta-titulo">¿Quitar {porBorrar.que}?</div>
-            <p className="af-alerta-texto">
-              <strong>{porBorrar.nombre.trim() || "Sin nombre"}</strong>
-            </p>
-            <p className="af-ink-soft text-sm mb-3">
-              Deja de aparecer al hacer un pedido. Los pedidos que ya lo llevan no se
-              tocan. Para volver a tenerlo habría que capturarlo de nuevo.
-            </p>
-            <Button variant="destructive-outline" className="w-full" onClick={confirmarBorrado}>
-              Sí, quitarlo
-            </Button>
-            <Button variant="secondary" className="w-full mt-2" onClick={() => setPorBorrar(null)}>Cancelar</Button>
-          </AlertDialogConfirmacion>
+        <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setPorBorrar(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogMedia tono="error"><Trash /></AlertDialogMedia>
+              <AlertDialogTitle>¿Quitar {porBorrar.que}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                <strong className="text-foreground">{porBorrar.nombre.trim() || "Sin nombre"}</strong> deja de aparecer al hacer un pedido.
+                Los pedidos que ya lo llevan no se tocan. Para volver a tenerlo habría que capturarlo de nuevo.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={confirmarBorrado}>Sí, quitarlo</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
       )}
     </div>
