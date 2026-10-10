@@ -13121,6 +13121,9 @@ export default function App() {
     for (const p of despues) {
       const v = mapaAntes.get(p.id);
       if (v && (v === p || igual(v, p))) continue;
+      // Solo cambios firmados por una persona: los arreglos internos (como
+      // renumerar un folio repetido) no traen firma nueva y no se avisan.
+      if (v && p.actualizadoEn === v.actualizadoEn) continue;
       if (yo && p.actualizadoPorEmail === yo) continue;
       const quien = p.actualizadoPor;
       const cliente = p.clienteNombre || "un cliente";
