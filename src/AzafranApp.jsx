@@ -5486,7 +5486,7 @@ const moverPeriodo = (periodo, inicio, n) =>
   periodo === "dia" ? moverFechaISO(inicio, n) : periodo === "semana" ? moverFechaISO(inicio, 7 * n) : moverMes(inicio, n);
 
 const resumenDias = (porFecha, dias, hasta) => {
-  const r = { vendido: 0, pedidos: 0, kg: 0, porDia: dias.map(() => 0), platillos: new Map(), hayPedidos: false };
+  const r = { vendido: 0, pedidos: 0, kg: 0, porDia: dias.map(() => 0), hayPedidos: false };
   dias.forEach((f, i) => {
     if (i > hasta) return;
     (porFecha.get(f) || []).forEach((p) => {
@@ -5495,14 +5495,7 @@ const resumenDias = (porFecha, dias, hasta) => {
       r.porDia[i] += t;
       r.pedidos += 1;
       r.hayPedidos = true;
-      (p.items || []).forEach((it) => {
-        const nombre = it.tipo === "paella" ? it.paellaNombre || "Paella" : it.nombre;
-        if (!nombre) return;
-        const cant = it.tipo === "paella" ? parseFloat(it.kg) || 0 : parseFloat(it.cantidad) || 0;
-        if (it.tipo === "paella") r.kg += cant;
-        const ya = r.platillos.get(nombre);
-        r.platillos.set(nombre, { cant: (ya?.cant || 0) + cant, unidad: it.tipo === "paella" ? "kg" : "pzas" });
-      });
+      (p.items || []).forEach((it) => { if (it.tipo === "paella") r.kg += parseFloat(it.kg) || 0; });
     });
   });
   return r;
@@ -5574,7 +5567,7 @@ function ComparativoView({ pedidos, historico }) {
     // se puede comparar si el mes ya terminó; la libreta no dice por día).
     if (periodo === "mes" && !antes.hayPedidos && libretaDe(elegida.inicio)) {
       soloLibreta = true;
-      antes = { vendido: enCurso ? null : libretaDe(elegida.inicio), pedidos: null, kg: null, porDia: [], platillos: new Map() };
+      antes = { vendido: enCurso ? null : libretaDe(elegida.inicio), pedidos: null, kg: null, porDia: [] };
     }
   }
   const etiquetaAntes = elegida
@@ -5622,10 +5615,6 @@ function ComparativoView({ pedidos, historico }) {
           })
         : [];
 
-  const nombres = [...new Set([...ahora.platillos.keys(), ...(antes ? antes.platillos.keys() : [])])]
-    .map((n) => ({ n, a: ahora.platillos.get(n), b: antes?.platillos.get(n) }))
-    .sort((x, y) => (y.a?.cant || 0) - (x.a?.cant || 0) || (y.b?.cant || 0) - (x.b?.cant || 0));
-  const cant = (v) => (v ? `${Math.round(v.cant * 10) / 10} ${v.unidad}` : "—");
 
   const cambiarPeriodo = (p) => { setPeriodo(p); setAncla(hoy); };
 
@@ -5728,6 +5717,15 @@ function ComparativoView({ pedidos, historico }) {
       {periodo !== "dia" && (
         <Seccion id={"comparar-dias-" + periodo} titulo="Día por día" abiertaPorDefecto={periodo === "semana"}>
           <Card className="divide-y divide-border">
+            <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs font-semibold text-muted-foreground">
+              <span>Día</span>
+              <span className="flex items-center gap-3">
+                <span className="text-foreground">{elegida?.id === "pasada" ? (periodo === "semana" ? "Esta semana" : "Este mes") : anioDe(inicio)}</span>
+                {antes?.porDia?.length > 0 && (
+                  <span className="w-24 text-right">{elegida.id === "pasada" ? (periodo === "semana" ? "Semana pasada" : "Mes pasado") : elegida.label}</span>
+                )}
+              </span>
+            </div>
             {dias.map((f, i) => (
               <div key={f} className={cn("flex items-center justify-between gap-3 px-4 py-3 text-sm", i > hasta && "opacity-50")}>
                 <span className="text-foreground">{DIAS_CORTOS[diaSemana(f)]} {fechaCorta(f)}</span>
@@ -5743,189 +5741,44 @@ function ComparativoView({ pedidos, historico }) {
         </Seccion>
       )}
 
-      <Seccion id={"comparar-platillos-" + periodo} titulo="Qué se vendió" cuenta={nombres.length || null} abiertaPorDefecto={periodo === "dia"}>
-        {nombres.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hay pedidos en estos días.</p>
-        ) : (
-          <Card className="divide-y divide-border">
-            <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs text-muted-foreground">
-              <span>Platillo</span>
-              <span className="flex gap-3">
-                <span className="w-16 text-right">Ahora</span>
-                {antes && !soloLibreta && <span className="w-16 text-right">{elegida.id === "pasada" ? "Antes" : elegida.label}</span>}
-              </span>
-            </div>
-            {nombres.map(({ n, a, b }) => (
-              <div key={n} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                <span className="min-w-0 truncate text-foreground">{n}</span>
-                <span className="flex shrink-0 gap-3">
-                  <span className="w-16 text-right font-semibold text-foreground">{cant(a)}</span>
-                  {antes && !soloLibreta && <span className="w-16 text-right text-muted-foreground">{cant(b)}</span>}
-                </span>
-              </div>
-            ))}
-          </Card>
-        )}
-      </Seccion>
     </div>
   );
 }
 
-// ---------- Finanzas: cuánto quedó en el mes ----------
-// Entró (lo cobrado de los pedidos del mes) − gastos del negocio = quedó.
-// Los de la casa van aparte. Solo se dice cuánto quedó si el mes tiene
-// gastos capturados: los gastos se apuntan desde julio de 2026, y un mes sin
-// gastos "dejaría" el 100%, que es mentira (por eso se quitó el resumen del
-// año). Con "Todo el año" se ve mes por mes, solo los meses con gastos.
-const claveMesISO = (a, m) => `${a}-${String(m + 1).padStart(2, "0")}`;
-// En el mes en curso solo cuenta lo que ya pasó (hasta hoy): ya hay gastos
-// apuntados para más adelante (la hipoteca del 28) y anticipos de pedidos de
-// días que no llegan, y mezclarlos con medio mes de ventas no dice nada.
-const cuentasDelMes = (pedidos, gastos, a, m) => {
-  const clave = claveMesISO(a, m);
-  const hoy = todayISO();
-  const yaPaso = (f) => f?.startsWith(clave) && f <= hoy;
-  const entro = pedidos.reduce((s, p) => (yaPaso(p.fecha) ? s + (parseFloat(p.pagado) || 0) : s), 0);
-  const delMes = gastos.filter((g) => yaPaso(g.fecha));
-  const negocio = delMes.filter(esDelNegocio);
-  const casa = delMes.filter((g) => !esDelNegocio(g));
-  const suma = (xs) => xs.reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
-  const porCategoria = new Map();
-  negocio.forEach((g) => porCategoria.set(g.categoria || "Otros", (porCategoria.get(g.categoria || "Otros") || 0) + (parseFloat(g.monto) || 0)));
-  return {
-    entro, gastosNegocio: suma(negocio), gastosCasa: suma(casa), hayGastos: delMes.length > 0,
-    categorias: [...porCategoria.entries()].sort((x, y) => y[1] - x[1]),
+// ---------- Finanzas: a dónde se fue el dinero ----------
+// Los mismos gastos que enseña la tabla de arriba (con sus filtros), por
+// tipo, en porcentaje del total. Va DEBAJO de la tabla: la tabla es lo que
+// más se usa aquí.
+function ADondeSeFue({ gastos }) {
+  const total = gastos.reduce((a, g) => a + (parseFloat(g.monto) || 0), 0);
+  if (!total) return null;
+  const porTipo = new Map();
+  gastos.forEach((g) => porTipo.set(g.categoria || "Otros", (porTipo.get(g.categoria || "Otros") || 0) + (parseFloat(g.monto) || 0)));
+  const filas = [...porTipo.entries()].sort((a, b) => b[1] - a[1]);
+  const pct = (m) => {
+    const v = (m / total) * 100;
+    return v > 0 && v < 1 ? "menos de 1%" : `${Math.round(v)}%`;
   };
-};
-
-// Desde qué mes los gastos se capturan completos: el primero con 10 o más.
-// Julio de 2026 tiene 3 sueltos (la captura en serio empezó en agosto) y
-// sacaría que "quedó" casi todo lo que entró.
-const primerMesCompleto = (gastos) => {
-  const cuenta = new Map();
-  gastos.forEach((g) => g.fecha && cuenta.set(g.fecha.slice(0, 7), (cuenta.get(g.fecha.slice(0, 7)) || 0) + 1));
-  return [...cuenta.entries()].filter(([, n]) => n >= 10).map(([k]) => k).sort()[0] || null;
-};
-const pesos = (n) => (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("es-MX");
-
-function ResumenFinanzas({ pedidos, gastos, anio, mes }) {
-  const hoy = new Date();
-  const desde = primerMesCompleto(gastos);
-  // Completo = ya se capturaban los gastos y el mes ya empezó.
-  const completo = (a, m) => desde != null && claveMesISO(a, m) >= desde && claveMesISO(a, m) <= todayISO().slice(0, 7);
-  if (mes === "todos") {
-    const meses = MESES.map((nombre, m) => ({ nombre, m, c: cuentasDelMes(pedidos, gastos, anio, m) })).filter((x) => completo(anio, x.m));
-    if (!meses.length) return null;
-    return (
-      <Seccion id="finanzas-meses" titulo={`Cuánto quedó, mes por mes`} abiertaPorDefecto>
-        <Card className="divide-y divide-border">
-          <div className="grid grid-cols-4 gap-2 px-4 py-2 text-xs text-muted-foreground">
-            <span>Mes</span><span className="text-right">Entró</span><span className="text-right">Gastos</span><span className="text-right">Quedó</span>
-          </div>
-          {meses.map(({ nombre, m, c }) => {
-            const quedo = c.entro - c.gastosNegocio;
-            const enCurso = anio === hoy.getFullYear() && m === hoy.getMonth();
-            return (
-              <div key={m} className="grid grid-cols-4 gap-2 px-4 py-3 text-sm">
-                <span className="text-foreground">{nombre.slice(0, 3)}{enCurso ? " *" : ""}</span>
-                <span className="text-right tabular-nums text-foreground">{pesos(c.entro)}</span>
-                <span className="text-right tabular-nums text-muted-foreground">{pesos(c.gastosNegocio)}</span>
-                <span className={cn("text-right font-semibold tabular-nums", quedo >= 0 ? "text-exito-fuerte" : "text-error-fuerte")}>{pesos(quedo)}</span>
-              </div>
-            );
-          })}
-        </Card>
-        <p className="mt-2 text-xs text-muted-foreground">Solo los meses con gastos capturados completos (desde {desde ? MESES[Number(desde.slice(5)) - 1].toLowerCase() + " de " + desde.slice(0, 4) : "—"}). Gastos = los del negocio; los de la casa no se restan aquí.{meses.some(({ m }) => anio === hoy.getFullYear() && m === hoy.getMonth()) ? " * Mes en curso." : ""}</p>
-      </Seccion>
-    );
-  }
-
-  const c = cuentasDelMes(pedidos, gastos, anio, mes);
-  const enCurso = anio === hoy.getFullYear() && mes === hoy.getMonth();
-  const prevA = mes === 0 ? anio - 1 : anio;
-  const prevM = mes === 0 ? 11 : mes - 1;
-  const p = cuentasDelMes(pedidos, gastos, prevA, prevM);
-  const quedo = c.entro - c.gastosNegocio;
-  const quedoAntes = completo(prevA, prevM) ? p.entro - p.gastosNegocio : null;
-  const nombreMes = MESES[mes].toLowerCase();
-
-  if (claveMesISO(anio, mes) > todayISO().slice(0, 7)) return null;
-  if (!completo(anio, mes)) {
-    return (
-      <Card className="mb-4 p-4">
-        <div className="text-xs text-muted-foreground">Entró en {nombreMes}</div>
-        <div className="mb-2 text-xl font-semibold text-foreground">{money(c.entro)}</div>
-        <p className="text-sm text-muted-foreground">
-          {desde
-            ? `Los gastos se capturan completos desde ${MESES[Number(desde.slice(5)) - 1].toLowerCase()} de ${desde.slice(0, 4)}; de este mes faltan, así que no se puede saber cuánto quedó.`
-            : "Todavía no hay gastos capturados, así que no se puede saber cuánto quedó."}
-        </p>
-      </Card>
-    );
-  }
-
   return (
-    <div className="mb-4">
-      <Card className="mb-3 p-4">
-        <div className="text-xs text-muted-foreground">Quedó del negocio en {nombreMes}{enCurso ? `, del 1 al ${hoy.getDate()}` : ""}</div>
-        <div className={cn("text-3xl font-semibold", quedo >= 0 ? "text-foreground" : "text-error-fuerte")}>{money(quedo)}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          {c.entro > 0 && (
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground">
-              {Math.round((quedo / c.entro) * 100)}% de lo que entró
-            </span>
-          )}
-          {quedoAntes != null && !enCurso && <Cambio ahora={quedo} antes={quedoAntes} dinero />}
-        </div>
-        {quedoAntes != null && enCurso && (
-          <p className="mt-1 text-xs text-muted-foreground">El mes va a medias; {MESES[prevM].toLowerCase()} cerró con {money(quedoAntes)}.</p>
-        )}
-        {enCurso && (
-          <p className="mt-1 text-xs text-muted-foreground">Los sueldos y gastos fijos se pagan al principio del mes, así que al inicio se ve más bajo de lo que va a cerrar.</p>
-        )}
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-2xl bg-secondary/60 p-3">
-            <div className="text-xs text-muted-foreground">Entró</div>
-            <div className="font-semibold text-foreground">{money(c.entro)}</div>
+    <Seccion id="finanzas-a-donde" titulo="A dónde se fue el dinero" cuenta={filas.length} className="mt-4">
+      <Card className="divide-y divide-border">
+        {filas.map(([tipo, monto]) => (
+          <div key={tipo} className="px-4 py-3">
+            <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+              <span className="text-foreground">{tipo}</span>
+              <span className="flex items-baseline gap-2">
+                <span className="font-semibold text-foreground">{pct(monto)}</span>
+                <span className="w-24 text-right text-xs text-muted-foreground">{money(monto)}</span>
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full" style={{ width: `${(monto / total) * 100}%`, background: colorCategoria(tipo) }} />
+            </div>
           </div>
-          <div className="rounded-2xl bg-secondary/60 p-3">
-            <div className="text-xs text-muted-foreground">Gastos del negocio</div>
-            <div className="font-semibold text-foreground">{money(c.gastosNegocio)}</div>
-          </div>
-        </div>
-        {c.gastosCasa > 0 && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Aparte, de la casa salieron {money(c.gastosCasa)}. Contando eso quedaron <strong className="text-foreground">{money(quedo - c.gastosCasa)}</strong>.
-          </p>
-        )}
+        ))}
       </Card>
-
-      {c.categorias.length > 0 && (
-        <Seccion id="finanzas-a-donde" titulo="A dónde se fue el dinero" cuenta={c.categorias.length}>
-          <Card className="divide-y divide-border">
-            {c.categorias.map(([cat, monto]) => {
-              const deCien = c.entro ? (monto / c.entro) * 100 < 1 ? 0 : Math.round((monto / c.entro) * 100) : null;
-              return (
-                <div key={cat} className="px-4 py-3">
-                  <div className="mb-1 flex items-center justify-between gap-3 text-sm">
-                    <span className="text-foreground">{cat}</span>
-                    <span className="font-semibold text-foreground">{money(monto)}</span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, (monto / c.gastosNegocio) * 100)}%`, background: colorCategoria(cat) }} />
-                  </div>
-                  {deCien != null && (
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {deCien < 1 ? "Menos de $1 de cada $100 que entraron." : `De cada $100 que entraron, $${deCien} ${deCien === 1 ? "se fue" : "se fueron"} en esto.`}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </Card>
-        </Seccion>
-      )}
-    </div>
+      <p className="mt-2 text-xs text-muted-foreground">Porcentaje del total de los gastos de la tabla ({money(total)}), con los mismos filtros.</p>
+    </Seccion>
   );
 }
 
@@ -6047,14 +5900,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     const mmdd = hoyISO.slice(5);
     const cobradoHasta = (a) => pedidos.reduce((acc, p) => (p.fecha.startsWith(a + "-") && p.fecha.slice(5) <= mmdd ? acc + dineroCobrado(p) : acc), 0);
     if (anio === new Date().getFullYear()) {
-      if (!pedidos.some((p) => p.fecha.startsWith(anio - 1 + "-"))) return null;
+      if (!pedidos.some((p) => p.fecha.startsWith(anio - 1 + "-"))) return { enCurso: true, ahora: cobradoHasta(anio), antes: 0, texto: "" };
       const [, m, d] = hoyISO.split("-").map(Number);
       const hasta = `${d} de ${MESES[m - 1].toLowerCase()}`;
-      return { ahora: cobradoHasta(anio), antes: cobradoHasta(anio - 1), ahoraTexto: `Del 1 de enero al ${hasta}: ${money(cobradoHasta(anio))}`, texto: `contra lo mismo de ${anio - 1}` };
+      return { enCurso: true, ahora: cobradoHasta(anio), antes: cobradoHasta(anio - 1), texto: `En ${anio - 1} al ${hasta} llevábamos ${money(cobradoHasta(anio - 1))}` };
     }
     if (anio > new Date().getFullYear()) return null;
     const antes = MESES.reduce((acc, _, i) => acc + valorMes(anio - 1, i).valor, 0);
-    return antes ? { ahora: totalAnio, antes, texto: `contra todo ${anio - 1}` } : null;
+    return antes ? { ahora: totalAnio, antes, texto: `${anio - 1} completo: ${money(antes)}` } : null;
   })();
 
   const aniosConDatos = new Set();
@@ -7616,15 +7469,19 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
       </div>
 
       <Card className="af-year-total-card mb-5">
-        <div className="af-ink-soft text-sm">Cobrado en {anio}</div>
-        <div className="af-year-total">{money(totalAnio)}</div>
-        {comparaAnio && (
-          <div className="mt-2 flex flex-col items-center gap-1">
-            {comparaAnio.ahoraTexto && <span className="text-xs text-muted-foreground">{comparaAnio.ahoraTexto}</span>}
-            <Cambio ahora={comparaAnio.ahora} antes={comparaAnio.antes} dinero />
-            <span className="text-xs text-muted-foreground">{comparaAnio.texto}</span>
-          </div>
-        )}
+        <div className="af-ink-soft text-sm">{comparaAnio?.enCurso ? `Llevamos en ${anio}` : `Total de ${anio}`}</div>
+        <div className="af-year-total">{money(comparaAnio?.enCurso ? comparaAnio.ahora : totalAnio)}</div>
+        {comparaAnio && comparaAnio.antes > 0 && (() => {
+          const p = Math.round(((comparaAnio.ahora - comparaAnio.antes) / comparaAnio.antes) * 100);
+          return (
+            <div className="mt-2 flex flex-col items-center gap-1">
+              <span className={cn("rounded-full px-3 py-1 text-sm font-semibold", p > 0 ? "bg-exito/15 text-exito-fuerte" : p < 0 ? "bg-error/15 text-error-fuerte" : "bg-secondary text-secondary-foreground")}>
+                {p > 0 ? `▲ ${p}% arriba del año pasado` : p < 0 ? `▼ ${-p}% abajo del año pasado` : "Igual que el año pasado"}
+              </span>
+              <span className="text-xs text-muted-foreground">{comparaAnio.texto}</span>
+            </div>
+          );
+        })()}
         <Ayuda>Solo el dinero que ya entró. Lo que falta por cobrar se ve en la Agenda.</Ayuda>
       </Card>
 
@@ -7849,7 +7706,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             La gráfica de más abajo sí sirve porque es MES POR MES: un mes sin
             gastos capturados se ve vacío, en vez de esconderse dentro de un
             total del año que parece completo. */}
-        <ResumenFinanzas pedidos={pedidos} gastos={gastos} anio={anio} mes={mesGasto} />
 
         {/* Agregar un gasto lo puede hacer cualquiera del negocio, no solo el
             administrador: Pepe es quien va a la tienda y quien tiene el ticket
@@ -8370,6 +8226,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           </ScrollArea>
           </>
         )}
+
+        <ADondeSeFue gastos={gastosFiltrados} />
 
         {esAdmin && (
         <>
