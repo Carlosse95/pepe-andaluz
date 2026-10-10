@@ -12415,22 +12415,22 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             después pasar por la paellera; cuesta un viaje más (mismo precio). */}
         <div className="af-entrega-opciones">
           <Toggle
-            variant="segmento" pressed={!form.entrega}
+            variant="segmento" className="h-auto flex-col gap-1 !whitespace-nowrap px-1 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={!form.entrega}
             onClick={() => setForm((p) => ({ ...p, entrega: false, recogerPaellera: false }))}
           >
-            <Store size={16} className="inline mr-1" /> Recoger
+            <Store size={16} className="shrink-0" /> Recoger
           </Toggle>
           <Toggle
-            variant="segmento" pressed={form.entrega && !form.recogerPaellera}
+            variant="segmento" className="h-auto flex-col gap-1 !whitespace-nowrap px-1 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && !form.recogerPaellera}
             onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: false }))}
           >
-            <Truck size={16} className="inline mr-1" /> A domicilio
+            <Truck size={16} className="shrink-0" /> A domicilio
           </Toggle>
           <Toggle
-            variant="segmento" pressed={form.entrega && form.recogerPaellera}
+            variant="segmento" className="h-auto flex-col gap-1 !whitespace-nowrap px-1 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && form.recogerPaellera}
             onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: true, costoRecoleccion: p.envio }))}
           >
-            <ChefHat size={16} className="inline mr-1" /> Llevar y recoger
+            <ChefHat size={16} className="shrink-0" /> Llevar y recoger
           </Toggle>
         </div>
         {form.entrega && form.recogerPaellera && !hayPaelleraEnForm && (
