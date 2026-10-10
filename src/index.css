@@ -49,10 +49,12 @@
     --error-fuerte: 11 80% 40%;
     --info: 229 47% 49%;
 
-    /* Letra de títulos y números. En el estilo original de shadcn es la
-       misma que la del texto. Para regresar a la de marca de antes:
-       "Space Grotesk", sans-serif */
-    --fuente-titulos: Inter, system-ui, -apple-system, sans-serif;
+    /* Letra al estilo de apple.com: SF Pro (la del sistema en iPhone, iPad
+       y Mac; no se descarga nada). Donde no existe (Windows, Android) cae en
+       Inter, la más parecida. Los títulos usan la misma familia: el sistema
+       elige solo la versión "Display" en tamaños grandes. */
+    --fuente-app: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Inter, "Segoe UI", system-ui, sans-serif;
+    --fuente-titulos: var(--fuente-app);
 
     /* Escala de letra: 8 tamaños para toda la app (antes había 25). */
     --text-2xs: 0.6875rem;  /* 11px: etiquetas de la barra de abajo, globitos */
@@ -92,3 +94,9 @@ html, body, #root {
 body {
   margin: 0;
 }
+
+/* Detalles tipográficos de Apple: letra suavizada y el espacio entre letras
+   un poquito cerrado (más en títulos), como en apple.com. */
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+body { font-family: var(--fuente-app); letter-spacing: -0.011em; }
+h1, h2, h3, .af-header-title-plain, .af-header-title, [data-slot="card-title"], .text-2xl, .text-3xl { letter-spacing: -0.022em; }

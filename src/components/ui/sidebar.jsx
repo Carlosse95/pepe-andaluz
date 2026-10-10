@@ -217,7 +217,7 @@ const Sidebar = React.forwardRef((
       />
       <div
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width,box-shadow] duration-300 ease-out md:flex",
+          "fixed inset-y-0 z-10 hidden h-auto w-[--sidebar-width] transition-[left,right,width,box-shadow] duration-300 ease-out md:flex",
           flotante && "z-40 group-data-[state=expanded]:shadow-[8px_0_32px_rgba(33,44,89,0.18)]",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"

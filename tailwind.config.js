@@ -63,14 +63,22 @@ export default {
   		},
   		fontFamily: {
   			sans: [
-  				'Inter',
-  				'system-ui',
   				'-apple-system',
+  				'BlinkMacSystemFont',
+  				'"SF Pro Text"',
+  				'"Helvetica Neue"',
+  				'Inter',
+  				'"Segoe UI"',
+  				'system-ui',
   				'sans-serif'
   			],
   			display: [
-  				'"Space Grotesk"',
+  				'-apple-system',
+  				'BlinkMacSystemFont',
+  				'"SF Pro Display"',
+  				'"Helvetica Neue"',
   				'Inter',
+  				'system-ui',
   				'sans-serif'
   			]
   		},

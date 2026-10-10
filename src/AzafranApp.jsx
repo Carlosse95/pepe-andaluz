@@ -4483,20 +4483,21 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
         <Search size={18} className="af-search-icon" />
         <Input className="af-input-search" placeholder="Buscar cliente..." value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+      <div className="mb-3 flex items-center gap-2">
       <Button variant="secondary"
-        className="w-full mb-2"
+        className="flex-1"
         onClick={() => {
           setForm({ nombre: "", telefono: "", direccion: "", ubicacion: "", notas: "" });
           setConfirmDup(false);
           setNuevo(true);
         }}
       >
-        <CirclePlus size={16} className="inline mr-1" /> Nuevo cliente
+        <CirclePlus size={16} /> Nuevo cliente
       </Button>
       {onImportarClientes && (
         <>
-          <label className={cn(buttonVariants({ variant: "secondary" }), "w-full mb-2")} style={{ display: "block", textAlign: "center", cursor: "pointer" }}>
-            <Upload size={15} className="inline mr-1" /> Traer contactos del celular
+          <label className={cn(buttonVariants({ variant: "secondary" }), "flex-1 cursor-pointer")}>
+            <Upload size={16} /> Contactos
             <input
               type="file"
               accept=".vcf,text/vcard,text/x-vcard"
@@ -4514,11 +4515,12 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
               }}
             />
           </label>
-          <Ayuda className="mb-3">
-            Desde Contactos del iPhone: selecciona, Compartir, "Guardar en Archivos", y sube el archivo aquí.
+          <Ayuda enLinea>
+            Traer contactos del celular. Desde Contactos del iPhone: selecciona, Compartir, "Guardar en Archivos", y sube el archivo aquí.
           </Ayuda>
         </>
       )}
+      </div>
       <div className="af-hint mb-3" style={{ textAlign: "center" }}>
         {clientes.length} cliente{clientes.length === 1 ? "" : "s"} registrado{clientes.length === 1 ? "" : "s"}
         {(term || soloAusentes) && ` · mostrando ${lista.length}`}
@@ -4543,14 +4545,14 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
       {lista.length === 0 ? (
         <EmptyState icon={<Users size={28} />} title="Sin clientes todavía" subtitle="Se crean automáticamente al registrar un pedido." />
       ) : (
-        <div className="af-card-grid">
+        <Card className="divide-y divide-border">
           {lista.map((c) => {
             const n = pedidos.filter((p) => p.clienteId === c.id).length;
             const tienePendiente = pedidos.some(
               (p) => p.clienteId === c.id && (p.estado || "pendiente") === "entregado" && p.items.some((it) => it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta)
             );
             return (
-              <Card key={c.id} className="p-4 mb-3 cursor-pointer" onClick={() => setDetalleId(c.id)}>
+              <div key={c.id} role="button" tabIndex={0} className="cursor-pointer px-4 py-3 hover:bg-accent/40" onClick={() => setDetalleId(c.id)}>
                 <div className="flex items-center justify-between">
                   <span className="af-cliente-nombre">{c.nombre}</span>
                   <Chip variant="neutral">{n} pedido{n === 1 ? "" : "s"}</Chip>
@@ -4559,7 +4561,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                   {c.telefono && <span><Phone size={12} className="inline mr-1" />{c.telefono}</span>}
                   {c.direccion && <span className="ml-3"><MapPin size={12} className="inline mr-1" />{c.direccion}</span>}
                 </div>
-                <div className="flex items-center gap-2 flex-wrap mt-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2 empty:hidden">
                   {tienePendiente && <Chip variant="oro" className="inline-flex"><ChefHat size={12} /> Paellera pendiente</Chip>}
                   {/* Hace cuánto que no pide, para saber a quién hablarle. */}
                   {(() => {
@@ -4589,10 +4591,10 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
                     );
                   })()}
                 </div>
-              </Card>
+              </div>
             );
           })}
-        </div>
+        </Card>
       )}
 
       {/* Revisar antes de meter nada: una agenda de celular trae de todo
@@ -10161,15 +10163,19 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
                   )}
                   {abierto && acomodandoGrupo !== g.id && (
                     <>
-                      {g.hint && <Ayuda className="mb-2">{g.hint}</Ayuda>}
                       {/* Buscando no se acomoda: la lista filtrada no es el orden real. */}
-                      {g.items.length > 1 && !normNombre(buscarMenu) && (
-                        <Button variant="secondary"
-                          className="w-full mb-2"
-                          onClick={() => { setPlatilloAbierto(null); setAcomodandoGrupo(g.id); }}
-                        >
-                          <ArrowUpDown size={15} className="inline mr-1" /> Acomodar
-                        </Button>
+                      {(g.hint || (g.items.length > 1 && !normNombre(buscarMenu))) && (
+                        <div className="mb-2 flex items-center gap-2">
+                          {g.items.length > 1 && !normNombre(buscarMenu) && (
+                            <Button variant="secondary"
+                              className="flex-1"
+                              onClick={() => { setPlatilloAbierto(null); setAcomodandoGrupo(g.id); }}
+                            >
+                              <ArrowUpDown size={15} /> Acomodar
+                            </Button>
+                          )}
+                          {g.hint && <Ayuda enLinea>{g.hint}</Ayuda>}
+                        </div>
                       )}
                       {g.items.length === 0 && (
                         <p className="af-ink-soft text-sm mb-2">Todavía no hay nada en esta sección.</p>
@@ -12058,12 +12064,18 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       {editando && modo === "pedido" && (
         <div className="af-field">
           <Label>Estado del pedido</Label>
-          <div className="af-estado-pills">
+          {/* Cápsula de cuatro (como Día/Semana/Mes): todos en un renglón y
+              el elegido resaltado en blanco, sin colores sueltos. */}
+          <div className="grid h-11 grid-cols-4 gap-1 rounded-full bg-muted p-1 ring-1 ring-foreground/10">
             {ESTADOS_PEDIDO.map((e) => (
               <button
                 key={e.id}
                 type="button"
-                className={"af-estado-pill af-estado-" + e.id + (form.estado === e.id ? " active" : "")}
+                aria-pressed={form.estado === e.id}
+                className={cn(
+                  "truncate rounded-full px-1 text-xs font-semibold text-muted-foreground transition-all",
+                  form.estado === e.id && "bg-card text-foreground shadow-sm ring-1 ring-foreground/10"
+                )}
                 onClick={() => setForm((p) => {
                   if (e.id !== "entregado") return { ...p, estado: e.id };
                   // Al entregar, si aún falta saldo, se completa solo en efectivo
@@ -12074,7 +12086,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   return { ...p, estado: e.id, abonos };
                 })}
               >
-                {e.label}
+                {e.id === "preparacion" ? "Preparando" : e.label}
               </button>
             ))}
           </div>
@@ -15216,7 +15228,8 @@ export default function App() {
 /* ---------------------------------------------------------------------- */
 
 const AZAFRAN_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+/* Inter solo como respaldo donde no hay SF Pro (Windows/Android). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 /* Safari espera un instante en cada toque por si viene un segundo toque (el
    de acercar la pantalla). Con esto responde al primero, sin esperar. */
@@ -15265,7 +15278,7 @@ const AZAFRAN_CSS = `
   --alto-campo: 36px;
   --radio-campo: var(--radius-md);
 
-  font-family: 'Inter', sans-serif;
+  font-family: var(--fuente-app);
   background: var(--bg);
   color: var(--ink);
   width: 100%;
@@ -15457,7 +15470,7 @@ const AZAFRAN_CSS = `
 .af-estado-grupo > button[data-state=on].af-estado-entregado { background: var(--olive); color: #fff; border-color: var(--olive); }
 .af-estado-select {
   border: none; border-radius: var(--radius-full); padding: 8px 24px 8px 12px; font-size: var(--text-xs); font-weight: 700;
-  font-family: 'Inter', sans-serif; cursor: pointer; appearance: none;
+  font-family: var(--fuente-app); cursor: pointer; appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7860' stroke-width='2'><path d='M6 8l4 4 4-4'/></svg>");
   background-repeat: no-repeat; background-position: right 8px center; background-size: 12px;
 }
@@ -15803,7 +15816,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    dejaba la casilla descuadrada arriba del texto. */
 .af-check-row, .af-field label.af-check-row {
   display: flex; align-items: center; gap: 8px;
-  font-family: 'Inter', sans-serif; text-transform: none; letter-spacing: 0;
+  font-family: var(--fuente-app); text-transform: none; letter-spacing: 0;
   font-weight: 500; font-size: var(--text-sm); color: var(--ink); cursor: pointer; margin-bottom: 0;
 }
 .af-check-row input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--wine); margin: 0; }
@@ -15839,7 +15852,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Selector de cliente tipo combobox */
 .af-combo-row { display: flex; align-items: center; gap: 12px; }
-.af-combo-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px; cursor: pointer; text-align: left; font-family: 'Inter', sans-serif; }
+.af-combo-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px; cursor: pointer; text-align: left; font-family: var(--fuente-app); }
 .af-combo-placeholder { color: var(--ink-soft); font-size: var(--text-sm); }
 .af-avatar-badge { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--wine-soft); color: var(--wine); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: var(--text-xs); font-family: var(--fuente-titulos); }
 .af-combo-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); margin-top: 8px; box-shadow: 0 10px 24px -10px rgb(0 0 0 / 0.28); overflow: hidden; }
@@ -16109,7 +16122,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
   border: none; width: 100%; cursor: pointer;
   background: var(--wine); color: white;
-  font-family: 'Inter', sans-serif; font-size: var(--text-sm); font-weight: 700;
+  font-family: var(--fuente-app); font-size: var(--text-sm); font-weight: 700;
   box-shadow: 0 4px 14px hsl(var(--higo) / 0.25);
 }
 
@@ -16118,7 +16131,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 12px;
   padding: 8px 12px; border-radius: var(--radius-md); border: 1px dashed var(--line);
   background: none; color: var(--ink-soft); font-size: var(--text-xs); font-weight: 600;
-  font-family: 'Inter', sans-serif; cursor: pointer; transition: all 0.15s ease;
+  font-family: var(--fuente-app); cursor: pointer; transition: all 0.15s ease;
 }
 .af-rent-desglose-chip { background: var(--wine-soft); color: var(--wine); border-radius: var(--radius-full); padding: 2px 8px; font-size: var(--text-xs); font-family: var(--fuente-titulos); font-weight: 700; }
 .af-rent-desglose-flecha { margin-left: auto; font-size: var(--text-2xs); }
@@ -16156,7 +16169,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
   margin: 8px 0 12px; padding: 8px; border-radius: var(--radius-md); border: 1px dashed var(--wine);
   background: none; color: var(--wine); font-size: var(--text-sm); font-weight: 700;
-  font-family: 'Inter', sans-serif; cursor: pointer;
+  font-family: var(--fuente-app); cursor: pointer;
 }
 .af-rent-tanda-fila {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -16224,7 +16237,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-form-gasto > .af-gasto-guardar { margin-top: 8px; }
 }
 .af-filtro .af-mini-label { margin-bottom: 0; padding-left: 4px; }
-.af-btn-quitar-filtros { display: inline-flex; align-items: center; gap: 8px; height: var(--alto-campo); padding: 0 16px; border-radius: var(--radius-full); border: 1px solid color-mix(in srgb, hsl(var(--error)) 35%, transparent); background: color-mix(in srgb, hsl(var(--error)) 8%, transparent); color: hsl(var(--error)); font-family: 'Inter', sans-serif; font-size: var(--text-sm); font-weight: 700; cursor: pointer; white-space: nowrap; }
+.af-btn-quitar-filtros { display: inline-flex; align-items: center; gap: 8px; height: var(--alto-campo); padding: 0 16px; border-radius: var(--radius-full); border: 1px solid color-mix(in srgb, hsl(var(--error)) 35%, transparent); background: color-mix(in srgb, hsl(var(--error)) 8%, transparent); color: hsl(var(--error)); font-family: var(--fuente-app); font-size: var(--text-sm); font-weight: 700; cursor: pointer; white-space: nowrap; }
 .af-btn-quitar-filtros:hover { background: color-mix(in srgb, hsl(var(--error)) 14%, transparent); }
 /* Los filtros son campos como cualquier otro de la app: mismo alto, mismo
    redondeo y misma letra. Antes eran píldoras de 13px mientras todo lo demás
@@ -16264,7 +16277,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   display: flex; align-items: center; justify-content: center; gap: 12px;
   width: 100%; height: var(--alto-campo); border: none; border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--ink-soft) 5%, transparent);
-  font-family: 'Inter', sans-serif; font-size: var(--text-sm); font-weight: 700;
+  font-family: var(--fuente-app); font-size: var(--text-sm); font-weight: 700;
   color: var(--wine); cursor: pointer;
 }
 .af-ver-mas:hover { background: color-mix(in srgb, var(--wine) 8%, transparent); }
@@ -16372,7 +16385,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    corrige desde aquí sin abrir el gasto a editar. */
 .af-select-color {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
-  font-family: 'Inter', sans-serif; font-size: var(--text-xs); font-weight: 600; cursor: pointer;
+  font-family: var(--fuente-app); font-size: var(--text-xs); font-weight: 600; cursor: pointer;
   height: 30px; padding: 0 24px 0 12px; border-radius: var(--radius-full); outline: none;
   color: var(--color-cat); border: 1px solid color-mix(in srgb, var(--color-cat) 40%, transparent);
   background: color-mix(in srgb, var(--color-cat) 11%, transparent);
@@ -16386,7 +16399,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* El estado de la factura. Verde cuando ya se hizo, ámbar cuando falta. */
 .af-select-estado {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
-  font-family: 'Inter', sans-serif; font-size: var(--text-xs); font-weight: 600; cursor: pointer;
+  font-family: var(--fuente-app); font-size: var(--text-xs); font-weight: 600; cursor: pointer;
   height: 30px; padding: 0 24px 0 12px; border-radius: var(--radius-full); outline: none;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -16396,7 +16409,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 }
 .af-select-bolsa, .af-select-fijo {
   width: 100%; min-width: 0; box-sizing: border-box; appearance: none;
-  font-family: 'Inter', sans-serif; font-size: var(--text-xs); font-weight: 600; cursor: pointer;
+  font-family: var(--fuente-app); font-size: var(--text-xs); font-weight: 600; cursor: pointer;
   height: 30px; padding: 0 24px 0 12px; border-radius: var(--radius-full); outline: none;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -16785,7 +16798,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-card.cursor-pointer:hover { transform: none; box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.18); }
 .af-stat-pill { border: none; border-radius: var(--radius-lg); box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.1); }
 /* Botones grandes de Hoy (Nuevo pedido / presupuesto): como el botón outline de Maia. */
-.af-quick-btn { border-radius: var(--radius-xl); border: 1px solid hsl(var(--border)); background: hsl(var(--input) / 0.3); font-weight: 500; box-shadow: none; color: hsl(var(--foreground)); }
+.af-quick-btn { border-radius: var(--radius-xl); border: 1px solid hsl(var(--border)); background: hsl(var(--input) / 0.3); font-weight: 500; box-shadow: none; color: hsl(var(--foreground)); white-space: nowrap; padding: 12px 8px; }
 /* Etiquetas de campo y títulos de sección como en shadcn (sin mayúsculas) */
 .af-field label { font-family: inherit; font-size: var(--text-sm); font-weight: 500; text-transform: none; letter-spacing: 0; color: hsl(var(--foreground)); line-height: 1; }
 .af-section-title { font-family: inherit; font-size: var(--text-sm); font-weight: 600; text-transform: none; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
