@@ -12235,103 +12235,128 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
       <div className="af-field">
         <Label>Ítems</Label>
+        {/* Cada platillo como renglón de carrito (estilo shadcn): nombre y
+            subtotal en la misma línea, abajo el precio, luego cantidad y
+            quitar, y al final las opciones (extras, paellera, nota) como
+            pastillas. Antes era una tabla con columnas que no cuadraban. */}
         {form.items.length > 0 && (
-          <div className="af-items-table">
-            <div className="af-items-head">
-              <span className="af-items-col-nombre">Producto</span>
-              <span>Cant.</span>
-              <span className="af-items-col-total">Subtotal</span>
-            </div>
-            {form.items.map((it) => (
-              <div key={it.id} className="af-items-row">
-                <div className="af-items-col-nombre">
-                  <div className="af-item-nombre">{it.tipo === "paella" ? it.paellaNombre : it.nombre}</div>
-                  <div className="af-ink-soft text-sm">
-                    {it.tipo === "paella" || esPorKg(it) ? money(it.tipo === "paella" ? it.precioKg : it.precio) + "/kg" : money(it.precio) + " c/u"}
+          <Card className="divide-y divide-border overflow-visible">
+            {form.items.map((it) => {
+              const esPaella = it.tipo === "paella";
+              const porKg = esPaella || esPorKg(it);
+              const pastilla = "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 ring-foreground/10 transition-colors";
+              return (
+                <div key={it.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {porKg ? `${money(esPaella ? it.precioKg : it.precio)} por kg` : `${money(it.precio)} c/u`}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right text-base font-semibold tabular-nums text-foreground">{money(it.subtotal)}</div>
                   </div>
-                  {/* El botón va ARRIBA de los extras ya puestos: cada extra
-                      que se agrega mete un renglón, y con el botón abajo se
-                      recorría justo cuando se le iba a dar otra vez. */}
-                  {it.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
-                    <div className="af-extra-wrap">
-                      <Button variant="link" size="auto" className="af-extra-btn" onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
-                        <CirclePlus size={13} className="inline mr-1" /> Extra
-                      </Button>
-                      {extrasAbierto === it.id && (
-                        <>
-                          <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
-                          {/* El menú NO se cierra al elegir: los más y menos se
-                              quedan en el mismo lugar, así se pueden poner tres
-                              chorizos con tres toques sin mover el dedo. */}
-                          <div className="af-extra-menu af-combo-wrap">
-                            {(config.extrasPaella || []).map((ex) => {
-                              const puestos = cantidadDeExtra(it, ex.id);
-                              return (
-                                <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
-                                  <span className="af-extra-menu-nombre">{ex.nombre}</span>
-                                  <span className="af-ink-soft">{money(ex.precio)}</span>
-                                  <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
-                                    onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><CircleMinus size={12} /></button>
-                                  <span className="af-extra-menu-cuenta">{puestos}</span>
-                                  <button className="af-extra-mini-btn" title="Agregar uno"
-                                    onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><CirclePlus size={12} /></button>
-                                </div>
-                              );
-                            })}
-                            <button className="af-extra-menu-listo" onClick={() => setExtrasAbierto(null)}>Listo</button>
-                          </div>
-                        </>
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Stepper
+                        value={esPaella ? it.kg : it.cantidad}
+                        min={1}
+                        step={1}
+                        onChange={(v) => (esPaella ? updateKg(it.id, v) : updateCantidad(it.id, v))}
+                      />
+                      <span className="text-xs text-muted-foreground">{porKg ? "kg" : "pzas"}</span>
+                    </div>
+                    <Button variant="ghost" size="icon-sm" aria-label="Quitar" className="text-muted-foreground hover:text-error-fuerte" onClick={() => removeItem(it.id)}>
+                      <Trash size={16} />
+                    </Button>
+                  </div>
+
+                  {(esPaella || modo === "pedido") && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {/* El menú de extras NO se cierra al elegir: así se ponen
+                          tres chorizos con tres toques sin mover el dedo. */}
+                      {esPaella && (config.extrasPaella || []).length > 0 && (
+                        <div className="af-extra-wrap">
+                          <button type="button" className={cn(pastilla, (it.extras || []).length ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
+                            <CirclePlus size={14} /> Extras{(it.extras || []).length ? ` · ${(it.extras || []).reduce((a, e) => a + (e.cantidad || 1), 0)}` : ""}
+                          </button>
+                          {extrasAbierto === it.id && (
+                            <>
+                              <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
+                              <div className="af-extra-menu af-combo-wrap">
+                                {(config.extrasPaella || []).map((ex) => {
+                                  const puestos = cantidadDeExtra(it, ex.id);
+                                  return (
+                                    <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
+                                      <span className="af-extra-menu-nombre">{ex.nombre}</span>
+                                      <span className="af-ink-soft">{money(ex.precio)}</span>
+                                      <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
+                                        onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><CircleMinus size={12} /></button>
+                                      <span className="af-extra-menu-cuenta">{puestos}</span>
+                                      <button className="af-extra-mini-btn" title="Agregar uno"
+                                        onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><CirclePlus size={12} /></button>
+                                    </div>
+                                  );
+                                })}
+                                <button className="af-extra-menu-listo" onClick={() => setExtrasAbierto(null)}>Listo</button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {/* También en presupuestos: si va en paellera cambia el total. */}
+                      {esPaella && (
+                        <button
+                          type="button"
+                          aria-pressed={!!it.enPaellera}
+                          className={cn(pastilla, it.enPaellera ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")}
+                          onClick={() => updateEnPaellera(it.id, !it.enPaellera)}
+                        >
+                          {it.enPaellera ? <CircleCheck size={14} /> : <ChefHat size={14} />} En paellera
+                        </button>
+                      )}
+                      {modo === "pedido" && (
+                        <button type="button" className={cn(pastilla, it.nota ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setNotaAbierta(notaAbierta === it.id ? null : it.id)}>
+                          {it.nota ? <CircleCheck size={14} /> : <StickyNote size={14} />} Nota
+                        </button>
                       )}
                     </div>
                   )}
-                  {it.tipo === "paella" && (it.extras || []).map((e) => (
-                    <div key={e.id} className="af-extra-line">
-                      <span>+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}</span>
-                      <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><CircleMinus size={12} /></button>
-                      <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><CirclePlus size={12} /></button>
+
+                  {/* Los extras ya puestos, cada uno con su más y menos. */}
+                  {esPaella && (it.extras || []).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(it.extras || []).map((e) => (
+                        <span key={e.id} className="inline-flex h-8 items-center gap-1 rounded-full bg-secondary/60 pl-3 pr-1 text-xs text-foreground">
+                          {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}
+                          <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><CircleMinus size={12} /></button>
+                          <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><CirclePlus size={12} /></button>
+                        </span>
+                      ))}
                     </div>
-                  ))}
-                  {/* También en presupuestos: el cliente decide desde ahí si la
-                      quiere en paellera y si vamos por ella, y eso cambia el total. */}
-                  {it.tipo === "paella" && (
-                    <label className="af-check-row af-check-row-small">
-                      <Checkbox checked={!!it.enPaellera} onCheckedChange={(v) => updateEnPaellera(it.id, v === true)} />
-                      <span><ChefHat size={13} className="inline mr-1" /> Va en paellera</span>
-                    </label>
                   )}
-                  {modo === "pedido" && (
-                    notaAbierta === it.id ? (
-                      <Textarea
-                        autoFocus
-                        rows={2}
-                        className="mt-1"
-                        placeholder="Ej. sin chícharos, sin ejotes..."
-                        value={it.nota || ""}
-                        onChange={(e) => updateNotaItem(it.id, e.target.value)}
-                        onBlur={() => setNotaAbierta(null)}
-                      />
-                    ) : it.nota ? (
-                      <div className="af-item-nota" onClick={() => setNotaAbierta(it.id)}>
-                        <StickyNote size={12} className="inline mr-1" />{it.nota}
-                      </div>
-                    ) : (
-                      <Button variant="link" size="auto" className="af-extra-btn" onClick={() => setNotaAbierta(it.id)}>
-                        <CirclePlus size={13} className="inline mr-1" /> Nota
-                      </Button>
-                    )
+
+                  {modo === "pedido" && notaAbierta === it.id && (
+                    <Textarea
+                      autoFocus
+                      rows={2}
+                      className="mt-2"
+                      placeholder="Ej. sin chícharos, sin ejotes..."
+                      value={it.nota || ""}
+                      onChange={(e) => updateNotaItem(it.id, e.target.value)}
+                      onBlur={() => setNotaAbierta(null)}
+                    />
+                  )}
+                  {modo === "pedido" && notaAbierta !== it.id && it.nota && (
+                    <button type="button" className="mt-2 flex w-full items-start gap-2 rounded-xl bg-aviso/10 px-3 py-2 text-left text-sm text-foreground" onClick={() => setNotaAbierta(it.id)}>
+                      <StickyNote size={14} className="mt-0.5 shrink-0 text-aviso-fuerte" /> {it.nota}
+                    </button>
                   )}
                 </div>
-                <Stepper
-                  value={it.tipo === "paella" ? it.kg : it.cantidad}
-                  min={1}
-                  step={1}
-                  onChange={(v) => (it.tipo === "paella" ? updateKg(it.id, v) : updateCantidad(it.id, v))}
-                />
-                <span className="af-items-col-total">{money(it.subtotal)}</span>
-                <Button variant="ghost" size="icon-sm" className="ml-1" onClick={() => removeItem(it.id)}><CircleX size={16} /></Button>
-              </div>
-            ))}
-          </div>
+              );
+            })}
+          </Card>
         )}
         <button className="af-add-item-btn mt-2" onClick={() => setMostrarPicker(true)}>
           <CirclePlus size={16} /> Agregar ítem
