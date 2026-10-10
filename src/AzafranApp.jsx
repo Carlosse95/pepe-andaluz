@@ -4847,6 +4847,10 @@ const CAMPOS_PEDIDO = [
 // donde antes no había nada, y eso no es un cambio de nadie.
 const normCampo = (x) =>
   x === undefined || x === null || x === false || x === "" || x === 0 || x === "0" ? null : typeof x === "number" ? String(x) : x;
+// Que la paellera ya volvió se apunta en cada producto, pero no es cambiar
+// los productos: se compara sin eso y se avisa aparte.
+const campoComparable = (k, x) =>
+  k === "items" && Array.isArray(x) ? x.map(({ paelleraDevuelta, ...it }) => it) : normCampo(x);
 const listaConY = (xs) => (xs.length <= 1 ? xs.join("") : xs.slice(0, -1).join(", ") + " y " + xs[xs.length - 1]);
 
 const cambiosDePedidos = (antes, despues) => {
@@ -4866,8 +4870,9 @@ const cambiosDePedidos = (antes, despues) => {
       pagos: (p.abonos || []).filter((a) => !idsAntes.has(a.id)),
       quitados: (v.abonos || []).filter((a) => !idsAhora.has(a.id)),
       estado: (v.estado || "pendiente") !== (p.estado || "pendiente"),
-      campos: CAMPOS_PEDIDO.filter(([k]) => !igual(normCampo(v[k]), normCampo(p[k]))).map(([, n]) => n),
-      claves: CAMPOS_PEDIDO.filter(([k]) => !igual(normCampo(v[k]), normCampo(p[k]))),
+      campos: CAMPOS_PEDIDO.filter(([k]) => !igual(campoComparable(k, v[k]), campoComparable(k, p[k]))).map(([, n]) => n),
+      claves: CAMPOS_PEDIDO.filter(([k]) => !igual(campoComparable(k, v[k]), campoComparable(k, p[k]))),
+      devueltas: (p.items || []).filter((it) => it.paelleraDevuelta && !(v.items || []).find((x) => x.id === it.id)?.paelleraDevuelta),
     });
   }
   const quedan = new Set((despues || []).map((p) => p.id));
@@ -4948,6 +4953,10 @@ const movimientosDePedidos = (antes, despues) =>
       filas.push({ tipo: "estado", texto: `Pasó el pedido ${deQuien(c.p)} a ${ESTADO_LABEL[c.p.estado || "pendiente"]}`, ref_id: c.p.id,
         detalle: { antes: ESTADO_LABEL[c.v.estado || "pendiente"], ahora: ESTADO_LABEL[c.p.estado || "pendiente"] } });
     }
+    if (c.devueltas.length) {
+      filas.push({ tipo: "paellera-devuelta", texto: `Marcó como devuelta la paellera del pedido ${deQuien(c.p)}`, ref_id: c.p.id,
+        detalle: { productos: c.devueltas.map(lineaItemHist) } });
+    }
     if (c.campos.length) {
       filas.push({ tipo: "pedido-cambio", texto: `Cambió ${listaConY(c.campos)} del pedido ${deQuien(c.p)}`, ref_id: c.p.id,
         detalle: { cambios: c.claves.map(([k, n]) => (k === "items"
@@ -4999,13 +5008,13 @@ const movimientosDeClientes = (antes, despues) => {
 
 const GRUPOS_HISTORIAL = [
   { id: "todo", label: "Todo" },
-  { id: "pedidos", label: "Pedidos", tipos: ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado"] },
+  { id: "pedidos", label: "Pedidos", tipos: ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado", "paellera-devuelta"] },
   { id: "pagos", label: "Pagos", tipos: ["pago", "pago-quitado"] },
   { id: "gastos", label: "Gastos", tipos: ["gasto-nuevo", "gasto-cambio", "gasto-borrado"] },
   { id: "clientes", label: "Clientes", tipos: ["cliente-nuevo"] },
 ];
 const ICONO_MOVIMIENTO = {
-  "pedido-nuevo": CirclePlus, "pedido-cambio": SquarePen, "pedido-borrado": Trash, estado: ChefHat,
+  "pedido-nuevo": CirclePlus, "pedido-cambio": SquarePen, "pedido-borrado": Trash, estado: ChefHat, "paellera-devuelta": CircleCheck,
   pago: Banknote, "pago-quitado": CircleMinus, "gasto-nuevo": Receipt, "gasto-cambio": Receipt,
   "gasto-borrado": Trash, "cliente-nuevo": Users,
 };
@@ -5049,7 +5058,7 @@ const avisoIOS = ({ titulo, cuerpo, alTocar }) =>
 
 // ---------- Avisos con la app cerrada (Web Push) ----------
 // De qué se avisa a los demás aparatos (igual que en la función del servidor).
-const TIPOS_AVISABLES = ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado", "pago", "pago-quitado"];
+const TIPOS_AVISABLES = ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado", "pago", "pago-quitado", "paellera-devuelta"];
 
 // Lo que se le dice a cada quien según su aparato.
 const TEXTO_ESTADO_AVISOS = {
@@ -5221,6 +5230,8 @@ function DetalleMovimiento({ f }) {
     if (d.tienda) filas.push(<Fila key="t" etiqueta="Tienda">{d.tienda}</Fila>);
     if (d.categoria) filas.push(<Fila key="c" etiqueta="Categoría">{d.categoria}</Fila>);
     if (d.ambito) filas.push(<Fila key="a" etiqueta="De dónde sale">{d.ambito}</Fila>);
+  } else if (f.tipo === "paellera-devuelta" && d.productos) {
+    filas.push(<Fila key="p" etiqueta={d.productos.length > 1 ? "Paelleras de" : "Paellera de"}><Lista xs={d.productos} /></Fila>);
   } else if (f.tipo === "cliente-nuevo") {
     if (d.telefono) filas.push(<Fila key="t" etiqueta="Teléfono">{d.telefono}</Fila>);
     if (d.direccion) filas.push(<Fila key="d" etiqueta="Dirección">{d.direccion}</Fila>);
