@@ -614,3 +614,23 @@ export const actualizarPerfil = async (userId, cambios) => {
   const { error } = await supabase.from("perfiles").update(cambios).eq("user_id", userId);
   if (error) throw error;
 };
+
+// ---------- Historial de movimientos ----------
+// Una tabla donde solo se AGREGA: quién hizo qué y cuándo (pedidos, pagos,
+// gastos, clientes). Nadie puede editar ni borrar una fila, ni el admin.
+export const registrarMovimientos = async (filas) => {
+  if (!nubeActiva || !filas.length) return;
+  // Si un envío sí llegó pero la respuesta se perdió, al reintentar la
+  // clave_local repetida se ignora en vez de duplicar la fila.
+  const { error } = await supabase.from("movimientos").upsert(filas, { onConflict: "clave_local", ignoreDuplicates: true });
+  if (error) throw error;
+};
+
+export const listarMovimientos = async ({ antesDe, limite = 150 } = {}) => {
+  if (!nubeActiva) return [];
+  let q = supabase.from("movimientos").select("*").order("creado_en", { ascending: false }).limit(limite);
+  if (antesDe) q = q.lt("creado_en", antesDe);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+};

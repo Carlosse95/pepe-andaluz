@@ -32,7 +32,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
+  CirclePlus, UtensilsCrossed, Package, History, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie } from "recharts";
 import {
@@ -43,6 +43,7 @@ import {
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
   subirTicket, verTicket, leerTicket, subirRecibo,
+  registrarMovimientos, listarMovimientos,
 } from "./nube.js";
 
 // Las claves del almacén que la app mantiene sincronizadas con la nube. Es la
@@ -4791,6 +4792,9 @@ const NAV_ESCONDIBLES = [
   { key: "deudas", label: "Me deben" },
   { key: "clientes", label: "Clientes" },
   { key: "reportes", label: "Reportes" },
+  { key: "historial", label: "Historial" },
+  { key: "menu", label: "Menú" },
+  { key: "inventario", label: "Inventario" },
 ];
 
 // De qué bolsa sale el gasto. Se dicen SIEMPRE igual —Negocio y Casa— en el
@@ -4822,6 +4826,217 @@ const migrarGasto = (g) => {
   }
   return salida;
 };
+
+// ---------- Historial de movimientos ----------
+// Qué cambió entre dos versiones de la lista de pedidos, pedido por pedido.
+// Lo usan el Historial (lo que hizo este aparato) y los avisos (lo que
+// llegó de otro aparato).
+const CAMPOS_PEDIDO = [
+  ["fecha", "fecha"], ["hora", "hora"], ["items", "productos"], ["entrega", "entrega"],
+  ["direccion", "dirección"], ["notas", "notas"], ["clienteNombre", "cliente"],
+  ["clienteTelefono", "teléfono"], ["envio", "envío"], ["iva", "IVA"], ["recogerPaellera", "paellera"],
+];
+// "Vacío", "no", 0 y "0" cuentan igual: el formulario a veces guarda false
+// donde antes no había nada, y eso no es un cambio de nadie.
+const normCampo = (x) =>
+  x === undefined || x === null || x === false || x === "" || x === 0 || x === "0" ? null : typeof x === "number" ? String(x) : x;
+const listaConY = (xs) => (xs.length <= 1 ? xs.join("") : xs.slice(0, -1).join(", ") + " y " + xs[xs.length - 1]);
+
+const cambiosDePedidos = (antes, despues) => {
+  const mapa = new Map((antes || []).map((p) => [p.id, p]));
+  const salida = [];
+  const vistos = new Set(); // un id repetido en la lista se cuenta una vez
+  for (const p of despues || []) {
+    if (vistos.has(p.id)) continue;
+    vistos.add(p.id);
+    const v = mapa.get(p.id);
+    if (v && (v === p || igual(v, p))) continue;
+    if (!v) { salida.push({ tipo: "nuevo", p }); continue; }
+    const idsAntes = new Set((v.abonos || []).map((a) => a.id));
+    const idsAhora = new Set((p.abonos || []).map((a) => a.id));
+    salida.push({
+      tipo: "cambio", p, v,
+      pagos: (p.abonos || []).filter((a) => !idsAntes.has(a.id)),
+      quitados: (v.abonos || []).filter((a) => !idsAhora.has(a.id)),
+      estado: (v.estado || "pendiente") !== (p.estado || "pendiente"),
+      campos: CAMPOS_PEDIDO.filter(([k]) => !igual(normCampo(v[k]), normCampo(p[k]))).map(([, n]) => n),
+    });
+  }
+  const quedan = new Set((despues || []).map((p) => p.id));
+  for (const v of antes || []) if (!quedan.has(v.id)) salida.push({ tipo: "borrado", v });
+  return salida;
+};
+
+const deQuien = (p) => `${p.folio ? "#" + p.folio + " de " : "de "}${p.clienteNombre || "un cliente"}`;
+const sumaMontos = (xs) => xs.reduce((a, x) => a + (parseFloat(x.monto) || 0), 0);
+const metodoDe = (xs) => [...new Set(xs.map((x) => METODO_PAGO_LABEL[x.metodo] || x.metodo).filter(Boolean))].join(", ").toLowerCase();
+
+// Las filas del Historial que deja un guardado de pedidos de este aparato.
+const movimientosDePedidos = (antes, despues) =>
+  cambiosDePedidos(antes, despues).flatMap((c) => {
+    if (c.tipo === "nuevo") {
+      return [{ tipo: "pedido-nuevo", texto: `Agregó el pedido ${deQuien(c.p)}`, ref_id: c.p.id,
+        detalle: { fecha: c.p.fecha, total: c.p.total } }];
+    }
+    if (c.tipo === "borrado") {
+      return [{ tipo: "pedido-borrado", texto: `Borró el pedido ${deQuien(c.v)}`, ref_id: c.v.id,
+        detalle: { fecha: c.v.fecha, total: c.v.total } }];
+    }
+    const filas = [];
+    if (c.pagos.length) {
+      const m = metodoDe(c.pagos);
+      filas.push({ tipo: "pago", texto: `Registró un pago de ${money(sumaMontos(c.pagos))}${m ? " en " + m : ""} del pedido ${deQuien(c.p)}`, ref_id: c.p.id,
+        detalle: { monto: sumaMontos(c.pagos) } });
+    }
+    if (c.quitados.length) {
+      filas.push({ tipo: "pago-quitado", texto: `Quitó un pago de ${money(sumaMontos(c.quitados))} del pedido ${deQuien(c.p)}`, ref_id: c.p.id,
+        detalle: { monto: sumaMontos(c.quitados) } });
+    }
+    if (c.estado) {
+      filas.push({ tipo: "estado", texto: `Pasó el pedido ${deQuien(c.p)} a ${ESTADO_LABEL[c.p.estado || "pendiente"]}`, ref_id: c.p.id });
+    }
+    if (c.campos.length) {
+      filas.push({ tipo: "pedido-cambio", texto: `Cambió ${listaConY(c.campos)} del pedido ${deQuien(c.p)}`, ref_id: c.p.id });
+    }
+    return filas;
+  });
+
+const movimientosDeGastos = (antes, despues) => {
+  const mapa = new Map((antes || []).map((g) => [g.id, g]));
+  const nombre = (g) => g.descripcion || g.tienda || g.categoria || "sin nombre";
+  const filas = [];
+  for (const g of despues || []) {
+    const v = mapa.get(g.id);
+    if (!v) filas.push({ tipo: "gasto-nuevo", texto: `Registró un gasto de ${money(g.monto)}: ${nombre(g)}`, ref_id: g.id, detalle: { monto: g.monto } });
+    else if (v !== g && !igual(v, g)) filas.push({ tipo: "gasto-cambio", texto: `Cambió el gasto ${nombre(g)} (${money(g.monto)})`, ref_id: g.id });
+  }
+  const quedan = new Set((despues || []).map((g) => g.id));
+  for (const v of antes || []) if (!quedan.has(v.id)) filas.push({ tipo: "gasto-borrado", texto: `Borró el gasto ${nombre(v)} (${money(v.monto)})`, ref_id: v.id });
+  return filas;
+};
+
+const movimientosDeClientes = (antes, despues) => {
+  const ids = new Set((antes || []).map((c) => c.id));
+  return (despues || []).filter((c) => !ids.has(c.id)).map((c) => ({ tipo: "cliente-nuevo", texto: `Agregó al cliente ${c.nombre || "sin nombre"}`, ref_id: c.id }));
+};
+
+const GRUPOS_HISTORIAL = [
+  { id: "todo", label: "Todo" },
+  { id: "pedidos", label: "Pedidos", tipos: ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado"] },
+  { id: "pagos", label: "Pagos", tipos: ["pago", "pago-quitado"] },
+  { id: "gastos", label: "Gastos", tipos: ["gasto-nuevo", "gasto-cambio", "gasto-borrado"] },
+  { id: "clientes", label: "Clientes", tipos: ["cliente-nuevo"] },
+];
+const ICONO_MOVIMIENTO = {
+  "pedido-nuevo": CirclePlus, "pedido-cambio": SquarePen, "pedido-borrado": Trash, estado: ChefHat,
+  pago: Banknote, "pago-quitado": CircleMinus, "gasto-nuevo": Receipt, "gasto-cambio": Receipt,
+  "gasto-borrado": Trash, "cliente-nuevo": Users,
+};
+
+// Pantalla del Historial: lo más nuevo arriba, agrupado por día. Se puede
+// filtrar por persona y por tipo; tocar un movimiento de pedido lo abre.
+function HistorialView({ cargar, pendientes, pedidos, onAbrirPedido }) {
+  const [filas, setFilas] = useState(null);
+  const [error, setError] = useState(false);
+  const [hayMas, setHayMas] = useState(false);
+  const [grupo, setGrupo] = useState("todo");
+  const [persona, setPersona] = useState("");
+  const LIMITE = 150;
+
+  const traer = async (antesDe) => {
+    try {
+      const nuevas = await cargar({ antesDe, limite: LIMITE });
+      setFilas((prev) => (antesDe ? [...(prev || []), ...nuevas] : nuevas));
+      setHayMas(nuevas.length === LIMITE);
+      setError(false);
+    } catch {
+      setError(true);
+      setFilas((prev) => prev || []);
+    }
+  };
+  useEffect(() => { traer(); }, []);
+
+  // Lo de este aparato que todavía no sube (sin señal) también se ve.
+  const todas = useMemo(() => {
+    const ya = new Set((filas || []).map((f) => f.clave_local).filter(Boolean));
+    return [...(pendientes || []).filter((f) => !ya.has(f.clave_local)), ...(filas || [])]
+      .sort((a, b) => (a.creado_en < b.creado_en ? 1 : -1));
+  }, [filas, pendientes]);
+
+  const personas = [...new Set(todas.map((f) => f.usuario_nombre).filter(Boolean))].sort();
+  const tipos = GRUPOS_HISTORIAL.find((g) => g.id === grupo)?.tipos;
+  const visibles = todas.filter((f) => (!tipos || tipos.includes(f.tipo)) && (!persona || f.usuario_nombre === persona));
+
+  const porDia = [];
+  for (const f of visibles) {
+    const d = new Date(f.creado_en);
+    const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const ultimo = porDia[porDia.length - 1];
+    if (ultimo && ultimo.dia === dia) ultimo.filas.push(f);
+    else porDia.push({ dia, filas: [f] });
+  }
+  const hora = (iso) => new Date(iso).toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" });
+  const pedidoDe = (f) => (f.ref_id ? pedidos.find((p) => p.id === f.ref_id) : null);
+
+  return (
+    <div>
+      <div className="af-category-pills mb-3">
+        {GRUPOS_HISTORIAL.map((g) => (
+          <Toggle key={g.id} variant="pastilla" pressed={grupo === g.id} onClick={() => setGrupo(g.id)}>{g.label}</Toggle>
+        ))}
+      </div>
+      {personas.length > 1 && (
+        <NativeSelectS envoltura="w-fit mb-4" value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Quién">
+          <NativeSelectOption value="">Todas las personas</NativeSelectOption>
+          {personas.map((n) => <NativeSelectOption key={n} value={n}>{n}</NativeSelectOption>)}
+        </NativeSelectS>
+      )}
+
+      {filas === null && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {error && <p className="text-sm text-error-fuerte mb-3">No se pudo leer el historial. Revisa la conexión.</p>}
+      {filas !== null && !visibles.length && !error && (
+        <EmptyState icon={<History size={32} />} title="Sin movimientos" subtitle="Aquí aparece cada pedido, pago, gasto y cliente que alguien agregue o cambie." />
+      )}
+
+      {porDia.map((g) => (
+        <div key={g.dia}>
+          <div className="af-section-title">{fmtDateHuman(g.dia)}</div>
+          <Card className="mb-4 divide-y divide-border">
+            {g.filas.map((f, i) => {
+              const Icono = ICONO_MOVIMIENTO[f.tipo] || History;
+              const pedido = pedidoDe(f);
+              const contenido = (
+                <>
+                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                    <Icono size={16} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-foreground">{f.texto}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {f.usuario_nombre || "Alguien"} · {hora(f.creado_en)}{f.pendiente ? " · por subir" : ""}
+                    </span>
+                  </span>
+                  {pedido && <CircleChevronRight size={16} className="mt-2 shrink-0 text-muted-foreground" />}
+                </>
+              );
+              return pedido ? (
+                <button key={f.id || f.clave_local || i} type="button" className="flex w-full items-start gap-3 p-3 text-left hover:bg-accent/40" onClick={() => onAbrirPedido(pedido)}>
+                  {contenido}
+                </button>
+              ) : (
+                <div key={f.id || f.clave_local || i} className="flex items-start gap-3 p-3">{contenido}</div>
+              );
+            })}
+          </Card>
+        </div>
+      ))}
+
+      {hayMas && (
+        <Button variant="secondary" className="w-full" onClick={() => traer(filas[filas.length - 1]?.creado_en)}>Ver más</Button>
+      )}
+    </div>
+  );
+}
 
 // Deja el nombre de un gasto en su forma "de comparación": sin acentos, sin
 // mayúsculas y sin espacios de más. Sirve para darse cuenta de que
@@ -8169,9 +8384,13 @@ function UsuariosPanel({ perfil, showToast }) {
   );
 }
 
-function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, perfil, nombreUsuario, onCerrarSesion, showToast }) {
+// Menú e Inventario ya tienen su propio lugar en la barra lateral: esta misma
+// pantalla se abre con `seccion` = "menu" o "inventario" (sin pestañas), y
+// Ajustes queda solo con Datos y Usuarios.
+function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespaldo, onImportarDatos, perfil, nombreUsuario, onCerrarSesion, showToast }) {
   const esAdmin = !perfil || perfil.rol === "admin";
-  const [tab, setTab] = useState("menu");
+  const [tabElegida, setTab] = useState("datos");
+  const tab = seccion === "ajustes" ? tabElegida : seccion;
   const [draft, setDraft] = useState(config);
   // Qué ingrediente tiene abierto el selector de productos, y los que se
   // acaban de agregar (o de dejar en cero) para que no desaparezcan de la
@@ -8653,14 +8872,12 @@ function AjustesView({ config, onGuardarConfig, datosRespaldo, onImportarDatos, 
 
   return (
     <div>
-      <div className="af-subtabs mb-4">
-        <Toggle variant="segmento" pressed={tab === "menu"} onClick={() => setTab("menu")}>Menú</Toggle>
-        <Toggle variant="segmento" pressed={tab === "inventario"} onClick={() => setTab("inventario")}>Inventario</Toggle>
-        <Toggle variant="segmento" pressed={tab === "datos"} onClick={() => setTab("datos")}>Datos</Toggle>
-        {perfil && perfil.rol === "admin" && (
+      {seccion === "ajustes" && perfil && perfil.rol === "admin" && (
+        <div className="af-subtabs mb-4">
+          <Toggle variant="segmento" pressed={tab === "datos"} onClick={() => setTab("datos")}>Datos</Toggle>
           <Toggle variant="segmento" pressed={tab === "usuarios"} onClick={() => setTab("usuarios")}>Usuarios</Toggle>
-        )}
-      </div>
+        </div>
+      )}
 
       {tab === "usuarios" && perfil && perfil.rol === "admin" && (
         <UsuariosPanel perfil={perfil} showToast={showToast} />
@@ -11589,11 +11806,15 @@ export default function App() {
   const pedidosRef = useRef([]);
   pedidosRef.current = pedidos;
   const [clientes, setClientes] = useState([]);
+  const clientesRef = useRef([]);
+  clientesRef.current = clientes;
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [historico, setHistorico] = useState({});
   const [presupuestos, setPresupuestos] = useState([]);
   const [avatares, setAvatares] = useState({}); // email (o "local") -> { foto, nombre }
   const [gastos, setGastos] = useState([]);
+  const gastosRef = useRef([]);
+  gastosRef.current = gastos;
   // pedidoId -> "avisado" | "entregado": pedidos que acaban de cambiar a ese
   // estado y siguen esperando que alguien toque "Enviar aviso" (ver OrderCard).
   // Vive aquí (no en OrderCard) porque al marcar "Entregado" la tarjeta salta
@@ -12615,6 +12836,46 @@ export default function App() {
     showToast("Se están subiendo cambios que habían quedado pendientes", "ok");
   };
 
+  // Historial: cada movimiento de este aparato se anota en una cola local y
+  // se sube en cuanto hay señal. Si no hay, se queda en la cola y se reintenta
+  // (cada 30 s y al abrir la app); la clave_local evita que se repita.
+  const COLA_MOV = "movimientos-pendientes";
+  const leerColaMov = () => { try { return JSON.parse(localStorage.getItem(COLA_MOV) || "[]"); } catch { return []; } };
+  const [movPendientes, setMovPendientes] = useState(leerColaMov);
+  const subiendoMov = useRef(false);
+  const subirMovimientos = async () => {
+    const cola = leerColaMov();
+    if (subiendoMov.current || !cola.length) return;
+    subiendoMov.current = true;
+    try {
+      await registrarMovimientos(cola.map(({ pendiente, ...f }) => f));
+      const subidas = new Set(cola.map((f) => f.clave_local));
+      const resto = leerColaMov().filter((f) => !subidas.has(f.clave_local));
+      try { localStorage.setItem(COLA_MOV, JSON.stringify(resto)); } catch { /* sin espacio: se reintenta */ }
+      setMovPendientes(resto);
+    } catch { /* sin señal: se queda en la cola */ } finally {
+      subiendoMov.current = false;
+    }
+  };
+  const anotar = (filas) => {
+    if (!filas.length) return;
+    const yo = yoRef.current;
+    const ahora = new Date().toISOString();
+    const nuevas = filas.map((f, i) => ({
+      ...f, creado_en: ahora, usuario_nombre: yo.nombre || "", usuario_email: yo.email || "",
+      clave_local: `${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 8)}`, pendiente: true,
+    }));
+    const cola = [...leerColaMov(), ...nuevas];
+    try { localStorage.setItem(COLA_MOV, JSON.stringify(cola)); } catch { /* sin espacio */ }
+    setMovPendientes(cola);
+    subirMovimientos();
+  };
+  useEffect(() => {
+    subirMovimientos();
+    const t = setInterval(subirMovimientos, 30000);
+    return () => clearInterval(t);
+  }, []);
+
   // Cada pedido que cambia (y cada pago nuevo) lleva quién y cuándo. Con eso
   // los avisos de los demás aparatos dicen "Papá registró un pago…".
   const firmarCambios = (lista) => {
@@ -12633,6 +12894,7 @@ export default function App() {
   };
   const guardarPedidos = (lista) => {
     const firmada = firmarCambios(lista);
+    anotar(movimientosDePedidos(pedidosRef.current, firmada));
     pedidosRef.current = firmada;
     setPedidos(firmada);
     persist("pedidos", firmada);
@@ -12641,7 +12903,12 @@ export default function App() {
   const [faltaHechas, setFaltaHechas] = useState(null);
   // El día y la hora del pedido nuevo, para confirmarlos antes de guardar.
   const [confirmarFecha, setConfirmarFecha] = useState(null);
-  const guardarClientes = (lista) => { setClientes(lista); persist("clientes", lista); };
+  const guardarClientes = (lista) => {
+    anotar(movimientosDeClientes(clientesRef.current, lista));
+    clientesRef.current = lista;
+    setClientes(lista);
+    persist("clientes", lista);
+  };
   // Segundo candado: mientras no se haya leído la configuración de la nube,
   // lo que hay en memoria son los valores de fábrica. Guardar en ese momento
   // los escribiría encima del menú real. Guardar un pedido también guarda la
@@ -12668,7 +12935,13 @@ export default function App() {
   // nada de lo demás que viva ahí.
   const guardarDeudas = (lista) => guardarConfig({ ...config, deudas: lista });
   // `borrar`: ids que se eliminaron a propósito con esta llamada.
-  const guardarGastos = (lista, borrar) => { if (borrar) marcarBorrados("gastos", borrar); setGastos(lista); persist("gastos", lista); };
+  const guardarGastos = (lista, borrar) => {
+    if (borrar) marcarBorrados("gastos", borrar);
+    anotar(movimientosDeGastos(gastosRef.current, lista));
+    gastosRef.current = lista;
+    setGastos(lista);
+    persist("gastos", lista);
+  };
 
   // Foto y nombre personalizado: se guardan por usuario (clave = su correo)
   // para que cada quien edite solo lo suyo, aunque compartan el mismo
@@ -13118,7 +13391,10 @@ export default function App() {
     const yo = yoRef.current.email;
     const mapaAntes = new Map(antes.map((p) => [p.id, p]));
     const avisos = [];
+    const vistos = new Set();
     for (const p of despues) {
+      if (vistos.has(p.id)) continue;
+      vistos.add(p.id);
       const v = mapaAntes.get(p.id);
       if (v && (v === p || igual(v, p))) continue;
       // Solo cambios firmados por una persona: los arreglos internos (como
@@ -13675,7 +13951,7 @@ export default function App() {
 
   const pedidosHoy = pedidos.filter((p) => esHoy(p.fecha));
 
-  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", deudas: "Me deben", reportes: "Reportes", ajustes: "Ajustes" };
+  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", deudas: "Me deben", reportes: "Reportes", menu: "Menú", inventario: "Inventario", historial: "Historial", ajustes: "Ajustes" };
 
   const navTodos = [
     { key: "hoy", icon: <House size={20} />, label: "Hoy" },
@@ -13685,6 +13961,9 @@ export default function App() {
     { key: "deudas", icon: <Wallet size={20} />, label: "Me deben" },
     { key: "clientes", icon: <Users size={20} />, label: "Clientes" },
     { key: "reportes", icon: <TrendingUp size={20} />, label: "Reportes" },
+    { key: "historial", icon: <History size={20} />, label: "Historial" },
+    { key: "menu", icon: <UtensilsCrossed size={20} />, label: "Menú" },
+    { key: "inventario", icon: <Package size={20} />, label: "Inventario" },
     { key: "ajustes", icon: <Settings size={20} />, label: "Ajustes" },
   ];
   // Las pestañas que no se usan se pueden esconder desde Ajustes. Hoy y
@@ -13831,8 +14110,13 @@ export default function App() {
           {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} showToast={showToast} />}
           {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} onNuevo={() => goToNuevoPresupuesto()} />}
           {view === "deudas" && <DeudasView deudas={config?.deudas || []} onGuardar={guardarDeudas} showToast={showToast} />}
-          {view === "ajustes" && (
+          {view === "historial" && (
+            <HistorialView cargar={listarMovimientos} pendientes={movPendientes} pedidos={pedidos} onAbrirPedido={irAEditar} />
+          )}
+          {(view === "ajustes" || view === "menu" || view === "inventario") && (
             <AjustesView
+              key={view}
+              seccion={view}
               config={config}
               onGuardarConfig={guardarConfig}
               datosRespaldo={{ pedidos, clientes, config, historico, presupuestos, gastos }}

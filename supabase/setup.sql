@@ -224,3 +224,28 @@ begin
   alter publication supabase_realtime add table public.whatsapp_conversaciones;
 exception when duplicate_object then null;
 end $$;
+
+-- ============================================================
+-- Historial de movimientos: quién hizo qué y cuándo.
+-- Solo se AGREGA: no hay políticas de editar ni de borrar, así que
+-- nadie (ni el admin desde la app) puede cambiar lo que ya pasó.
+-- ============================================================
+create table if not exists public.movimientos (
+  id             bigint generated always as identity primary key,
+  creado_en      timestamptz not null default now(),
+  usuario_id     uuid not null default auth.uid(),
+  usuario_nombre text not null default '',
+  usuario_email  text not null default '',
+  tipo           text not null,
+  texto          text not null,
+  ref_id         text,
+  detalle        jsonb,
+  clave_local    text unique
+);
+create index if not exists movimientos_creado_en on public.movimientos (creado_en desc);
+alter table public.movimientos enable row level security;
+drop policy if exists "movimientos leer"     on public.movimientos;
+drop policy if exists "movimientos insertar" on public.movimientos;
+create policy "movimientos leer"     on public.movimientos for select using (public.es_usuario_activo());
+create policy "movimientos insertar" on public.movimientos for insert
+  with check (public.es_usuario_activo() and usuario_id = auth.uid());
