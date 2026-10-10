@@ -8384,6 +8384,183 @@ function UsuariosPanel({ perfil, showToast }) {
   );
 }
 
+// ---------- Inventario: existencias ----------
+// Todo lo que lleva cuenta en una sola lista: cuánto hay, en cuánto avisa y
+// si ya hay que comprar (o hacer). Se ajusta con + y − o escribiendo el
+// número, y se guarda al momento. Lo complicado (paquetes, recetas, rangos de
+// kilos) vive en "Configurar".
+const plural = (n, palabra) => (Math.abs(Number(n)) === 1 || !palabra ? palabra : /[aeiouáéíóú]$/i.test(palabra) ? palabra + "s" : palabra + "es");
+const redondeaInv = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+const itemsDeInventario = (config) => {
+  const items = [];
+  (config?.extras || []).filter((e) => e.llevaInventario && !e.cuentaCon).forEach((ex) => {
+    const u = unidadDeLoHecho(ex);
+    items.push({
+      lista: "extras", id: ex.id, nombre: ex.nombre, grupo: "hechos",
+      hay: Number(ex.stock) || 0, minimo: Number(ex.minimo) || 0,
+      unidad: (n) => diUnidad(n, u), paso: u === "piezas" ? 6 : 1, verbo: "hacer",
+    });
+  });
+  (config?.ingredientes || []).forEach((raw) => {
+    const ing = normalizarIngrediente(raw);
+    items.push({
+      lista: "ingredientes", id: ing.id, nombre: ing.nombre || "Sin nombre", grupo: "ingredientes",
+      hay: Number(ing.stock) || 0, minimo: Number(ing.minimo) || 0,
+      unidad: (n) => plural(n, ing.presentacionNombre || "pieza"), paso: 1, verbo: "comprar",
+    });
+  });
+  (config?.desechables || []).forEach((d) => {
+    items.push({
+      lista: "desechables", id: d.id, nombre: d.nombre || "Sin nombre", grupo: "desechables",
+      hay: Number(d.stock) || 0, minimo: Number(d.minimo) || 0,
+      unidad: (n) => plural(n, "pieza"), paso: 1, verbo: "comprar",
+    });
+  });
+  (config?.paelleras || []).forEach((t) => {
+    items.push({
+      lista: "paelleras", id: t.id, nombre: t.nombre || "Paellera", grupo: "paelleras",
+      hay: Number(t.stock) || 0, minimo: null,
+      unidad: (n) => plural(n, "pieza"), paso: 1, verbo: "comprar",
+    });
+  });
+  return items;
+};
+
+// bien | poco | nada. Sin mínimo (paelleras) solo cuenta si ya no hay.
+const estadoInv = (it) => (it.hay <= 0 ? "nada" : it.minimo != null && it.hay <= it.minimo ? "poco" : "bien");
+
+const GRUPOS_INV = [
+  { id: "hechos", label: "Lo que ya está hecho" },
+  { id: "ingredientes", label: "Ingredientes" },
+  { id: "desechables", label: "Envases desechables" },
+  { id: "paelleras", label: "Paelleras" },
+];
+
+function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
+  const [filtro, setFiltro] = useState("todo");
+  const [busca, setBusca] = useState("");
+  const [copiado, setCopiado] = useState(false);
+
+  const items = itemsDeInventario(config);
+  const faltan = items.filter((it) => estadoInv(it) !== "bien");
+  const q = normNombre(busca);
+  const visibles = items.filter(
+    (it) => (filtro === "todo" || (filtro === "falta" ? estadoInv(it) !== "bien" : it.grupo === filtro)) && (!q || normNombre(it.nombre).includes(q))
+  );
+
+  // Se guarda sobre el config más reciente, solo cambiando ese número.
+  const fijar = (it, valor) => {
+    const nuevo = Math.max(0, redondeaInv(valor));
+    if (nuevo === redondeaInv(it.hay)) return;
+    onGuardarConfig({
+      ...config,
+      [it.lista]: (config[it.lista] || []).map((x) => (x.id === it.id ? { ...x, stock: nuevo } : x)),
+    });
+  };
+
+  // Lista para mandar por WhatsApp o pegar en notas.
+  const listaDeCompras = () => {
+    const texto = ["Lista de compras — Pepe El Andaluz", ""]
+      .concat(faltan.map((it) => `• ${it.nombre}: hay ${redondeaInv(it.hay)} ${it.unidad(it.hay)}${it.minimo ? ` (avisa en ${redondeaInv(it.minimo)})` : ""}`))
+      .join("\n");
+    try {
+      navigator.clipboard.writeText(texto);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch { /* sin portapapeles */ }
+  };
+
+  const ESTILO = {
+    nada: { chip: "bg-error/15 text-error-fuerte", barra: "bg-error", texto: (it) => (it.verbo === "hacer" ? "Se acabó" : "No hay") },
+    poco: { chip: "bg-aviso/20 text-aviso-fuerte", barra: "bg-aviso", texto: (it) => (it.verbo === "hacer" ? "Hacer más" : "Comprar") },
+    bien: { chip: "bg-exito/15 text-exito-fuerte", barra: "bg-exito", texto: () => "Bien" },
+  };
+
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <Card className="p-4">
+          <div className="text-2xl font-semibold text-foreground">{items.length}</div>
+          <div className="text-xs text-muted-foreground">Cosas que llevan cuenta</div>
+        </Card>
+        <Card className={cn("p-4", faltan.length && "ring-aviso/60")}>
+          <div className={cn("text-2xl font-semibold", faltan.length ? "text-aviso-fuerte" : "text-exito-fuerte")}>{faltan.length}</div>
+          <div className="text-xs text-muted-foreground">Por comprar o hacer</div>
+        </Card>
+      </div>
+
+      {faltan.length > 0 && (
+        <Button variant="secondary" className="mb-4 w-full" onClick={listaDeCompras}>
+          {copiado ? <><CircleCheck size={16} /> Lista copiada</> : <><Copy size={16} /> Copiar lista de compras</>}
+        </Button>
+      )}
+
+      <div className="af-buscador-gastos mb-3">
+        <Search size={16} />
+        <Input placeholder="Buscar en el inventario…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        {busca && <Button variant="ghost" size="icon-sm" title="Limpiar" onClick={() => setBusca("")}><CircleX size={16} /></Button>}
+      </div>
+      <div className="af-category-pills mb-4">
+        <Toggle variant="pastilla" pressed={filtro === "todo"} onClick={() => setFiltro("todo")}>Todo</Toggle>
+        <Toggle variant="pastilla" pressed={filtro === "falta"} onClick={() => setFiltro("falta")}>Por comprar{faltan.length ? ` · ${faltan.length}` : ""}</Toggle>
+        {GRUPOS_INV.map((g) => (
+          <Toggle key={g.id} variant="pastilla" pressed={filtro === g.id} onClick={() => setFiltro(g.id)}>{g.label.replace("Lo que ya está hecho", "Hechos").replace("Envases desechables", "Desechables")}</Toggle>
+        ))}
+      </div>
+
+      {!visibles.length && <p className="text-sm text-muted-foreground">{q ? "Nada con ese nombre." : "Todo bien por aquí."}</p>}
+
+      {GRUPOS_INV.map((g) => {
+        const filas = visibles
+          .filter((it) => it.grupo === g.id)
+          .sort((a, b) => ["nada", "poco", "bien"].indexOf(estadoInv(a)) - ["nada", "poco", "bien"].indexOf(estadoInv(b)));
+        if (!filas.length) return null;
+        return (
+          <div key={g.id}>
+            <div className="af-section-title">{g.label}</div>
+            <Card className="mb-4 divide-y divide-border">
+              {filas.map((it) => {
+                const e = estadoInv(it);
+                const tope = it.minimo ? it.minimo * 2 : Math.max(it.hay, 1);
+                const lleno = Math.max(0, Math.min(1, it.hay / tope));
+                return (
+                  <div key={it.lista + it.id} className="flex items-center gap-3 p-3">
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onEditar(it.id)} title="Editar">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-foreground">{it.nombre}</span>
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold", ESTILO[e].chip)}>{ESTILO[e].texto(it)}</span>
+                      </span>
+                      <span className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <span className={cn("block h-full rounded-full", ESTILO[e].barra)} style={{ width: `${lleno * 100}%` }} />
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {it.minimo ? `Avisa en ${redondeaInv(it.minimo)} ${it.unidad(it.minimo)}` : "Sin aviso"}
+                      </span>
+                    </button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button variant="secondary" size="icon-sm" aria-label={`Quitar ${it.paso}`} disabled={it.hay <= 0} onClick={() => fijar(it, it.hay - it.paso)}>
+                        <CircleMinus size={16} />
+                      </Button>
+                      <div className="w-16 text-center">
+                        <NumberField value={redondeaInv(it.hay)} min={0} className="af-input h-8 w-full px-1 text-center" onChange={(v) => fijar(it, v)} />
+                        <span className="block truncate text-2xs text-muted-foreground">{it.unidad(it.hay)}</span>
+                      </div>
+                      <Button variant="secondary" size="icon-sm" aria-label={`Sumar ${it.paso}`} onClick={() => fijar(it, it.hay + it.paso)}>
+                        <CirclePlus size={16} />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Menú e Inventario ya tienen su propio lugar en la barra lateral: esta misma
 // pantalla se abre con `seccion` = "menu" o "inventario" (sin pestañas), y
 // Ajustes queda solo con Datos y Usuarios.
@@ -8391,6 +8568,11 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
   const esAdmin = !perfil || perfil.rol === "admin";
   const [tabElegida, setTab] = useState("datos");
   const tab = seccion === "ajustes" ? tabElegida : seccion;
+  // Inventario: "Existencias" (contar) o "Configurar" (paquetes, recetas…).
+  // `soloInv` = el id de la cosa que se abrió con "Editar"; null = todas.
+  const [modoInv, setModoInv] = useState("existencias");
+  const [soloInv, setSoloInv] = useState(null);
+  const verSolo = () => (x) => !soloInv || x?.id === soloInv;
   const [draft, setDraft] = useState(config);
   // Qué ingrediente tiene abierto el selector de productos, y los que se
   // acaban de agregar (o de dejar en cero) para que no desaparezcan de la
@@ -9368,10 +9550,30 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
       )}
 
       {tab === "inventario" && (
+        <div className="af-subtabs mb-4">
+          <Toggle variant="segmento" pressed={modoInv === "existencias"} onClick={() => { setModoInv("existencias"); setSoloInv(null); }}>Existencias</Toggle>
+          <Toggle variant="segmento" pressed={modoInv === "configurar"} onClick={() => { setModoInv("configurar"); setSoloInv(null); }}>Configurar</Toggle>
+        </div>
+      )}
+      {tab === "inventario" && modoInv === "existencias" && (
+        <InventarioExistencias
+          config={config}
+          onGuardarConfig={onGuardarConfig}
+          onEditar={(id) => { setSoloInv(id); setIngAbierto(id); setModoInv("configurar"); window.scrollTo({ top: 0 }); }}
+        />
+      )}
+      {tab === "inventario" && modoInv === "configurar" && soloInv && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
+          <span>Editando solo <strong>{itemsDeInventario(draft).find((it) => it.id === soloInv)?.nombre || "esta cosa"}</strong></span>
+          <Button variant="link" size="auto" onClick={() => setSoloInv(null)}>Ver todo</Button>
+        </div>
+      )}
+      {tab === "inventario" && modoInv === "configurar" && (
         // A diferencia de Menú y Datos, Inventario lo puede editar cualquiera
         // (no solo el admin) — aquí no hay riesgo de borrar sin querer un
         // platillo del menú, y todos necesitan poder actualizar existencias.
         <fieldset className="af-fieldset-reset">
+          {(!soloInv || itemsDeInventario(draft).find((it) => it.id === soloInv)?.lista === "extras") && (<>
           {/* Va PRIMERO porque es lo que se toca a diario: se hacen croquetas
               por la mañana y se apunta cuántas salieron. Los ingredientes se
               revisan de vez en cuando; esto, cada día. */}
@@ -9388,7 +9590,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             {/* Solo los que de verdad llevan cuenta. La lista entera del menú
                 no sirve de nada: son quince platillos y se cuentan cuatro.
                 Abajo hay un botón para sumar otro el día que haga falta. */}
-            {(draft.extras || []).map((ex, i) => ({ ex, i })).filter(({ ex }) => ex.llevaInventario).map(({ ex, i }) => {
+            {(draft.extras || []).map((ex, i) => ({ ex, i })).filter(({ ex }) => ex.llevaInventario && verSolo()(ex)).map(({ ex, i }) => {
               const lleva = true;
               const paquete = Number(ex.piezasPorUnidad) || 0;
               const unidad = unidadDeLoHecho(ex);
@@ -9569,6 +9771,8 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             </label>
           )}
 
+          </>)}
+          {(!soloInv || itemsDeInventario(draft).find((it) => it.id === soloInv)?.lista === "ingredientes") && (<>
           <div className="af-section-title">Ingredientes<Ayuda enLinea>
             Dile a la app cómo COMPRAS cada ingrediente (ej. bolsa de 1.5 kilos) y cuánto USAS
             por cada kilo de paella (ej. 150 gramos, o 4 piezas). Ella hace la conversión y
@@ -9598,7 +9802,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               // agrupada. Si se perdiera, se editaría el ingrediente equivocado.
               const conIndice = (draft.ingredientes || [])
                 .map((raw, i) => ({ ing: normalizarIngrediente(raw), i }))
-                .filter(({ ing }) => !busca || normNombre(ing.nombre).includes(busca));
+                .filter(({ ing }) => (!busca || normNombre(ing.nombre).includes(busca)) && verSolo()(ing));
 
               const grupos = FAMILIAS_ING
                 .map((f) => ({ ...f, items: conIndice.filter(({ ing }) => familiaDeIngrediente(ing) === f.id) }))
@@ -9615,7 +9819,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               return grupos.map((g) => {
                 // Buscando se abre todo: un resultado escondido detrás de un
                 // grupo cerrado es como no haberlo encontrado.
-                const grupoAbierto = !!familiasAbiertas[g.id] || !!busca;
+                const grupoAbierto = !!familiasAbiertas[g.id] || !!busca || !!soloInv;
                 const faltantes = g.items.filter(({ ing }) => ing.stock <= ing.minimo).length;
                 return (
                   <div key={g.id} className="af-grupo">
@@ -9882,6 +10086,8 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             </button>
           </div>
 
+          </>)}
+          {(!soloInv || itemsDeInventario(draft).find((it) => it.id === soloInv)?.lista === "desechables") && (<>
           <div className="af-section-title">Envases desechables<Ayuda enLinea>
             Cada envase cubre una medida exacta o un rango. Los de <strong>kilos</strong> los toman
             solas las paellas que no van en paellera; los de <strong>piezas</strong> hay que
@@ -9891,6 +10097,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
           
           <div className="af-menu-grid">
             {(draft.desechables || []).map(normalizarDesechable).map((d, i) => {
+              if (!verSolo()(d)) return null;
               const uInfo = UNIDADES_ENVASE.find((u) => u.id === d.unidad) || UNIDADES_ENVASE[0];
               const setD = (cambios) => {
                 const desechables = draft.desechables.map((x, xi) => (xi === i ? { ...normalizarDesechable(x), ...cambios } : x));
@@ -10040,6 +10247,8 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             </button>
           </div>
 
+          </>)}
+          {(!soloInv || itemsDeInventario(draft).find((it) => it.id === soloInv)?.lista === "paelleras") && (<>
           <div className="af-section-title">Paelleras<Ayuda enLinea>
             Ponle nombre a cada tamaño para identificarlo más fácil (si lo dejas vacío se usa el
             rango de kilos). Cada tamaño cubre un rango de kilos: al guardar un pedido, según los
@@ -10050,6 +10259,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
           
           <div className="af-menu-grid">
             {(draft.paelleras || []).map((t, i) => {
+              if (!verSolo()(t)) return null;
               const setT = (cambios) => {
                 const paelleras = draft.paelleras.map((x, xi) => (xi === i ? { ...x, ...cambios } : x));
                 setDraft({ ...draft, paelleras });
@@ -10128,6 +10338,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               <span>Añadir paellera</span>
             </button>
           </div>
+          </>)}
         </fieldset>
       )}
 
@@ -10136,7 +10347,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
           qué se acabó— pero el botón de guardar seguía siendo solo del
           administrador: se podía escribir el número y no había manera de
           dejarlo. Menú y Datos sí siguen siendo del administrador. */}
-      {(tab === "inventario" || (tab !== "datos" && tab !== "usuarios" && esAdmin)) && (
+      {((tab === "inventario" && modoInv === "configurar") || (tab !== "inventario" && tab !== "datos" && tab !== "usuarios" && esAdmin)) && (
         <Button className="w-full mt-5" onClick={guardar}>
           {guardado ? <><CircleCheck size={16} className="inline mr-1" /> Guardado</> : "Guardar cambios"}
         </Button>
