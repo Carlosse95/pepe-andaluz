@@ -10426,7 +10426,9 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             <div className="af-hint mb-3">Todavía no llevas la cuenta de nada. Elige abajo el primero.</div>
           )}
           {(draft.extras || []).some((e) => !e.llevaInventario) && (
-            <label className="af-field mb-4">
+            /* div y no label: con la "i" adentro, el label tomaba el botón de
+               ayuda como su control y tocar el título abría la ayuda. */
+            <div className="af-field mb-4">
               <span className="af-mini-label">
                 Llevar la cuenta de otro platillo
                 <Ayuda enLinea>
@@ -10454,7 +10456,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
                   <option key={x.id} value={x.id}>{x.nombre}</option>
                 ))}
               </Combobox>
-            </label>
+            </div>
           )}
           </Seccion>
 
