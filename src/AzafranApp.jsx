@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { BubbleGroup, Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Badge as Chip, badgeVariants } from "@/components/ui/badge";
@@ -2264,13 +2265,21 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
           ) : mensajes.length === 0 ? (
             <div className="af-chat-vacio">Todavía no hay mensajes en este chat.</div>
           ) : (
-            mensajes.map((m) => (
-              <div key={m.id} className={"af-burbuja af-burbuja-" + m.de}>
-                {m.de === "bot" && <div className="af-burbuja-quien">Contestó el asistente</div>}
-                <div className="af-burbuja-txt">{m.texto}</div>
-                <div className="af-burbuja-hora">{fmtHoraCorta(m.creado_at)}</div>
-              </div>
-            ))
+            // Burbujas de shadcn: el cliente a la izquierda (gris), lo que
+            // manda el negocio a la derecha (azul) y lo del asistente a la
+            // derecha en tono suave, para distinguirlo de un vistazo.
+            <BubbleGroup>
+              {mensajes.map((m) => {
+                const nuestro = m.de !== "cliente";
+                return (
+                  <Bubble key={m.id} align={nuestro ? "end" : "start"} variant={m.de === "bot" ? "tinted" : nuestro ? "default" : "muted"}>
+                    {m.de === "bot" && <span className="self-end px-2 text-2xs font-semibold text-muted-foreground">Contestó el asistente</span>}
+                    <BubbleContent>{m.texto}</BubbleContent>
+                    <span className={cn("px-2 text-2xs text-muted-foreground", nuestro && "self-end")}>{fmtHoraCorta(m.creado_at)}</span>
+                  </Bubble>
+                );
+              })}
+            </BubbleGroup>
           )}
           <div ref={finRef} />
         </div>
@@ -15100,7 +15109,7 @@ export default function App() {
 
   const pedidosHoy = pedidos.filter((p) => esHoy(p.fecha));
 
-  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", deudas: "Me deben", reportes: "Reportes", menu: "Menú", inventario: "Inventario", historial: "Historial", ajustes: "Ajustes" };
+  const titulos = { hoy: "Hoy", agenda: "Agenda", mensajes: "Mensajes", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", deudas: "Me deben", reportes: "Reportes", menu: "Menú", inventario: "Inventario", historial: "Historial", ajustes: "Ajustes" };
 
   const navTodos = [
     { key: "hoy", icon: <House size={20} />, label: "Hoy" },
@@ -15903,7 +15912,9 @@ const AZAFRAN_CSS = `
 .af-conv-txt { margin-top: 4px; font-size: var(--text-sm); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .af-conv-aviso { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: var(--text-xs); font-weight: 600; color: var(--wine); }
 
-.af-chat { display: flex; flex-direction: column; height: calc(100vh - 190px); min-height: 340px; }
+/* Llena lo que se ve (menos el encabezado y los márgenes); con el teclado
+   abierto se encoge para que el renglón de escribir quede arriba de él. */
+.af-chat { display: flex; flex-direction: column; height: calc(var(--alto-visible, 100dvh) - 112px - env(safe-area-inset-bottom)); min-height: 280px; }
 .af-chat-head { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .af-chat-head-txt { flex: 1; min-width: 0; }
 .af-chat-head-nombre { font-weight: 700; font-size: var(--text-base); color: var(--ink); }
@@ -15912,14 +15923,8 @@ const AZAFRAN_CSS = `
 .af-chat-cuerpo { flex: 1; overflow-y: auto; padding: 16px 2px; display: flex; flex-direction: column; gap: 8px; }
 .af-chat-vacio { margin: auto; color: var(--ink-soft); font-size: var(--text-sm); text-align: center; }
 
-.af-burbuja { max-width: 78%; padding: 8px 12px; border-radius: var(--radius-md); font-size: var(--text-sm); line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 /* El cliente a la izquierda; el negocio (bot o Pepe) a la derecha. */
-.af-burbuja-cliente { align-self: flex-start; background: var(--surface-2, hsl(var(--muted))); color: var(--ink); border-bottom-left-radius: 4px; }
-.af-burbuja-bot, .af-burbuja-pepe { align-self: flex-end; background: var(--wine); color: #fff; border-bottom-right-radius: 4px; }
 /* El asistente se distingue del dueño: importa saber quién contestó. */
-.af-burbuja-bot { background: color-mix(in srgb, var(--wine) 62%, #fff); }
-.af-burbuja-quien { font-size: var(--text-2xs); font-weight: 700; opacity: 0.85; margin-bottom: 2px; }
-.af-burbuja-hora { font-size: var(--text-2xs); opacity: 0.7; margin-top: 4px; text-align: right; }
 
 .af-chat-pie { display: flex; align-items: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .af-chat-input { flex: 1; resize: none; max-height: 110px; padding: 12px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); font-size: var(--text-sm); font-family: inherit; line-height: 1.4; }
