@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11458,6 +11459,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
             <div className="af-search-wrap">
               <Search size={16} className="af-search-icon" />
               <Input
+                data-teclear
                 className="af-input-search"
                 placeholder="Buscar por nombre o categoría..."
                 value={query}
@@ -12041,6 +12043,7 @@ const nombreArchivoPDF = (form, tipoDoc) => {
 
 function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
   const [busqueda, setBusqueda] = useState("");
+  const buscarClienteRef = useRef(null);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
   const [nuevoCliente, setNuevoCliente] = useState({ nombre: "", telefono: "", direccion: "", ubicacion: "" });
   const [confirmarBorrar, setConfirmarBorrar] = useState(false);
@@ -12375,7 +12378,17 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           </div>
         ) : (
           <div>
-            <button className="af-combo-trigger" onClick={() => setMostrarClientes((v) => !v)}>
+            {/* El cursor se pone en el buscador en el MISMO toque (flushSync):
+                en iPad, si se pone después, Safari no lo deja y lo que se
+                escribe con el teclado magnético se pierde. */}
+            <button
+              className="af-combo-trigger"
+              onClick={() => {
+                const abrir = !mostrarClientes;
+                flushSync(() => setMostrarClientes(abrir));
+                if (abrir) buscarClienteRef.current?.focus({ preventScroll: true });
+              }}
+            >
               <span className="af-combo-placeholder">Buscar o elegir un cliente...</span>
               <Search size={16} className="af-ink-soft" />
             </button>
@@ -12384,7 +12397,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
               <div className="af-combo-panel af-combo-wrap">
                 <div className="af-combo-search">
                   <Input
-                   
+                    ref={buscarClienteRef}
+                    data-teclear
                     autoFocus
                     placeholder="Buscar por nombre o teléfono..."
                     value={busqueda}

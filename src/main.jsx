@@ -5,8 +5,10 @@ import App from './AzafranApp.jsx'
 import RedDeSeguridad from './RedDeSeguridad.jsx'
 import './index.css'
 import { seguirVistaVisible } from './vistaVisible.js'
+import { cuidarTecladoFisico } from './tecladoFisico.js'
 
 seguirVistaVisible()
+cuidarTecladoFisico()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <RedDeSeguridad>

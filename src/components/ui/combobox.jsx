@@ -69,7 +69,7 @@ function Combobox({ value, onChange, children, className, style, disabled, place
         onClick={(e) => e.stopPropagation()}
       >
         <Command>
-          {conBuscador && <CommandInput placeholder="Buscar…" className="h-9" />}
+          {conBuscador && <CommandInput data-teclear placeholder="Buscar…" className="h-9" />}
           <CommandList>
             <CommandEmpty>No hay coincidencias.</CommandEmpty>
             <CommandGroup>
