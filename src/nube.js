@@ -29,7 +29,37 @@ const fetchConTope = (input, init = {}) => {
     if (init.signal.aborted) control.abort(init.signal.reason);
     else init.signal.addEventListener("abort", () => control.abort(init.signal.reason), { once: true });
   }
-  return fetch(input, { ...init, signal: control.signal }).finally(() => clearTimeout(tope));
+  return fetch(input, { ...init, signal: control.signal })
+    .then(conVencimientoLocal)
+    .finally(() => clearTimeout(tope));
+};
+
+// La sesión vence según el reloj DE ESTE APARATO, no el del servidor.
+//
+// Supabase manda la hora exacta de vencimiento (expires_at) medida con SU
+// reloj, y la librería la compara con el reloj del aparato. Si el reloj del
+// aparato va adelantado una hora o más (pasó con el iPad el 11 oct 2026), una
+// sesión recién renovada le parece ya vencida: la vuelve a renovar, y otra
+// vez, ~30 veces por minuto, hasta que Supabase lo frena (429) y termina
+// cerrando la sesión, y la app te saca.
+//
+// Aquí se reescribe esa hora con "ahora (en este aparato) + lo que dura", que
+// es lo mismo que haría la librería si el servidor no la mandara. Así el
+// vencimiento cuadra con el reloj del aparato aunque esté movido.
+const conVencimientoLocal = async (resp) => {
+  try {
+    const url = typeof resp.url === "string" ? resp.url : "";
+    if (!resp.ok || !url.includes("/auth/v1/token")) return resp;
+    const datos = await resp.clone().json();
+    if (!datos || typeof datos.expires_in !== "number") return resp;
+    datos.expires_at = Math.round(Date.now() / 1000) + datos.expires_in;
+    const encabezados = new Headers(resp.headers);
+    encabezados.delete("content-length");
+    encabezados.delete("content-encoding");
+    return new Response(JSON.stringify(datos), { status: resp.status, statusText: resp.statusText, headers: encabezados });
+  } catch {
+    return resp;
+  }
 };
 
 // ¿Hay internet hasta Supabase? Pregunta DIRECTO, sin pasar por la librería
