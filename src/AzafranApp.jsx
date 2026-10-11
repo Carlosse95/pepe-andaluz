@@ -2432,32 +2432,42 @@ function LoginView({ onEntrar }) {
   return (
     <div className="af-app af-login">
       <style>{AZAFRAN_CSS}</style>
-      <div className="af-login-card">
+      {/* Tarjeta de shadcn/ui con el acomodo de su ejemplo de inicio de
+          sesión (login-01): título, descripción, campos y botón. El logo va
+          arriba, afuera de la tarjeta. */}
+      <div className="flex w-full max-w-sm flex-col items-center gap-6">
         <div className="af-logo-mark af-logo-login" />
-        <div className="af-login-sub">Inicia sesión para ver los pedidos</div>
-        <div className="af-field">
-          <Label>Correo</Label>
-          <Input
-            type="email" autoComplete="username" placeholder="tu@correo.com"
-            value={email} onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && entrar()}
-          />
-        </div>
-        <div className="af-field">
-          <Label>Contraseña</Label>
-          <Input
-            type="password" autoComplete="current-password" placeholder="••••••••"
-            value={password} onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && entrar()}
-          />
-        </div>
-        {errorLogin && <div className="af-error">{errorLogin}</div>}
-        <Button className="w-full" onClick={entrar} disabled={entrando}>
-          {entrando ? "Entrando..." : "Entrar"}
-        </Button>
-        <div className="af-hint mt-3" style={{ textAlign: "center" }}>
-          ¿Sin cuenta? Pídele al administrador que te dé de alta.
-        </div>
+        <Card className="w-full shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-xl">Inicia sesión</CardTitle>
+            <CardDescription>Escribe tu correo y contraseña para ver los pedidos.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="flex flex-col gap-6" onSubmit={(e) => { e.preventDefault(); entrar(); }}>
+              <div className="grid gap-2">
+                <Label htmlFor="login-correo">Correo</Label>
+                <Input
+                  id="login-correo" type="email" autoComplete="username" placeholder="tu@correo.com"
+                  value={email} onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="login-clave">Contraseña</Label>
+                <Input
+                  id="login-clave" type="password" autoComplete="current-password" placeholder="••••••••"
+                  value={password} onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              {errorLogin && <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{errorLogin}</p>}
+              <Button type="submit" className="w-full" disabled={entrando}>
+                {entrando ? "Entrando…" : "Entrar"}
+              </Button>
+            </form>
+          </CardContent>
+          <CardFooter className="justify-center">
+            <p className="text-center text-sm text-muted-foreground">¿Sin cuenta? Pídele al administrador que te dé de alta.</p>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );
@@ -2467,13 +2477,17 @@ function CuentaBloqueadaView({ onSalir }) {
   return (
     <div className="af-app af-login">
       <style>{AZAFRAN_CSS}</style>
-      <div className="af-login-card" style={{ textAlign: "center" }}>
-        <div className="af-logo-mark af-logo-login" style={{ margin: "0 auto 12px" }} />
-        <div className="af-empty-title mb-2">Cuenta desactivada</div>
-        <p className="af-ink-soft text-sm mb-4">
-          Tu usuario existe pero está desactivado. Pídele al administrador que lo active.
-        </p>
-        <Button variant="secondary" className="w-full" onClick={onSalir}>Salir</Button>
+      <div className="flex w-full max-w-sm flex-col items-center gap-6">
+        <div className="af-logo-mark af-logo-login" />
+        <Card className="w-full text-center shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-xl">Cuenta desactivada</CardTitle>
+            <CardDescription>Tu usuario existe pero está desactivado. Pídele al administrador que lo active.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="secondary" className="w-full" onClick={onSalir}>Salir</Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -16160,9 +16174,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Pantalla de login */
 .af-login { align-items: center; justify-content: center; padding: 24px; max-width: none; }
-.af-login-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 32px 24px; box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.25); }
-.af-logo-login { width: 180px; margin-bottom: 8px; }
-.af-login-sub { color: var(--ink-soft); font-size: var(--text-sm); margin-bottom: 20px; }
+.af-logo-login { width: 180px; }
 
 /* Toast de confirmación */
 .af-entrega-opciones { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
