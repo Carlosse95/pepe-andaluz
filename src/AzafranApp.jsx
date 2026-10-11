@@ -1868,6 +1868,47 @@ const asignarFolios = (lista) => {
   return lista.map((x) => (mapa.has(x.id) ? { ...x, folio: mapa.get(x.id) } : x));
 };
 
+// ---------- Número de pedido por año (desde el 11 de octubre de 2026) ----------
+// Antes el número era el mayor de TODOS los pedidos + 1, y al meter los años
+// anteriores llegó a 3,600 y tantos. Ahora cada año cuenta aparte: el primer
+// pedido de 2027 será el #1.
+//
+// Los pedidos nuevos guardan `folioAnio` (el año al que pertenece su número).
+// Los de antes no lo tienen y conservan su número de siempre (ya se lo
+// mandaron a los clientes). Para 2026 se arranca en el conteo de los pedidos
+// de este año (1,011 → #1012) y se brinca cualquier número que ya tenga otro
+// pedido de 2026, porque los números de 2026 quedaron revueltos al importar.
+const anioDeFecha = (f) => parseInt(String(f || "").slice(0, 4), 10) || null;
+const anioDelFolio = (p) => p.folioAnio || anioDeFecha(p.fecha);
+const siguienteFolioPedido = (lista, anio = new Date().getFullYear()) => {
+  const delAnio = lista.filter((p) => anioDelFolio(p) === anio);
+  const usados = new Set(delAnio.map((p) => p.folio).filter(Boolean));
+  const viejos = delAnio.filter((p) => !p.folioAnio).length;
+  let n = Math.max(viejos, ...delAnio.filter((p) => p.folioAnio).map((p) => p.folio || 0)) + 1;
+  while (usados.has(n)) n++;
+  return { folio: n, folioAnio: anio };
+};
+// Dos pedidos chocan solo si tienen el mismo número EN EL MISMO AÑO (los de
+// antes, sin año, nunca se repitieron entre ellos).
+const claveFolio = (p) => (p.folioAnio ? `${p.folioAnio}-${p.folio}` : `v-${p.folio}`);
+const asignarFoliosPedidos = (lista) => {
+  const porAntiguedad = [...lista].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const usados = new Set();
+  const mapa = new Map();
+  let vista = lista;
+  porAntiguedad.forEach((x) => {
+    if (x.folio && !usados.has(claveFolio(x))) {
+      usados.add(claveFolio(x));
+      return;
+    }
+    const nuevo = siguienteFolioPedido(vista, x.folioAnio || new Date().getFullYear());
+    mapa.set(x.id, nuevo);
+    usados.add(claveFolio(nuevo));
+    vista = vista.map((y) => (y.id === x.id ? { ...y, ...nuevo } : y));
+  });
+  return mapa.size ? lista.map((x) => (mapa.has(x.id) ? { ...x, ...mapa.get(x.id) } : x)) : lista;
+};
+
 const migrarPedido = (p) => {
   const items = (p.items || []).map((it) => {
     if (it.tipo !== "paella") return it;
@@ -1887,7 +1928,7 @@ const migrarPedido = (p) => {
 // El mismo acomodo que se le hace a cada clave al ponerla en pantalla.
 const normalizarComoPantalla = (clave, valor) => {
   if (!Array.isArray(valor)) return valor;
-  if (clave === "pedidos") return asignarFolios(valor.map(migrarPedido));
+  if (clave === "pedidos") return asignarFoliosPedidos(valor.map(migrarPedido));
   if (clave === "presupuestos") return asignarFolios(valor);
   if (clave === "gastos") return valor.map(migrarGasto);
   return valor;
@@ -13193,7 +13234,7 @@ export default function App() {
     if (raw == null) return;
     try {
       const valor = JSON.parse(raw);
-      if (clave === "pedidos") setPedidos(asignarFolios(valor.map(migrarPedido)));
+      if (clave === "pedidos") setPedidos(asignarFoliosPedidos(valor.map(migrarPedido)));
       else if (clave === "clientes") setClientes(valor);
       else if (clave === "config-productos") {
         const mensajesFusionados = { ...MENSAJES_DEFAULT, ...(valor.mensajes || {}) };
@@ -14748,7 +14789,10 @@ export default function App() {
 
     const pedidoObj = {
       id: form.pedidoId || uid(),
-      folio: (form.pedidoId && pedidos.find((p) => p.id === form.pedidoId)?.folio) || siguienteFolio(pedidos),
+      // Al editar se conserva su número (y su año); al crear, el que sigue de este año.
+      ...((anteriorPedido && anteriorPedido.folio)
+        ? { folio: anteriorPedido.folio, ...(anteriorPedido.folioAnio ? { folioAnio: anteriorPedido.folioAnio } : {}) }
+        : siguienteFolioPedido(pedidos)),
       clienteId: form.clienteId,
       clienteNombre: form.clienteNombre,
       clienteTelefono: form.clienteTelefono,
@@ -14959,7 +15003,7 @@ export default function App() {
     const total = totalDe(form);
     const nuevoPedido = {
       id: uid(),
-      folio: siguienteFolio(pedidos),
+      ...siguienteFolioPedido(pedidos),
       clienteId: form.clienteId,
       clienteNombre: form.clienteNombre,
       clienteTelefono: form.clienteTelefono,
@@ -15006,7 +15050,7 @@ export default function App() {
   const aceptarPresupuesto = (pr) => {
     const nuevoPedido = {
       id: uid(),
-      folio: siguienteFolio(pedidos),
+      ...siguienteFolioPedido(pedidos),
       clienteId: pr.clienteId,
       clienteNombre: pr.clienteNombre,
       clienteTelefono: pr.clienteTelefono,
@@ -15044,7 +15088,7 @@ export default function App() {
 
   // Restaura un respaldo completo: reemplaza estado y persistencia de todo.
   const importarDatos = (data) => {
-    const pedidosImp = asignarFolios((data.pedidos || []).map(migrarPedido));
+    const pedidosImp = asignarFoliosPedidos((data.pedidos || []).map(migrarPedido));
     const clientesImp = data.clientes || [];
     const configImp = { ...DEFAULT_CONFIG, ...(data.config || {}), desechables: (data.config && data.config.desechables) || DEFAULT_CONFIG.desechables, ingredientes: ((data.config && data.config.ingredientes) || []).map(normalizarIngrediente) };
     const historicoImp = data.historico || {};
