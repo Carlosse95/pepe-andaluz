@@ -48,7 +48,7 @@ import {
   subirTicket, verTicket, leerTicket, subirRecibo,
   registrarMovimientos, listarMovimientos, pedirAvisos, probarAvisos,
 } from "./nube.js";
-import { estadoAvisos, activarAvisos, apagarAvisos, refrescarSuscripcion } from "./avisos.js";
+import { estadoAvisos, activarAvisos, apagarAvisos, refrescarSuscripcion, vigilarEnApp } from "./avisos.js";
 
 // Las claves del almacén que la app mantiene sincronizadas con la nube. Es la
 // lista que se revisa cada pocos segundos para ver cuál cambió. No están todas
@@ -5039,7 +5039,7 @@ function BannerIOS({ titulo, cuerpo, alTocar, cerrar }) {
         alTocar?.();
         cerrar();
       }}
-      className="flex w-[min(92vw,380px)] cursor-pointer select-none items-start gap-3 rounded-[22px] bg-white/85 px-4 py-3 text-left shadow-[0_10px_30px_rgba(33,44,89,0.18)] ring-1 ring-black/5 backdrop-blur-xl"
+      className="mx-auto flex w-full max-w-[380px] cursor-pointer select-none items-start gap-3 rounded-[22px] bg-white/85 px-4 py-3 text-left shadow-[0_10px_30px_rgba(33,44,89,0.18)] ring-1 ring-black/5 backdrop-blur-xl"
     >
       <img src={ICONO_APP} alt="" className="mt-0.5 size-9 shrink-0 rounded-[9px]" />
       <div className="min-w-0 flex-1">
@@ -14024,6 +14024,8 @@ export default function App() {
   // Si este aparato ya tenía avisos, su dirección se vuelve a guardar a nombre
   // de quien entró (el iPad lo usan varios).
   useEffect(() => { if (perfil?.user_id) refrescarSuscripcion(); }, [perfil?.user_id]);
+  // Con la app a la vista no llega el aviso de afuera (ya sale el de adentro).
+  useEffect(() => (perfil?.user_id ? vigilarEnApp() : undefined), [perfil?.user_id]);
 
   // Cada pedido que cambia (y cada pago nuevo) lleva quién y cuándo. Con eso
   // los avisos de los demás aparatos dicen "Papá registró un pago…".
@@ -15325,7 +15327,15 @@ export default function App() {
           </button>
         )}
 
-        <Toaster position="top-center" offset={12} mobileOffset={8} swipeDirections={["top"]} />
+        {/* En celular la franja va de orilla a orilla y el aviso se centra en
+            ella; arriba respeta la zona del reloj y la cámara del iPhone. */}
+        <Toaster
+          position="top-center"
+          offset={{ top: "calc(env(safe-area-inset-top) + 12px)" }}
+          mobileOffset={{ top: "calc(env(safe-area-inset-top) + 8px)", left: "8px", right: "8px" }}
+          swipeDirections={["top"]}
+          style={{ "--width": "380px" }}
+        />
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />
         <CobroEntregaModal
           cobro={cobroModal}
@@ -16087,12 +16097,14 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-add-item-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; border-radius: var(--radius-md); border: 1.5px dashed var(--wine); background: var(--wine-soft); color: var(--wine); font-weight: 700; font-size: var(--text-sm); cursor: pointer; }
 
 /* Modal "Agregar ítem" */
-.af-modal-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
+/* Se mide con la vista visible (ver vistaVisible.js): con el teclado abierto
+   la ventana cabe arriba de él en vez de quedar detrás. */
+.af-modal-overlay { position: fixed; left: 0; right: 0; top: var(--arriba-visible, 0px); height: var(--alto-visible, 100%); background: rgb(0 0 0 / 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
 /* Para el modal de "Mi perfil": centrado en cualquier tamaño de pantalla,
    no solo en escritorio (a diferencia de los demás modales, que en celular
    se abren pegados abajo). */
 .af-modal-overlay-center { align-items: center; padding: 24px; }
-.af-modal { background: var(--bg); width: 100%; height: 92vh; max-height: 92vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -8px 30px rgb(0 0 0 / 0.3); }
+.af-modal { background: var(--bg); width: 100%; height: min(92vh, calc(var(--alto-visible, 100vh) - 24px)); max-height: min(92vh, calc(var(--alto-visible, 100vh) - 24px)); border-radius: var(--radius-lg) var(--radius-lg) 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -8px 30px rgb(0 0 0 / 0.3); }
 .af-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px; border-bottom: 1px solid var(--line); font-family: var(--fuente-titulos); font-weight: 700; font-size: var(--text-base); background: var(--surface); flex-shrink: 0; }
 .af-modal-panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
 .af-modal-list-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 16px 16px; overflow: hidden; }
@@ -16102,7 +16114,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-picker-scroll::-webkit-scrollbar-track { background: transparent; }
 .af-picker-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--radius-full); }
 .af-pane-hide-mobile { display: none; }
-.af-modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 16px; border-top: 1px solid var(--line); background: var(--surface); flex-shrink: 0; }
+.af-modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); flex-shrink: 0; }
 
 .af-category-pills { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; margin-top: 12px; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none; }
 .af-category-pills::-webkit-scrollbar { display: none; }
@@ -16185,7 +16197,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   /* En computadora hay espacio de sobra: la ventana era de 720px y dejaba las
      dos columnas apretadas —los filtros de categoría se cortaban y en el
      resumen el nombre del platillo chocaba con su precio—. */
-  .af-modal { width: min(1180px, 94vw); max-width: 100%; border-radius: var(--radius-lg); height: 86vh; max-height: 86vh; }
+  .af-modal { width: min(1180px, 94vw); max-width: 100%; border-radius: var(--radius-lg); height: min(86vh, calc(var(--alto-visible, 100vh) - 48px)); max-height: min(86vh, calc(var(--alto-visible, 100vh) - 48px)); }
   .af-modal-panes { }
   .af-modal-list-pane { border-right: 1px solid var(--line); }
   /* En fila (el valor por omisión de flex) los hijos se encogen a lo que mide

@@ -1,7 +1,7 @@
 // Avisos con la app cerrada (Web Push): qué puede este aparato y cómo se
 // activan. En iPhone/iPad Apple solo los permite si la app se agregó a la
 // pantalla de inicio y se abrió desde ese ícono.
-import { guardarSuscripcionPush, borrarSuscripcionPush } from "./nube.js";
+import { guardarSuscripcionPush, borrarSuscripcionPush, marcarEnApp } from "./nube.js";
 
 // Llave PÚBLICA de envío (la privada vive solo en la nube).
 const LLAVE_PUBLICA = "BGkpIfZqxijjV0tNFsikCjkVq3Xdl3IYwlBhCCmWn04x7uNSje0X-cpFehVxPGoMVVLeIrcuQ_RmBIh4DBe_ySs";
@@ -69,4 +69,43 @@ export const refrescarSuscripcion = async () => {
   const reg = await navigator.serviceWorker.getRegistration();
   const sus = reg && (await reg.pushManager.getSubscription());
   if (sus) await guardarSuscripcionPush(sus, nombreAparato()).catch(() => {});
+};
+
+// Mientras la app está a la vista se le dice a la nube cada 30 s (vale 75 s);
+// al irse a segundo plano o cerrarse, se borra. Así no llegan dos avisos
+// del mismo cambio: el de adentro y el de afuera.
+export const vigilarEnApp = () => {
+  let endpoint = null;
+  let reloj = null;
+  const leer = async () => {
+    if (!soportaAvisos() || Notification.permission !== "granted") return null;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sus = reg && (await reg.pushManager.getSubscription());
+    return sus ? sus.endpoint : null;
+  };
+  const avisar = async (enApp) => {
+    try {
+      endpoint = endpoint || (await leer());
+      if (endpoint) await marcarEnApp(endpoint, enApp);
+    } catch { /* sin señal: vence solo a los 75 s */ }
+  };
+  const alCambiar = () => {
+    clearInterval(reloj);
+    if (document.visibilityState === "visible") {
+      avisar(true);
+      reloj = setInterval(() => avisar(true), 30000);
+    } else {
+      avisar(false);
+    }
+  };
+  const alSalir = () => avisar(false);
+  document.addEventListener("visibilitychange", alCambiar);
+  window.addEventListener("pagehide", alSalir);
+  alCambiar();
+  return () => {
+    clearInterval(reloj);
+    document.removeEventListener("visibilitychange", alCambiar);
+    window.removeEventListener("pagehide", alSalir);
+    avisar(false);
+  };
 };

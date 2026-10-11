@@ -4,6 +4,9 @@ import ReactDOM from 'react-dom/client'
 import App from './AzafranApp.jsx'
 import RedDeSeguridad from './RedDeSeguridad.jsx'
 import './index.css'
+import { seguirVistaVisible } from './vistaVisible.js'
+
+seguirVistaVisible()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <RedDeSeguridad>

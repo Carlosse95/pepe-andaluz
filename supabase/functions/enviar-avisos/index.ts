@@ -21,7 +21,7 @@ const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE
 
 // De qué se avisa: lo de pedidos y pagos. Gastos y clientes nuevos se ven en
 // el Historial pero no ameritan sonar en el celular de todos.
-const AVISABLES = ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado", "pago", "pago-quitado"];
+const AVISABLES = ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado", "pago", "pago-quitado", "paellera-devuelta"];
 
 const cors = {
   "access-control-allow-origin": "*",
@@ -114,8 +114,12 @@ Deno.serve(async (req) => {
   const { data: activos } = await admin.from("perfiles").select("user_id").eq("activo", true);
   const ids = (activos || []).map((p) => p.user_id).filter((id) => id !== yo.id);
   if (!ids.length) return responder({ enviados: [] });
-  const { data: subs } = await admin.from("push_suscripciones").select("*").in("user_id", ids);
-  if (!subs || !subs.length) return responder({ enviados: [] });
+  // Si en ese aparato la app está abierta y a la vista, ya le sale el aviso
+  // de adentro: no se le manda el de afuera, para que no le lleguen dos.
+  const { data: todas } = await admin.from("push_suscripciones").select("*").in("user_id", ids);
+  const ahora = Date.now();
+  const subs = (todas || []).filter((s) => !s.en_app_hasta || new Date(s.en_app_hasta).getTime() < ahora);
+  if (!subs.length) return responder({ enviados: [] });
 
   const quien = movs[0].usuario_nombre || "Alguien";
   const aviso =

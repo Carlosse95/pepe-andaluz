@@ -653,6 +653,13 @@ export const borrarSuscripcionPush = async (endpoint) => {
   await supabase.from("push_suscripciones").delete().eq("endpoint", endpoint);
 };
 
+// "Este aparato tiene la app abierta y a la vista": mientras dure, la nube
+// no le manda el aviso de afuera (ya le sale el de adentro).
+export const marcarEnApp = async (endpoint, enApp) => {
+  if (!nubeActiva || !endpoint) return;
+  await supabase.rpc("marcar_en_app", { p_endpoint: endpoint, p_en_app: !!enApp });
+};
+
 // Pide a la nube que avise a los demás de estos movimientos (ya subidos).
 export const pedirAvisos = async (claves) => {
   if (!nubeActiva || !claves.length) return;

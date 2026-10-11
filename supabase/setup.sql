@@ -259,3 +259,21 @@ create policy "movimientos insertar" on public.movimientos for insert
 -- con un INSERT a mano; la privada NUNCA va en este repo.
 -- ============================================================
 -- (Creado con las migraciones avisos_push y avisos_push_guardar.)
+
+-- ============================================================
+-- Avisos: no mandar el de afuera a un aparato con la app abierta.
+-- La app llama marcar_en_app(endpoint, true) cada 30 s mientras está a la
+-- vista, y (endpoint, false) al irse. enviar-avisos se salta los aparatos
+-- con en_app_hasta en el futuro. (Migración avisos_en_app.)
+-- ============================================================
+alter table public.push_suscripciones add column if not exists en_app_hasta timestamptz;
+create or replace function public.marcar_en_app(p_endpoint text, p_en_app boolean)
+returns void language plpgsql security definer set search_path to 'public' as $$
+begin
+  if auth.uid() is null or not public.es_usuario_activo() then raise exception 'sin permiso'; end if;
+  update public.push_suscripciones
+     set en_app_hasta = case when p_en_app then now() + interval '75 seconds' else null end
+   where endpoint = p_endpoint and user_id = auth.uid();
+end; $$;
+revoke all on function public.marcar_en_app(text, boolean) from public, anon;
+grant execute on function public.marcar_en_app(text, boolean) to authenticated;
