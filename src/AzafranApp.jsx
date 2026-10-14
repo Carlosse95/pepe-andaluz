@@ -12707,7 +12707,24 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 <div key={it.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</span>
+                        {/* Junto al nombre: es una cualidad de esa paella, no
+                            una acción más de la fila de botones. */}
+                        {esPaella && (
+                          <button
+                            type="button"
+                            aria-pressed={!!it.enPaellera}
+                            className={cn(
+                              "inline-flex h-6 items-center gap-1 rounded-full px-2 text-2xs font-medium ring-1 transition-colors",
+                              it.enPaellera ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-muted-foreground ring-foreground/15"
+                            )}
+                            onClick={() => updateEnPaellera(it.id, !it.enPaellera)}
+                          >
+                            {it.enPaellera ? <CircleCheck size={12} /> : <ChefHat size={12} />} En paellera
+                          </button>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {porKg ? `${money(esPaella ? it.precioKg : it.precio)} por kg` : `${money(it.precio)} c/u`}
                         {/* Lo mismo que leerá el cliente en el mensaje y el PDF. */}
@@ -12772,17 +12789,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                           </>
                         )}
                       </div>
-                    )}
-                    {/* También en presupuestos: si va en paellera cambia el total. */}
-                    {esPaella && (
-                      <button
-                        type="button"
-                        aria-pressed={!!it.enPaellera}
-                        className={cn(pastilla, it.enPaellera ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")}
-                        onClick={() => updateEnPaellera(it.id, !it.enPaellera)}
-                      >
-                        {it.enPaellera ? <CircleCheck size={14} /> : <ChefHat size={14} />} En paellera
-                      </button>
                     )}
                     <button type="button" className={cn(pastilla, it.nota ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setNotaAbierta(notaAbierta === it.id ? null : it.id)}>
                       {it.nota ? <CircleCheck size={14} /> : <StickyNote size={14} />} Nota
@@ -12916,7 +12922,9 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 escribe una vez y vale por cada viaje. Al cliente le salen
                 como dos cobros separados ("Costo de envío" y "Costo de recoger
                 la paellera") para que sepa qué paga por cada cosa. */}
-            <div className="af-envio-row">
+            {/* El descuento (o la cortesía) del envío y de recoger va dentro del
+                mismo cuadro del costo, junto al monto: ahí sobraba espacio. */}
+            <div className="af-envio-row flex-wrap">
               <span className="af-mini-label min-w-0 flex-1" style={{ marginBottom: 0 }}>
                 {form.entrega && form.recogerPaellera && hayPaelleraEnForm
                   ? "Costo de envío (recoger cuesta lo mismo)"
@@ -12924,10 +12932,20 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     ? "Costo de envío"
                     : "Costo de recoger la paellera"}
               </span>
+              {/* En celular los botones bajan a su propio renglón (dentro del
+                  cuadro); en pantallas anchas van entre el texto y el monto. */}
+              <div className="order-last flex basis-full flex-wrap items-center gap-2 sm:order-none sm:basis-auto">
+                {form.entrega && (
+                  <SelectorDescuento etiqueta="Descuento" prefijo={form.recogerPaellera && hayPaelleraEnForm ? "Envío: " : ""} valor={form.descuentoEnvio} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoEnvio: pct }))} />
+                )}
+                {form.recogerPaellera && hayPaelleraEnForm && (
+                  <SelectorDescuento etiqueta={form.entrega ? "Desc. recoger" : "Descuento"} prefijo={form.entrega ? "Recoger: " : ""} valor={form.descuentoRecoleccion} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoRecoleccion: pct }))} />
+                )}
+              </div>
               <NumberField
                 value={parseFloat(form.envio) || 0}
                 min={0}
-                className="af-input af-input-small w-32 shrink-0"
+                className="af-input af-input-small w-28 shrink-0"
                 onChange={(v) => setForm((p) => ({ ...p, envio: String(v), costoRecoleccion: String(v) }))}
               />
             </div>
@@ -12936,19 +12954,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 Llevar {pctDescuento(form.descuentoEnvio) >= 100 ? "cortesía" : money(envioNum)} + recoger la paellera{" "}
                 {pctDescuento(form.descuentoRecoleccion) >= 100 ? "cortesía" : money(recoleccionNum)} ={" "}
                 <strong>{money(envioNum + recoleccionNum)}</strong>
-              </div>
-            )}
-            {/* Descuento o cortesía del envío y de recoger la paellera, cada
-                uno aparte: hay quien recibe gratis la entrega pero paga la
-                recolección. En el presupuesto sale explícito. */}
-            {(form.entrega || (form.recogerPaellera && hayPaelleraEnForm)) && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {form.entrega && (
-                  <SelectorDescuento etiqueta="Descuento al envío" prefijo="Envío: " valor={form.descuentoEnvio} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoEnvio: pct }))} />
-                )}
-                {form.recogerPaellera && hayPaelleraEnForm && (
-                  <SelectorDescuento etiqueta="Descuento a recoger" prefijo="Recoger: " valor={form.descuentoRecoleccion} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoRecoleccion: pct }))} />
-                )}
               </div>
             )}
 
