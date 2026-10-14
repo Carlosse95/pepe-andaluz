@@ -1255,9 +1255,10 @@ const productosDeConfig = (config, fecha) => [
   })),
 ];
 
+// Sin la forma de pago: esa va en el recuadro de los datos bancarios del PDF
+// ("Para apartar: 50% de anticipo…") y aquí salía repetida.
 const TERMINOS_DEFAULT =
   "Este presupuesto tiene vigencia de 30 días.\n" +
-  "Forma de pago: 50% de anticipo para apartar la fecha; el 50% restante al entregar, en efectivo o por transferencia.\n" +
   "Precios sujetos a disponibilidad de producto e ingredientes el día del evento.";
 
 // Dónde queda lo que se está escribiendo, por si el aparato recarga la app.
@@ -11936,7 +11937,7 @@ const construirPDF = async (form, tipoDoc, config) => {
     doc.text(
       esRecibo
         ? `Recibo emitido el ${fmtDateHuman(todayISO())} · Pepe El Andaluz`
-        : `Presupuesto generado el ${fmtDateHuman(todayISO())} · Sujeto a disponibilidad del día`,
+        : `Presupuesto generado el ${fmtDateHuman(todayISO())}`,
       margin,
       pageHeight - 14
     );
@@ -12180,8 +12181,19 @@ const construirPDF = async (form, tipoDoc, config) => {
   // Nada de esto va en el recibo: las condiciones hablan de un presupuesto
   // por aceptar, y los datos para depositar no vienen al caso cuando el
   // pedido ya está pagado.
-  if (!esRecibo && form.terminos) {
-    cabe(30);
+  // Un solo lugar para cada cosa: la forma de pago va en el recuadro de los
+  // datos bancarios, así que de las condiciones se quita lo que hable del
+  // anticipo (los presupuestos viejos todavía traen ese renglón).
+  const conRecuadroDePago = !esRecibo && config.pago && (config.pago.clabe || "").trim();
+  const PASO = 5; // distancia entre renglones de texto normal (mm)
+  const condiciones = (form.terminos || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !(conRecuadroDePago && /forma de pago|anticipo/i.test(l)));
+  if (!esRecibo && condiciones.length) {
+    const lineasNotas = doc.splitTextToSize(condiciones.join("\n"), anchoUtil);
+    cabe(10 + lineasNotas.length * PASO);
+    y += 2;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(ETIQUETA);
     tinta(SUAVE);
@@ -12190,37 +12202,42 @@ const construirPDF = async (form, tipoDoc, config) => {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(CUERPO);
     tinta(SUAVE);
-    const lineasNotas = doc.splitTextToSize(form.terminos, anchoUtil);
-    doc.text(lineasNotas, margin, y);
-    y += lineasNotas.length * 4.8 + 6;
+    lineasNotas.forEach((l) => { doc.text(l, margin, y); y += PASO; });
+    y += 5;
   }
 
-  if (!esRecibo && config.pago && (config.pago.clabe || "").trim()) {
-    cabe(34);
-    relleno(FONDO);
-    // Mismo orden que en WhatsApp: primero lo del concepto, luego la cuenta.
+  if (conRecuadroDePago) {
+    // Cuenta primero y el aviso del concepto al final, en el mismo orden que
+    // en WhatsApp. Cada renglón se pone a mano con el mismo paso, para que el
+    // relleno de arriba y de abajo del recuadro quede parejo.
     const lineasPago = [
-      AVISO_CONCEPTO_PDF,
       config.pago.banco ? `Banco: ${config.pago.banco}` : null,
       config.pago.titular ? `A nombre de: ${config.pago.titular}` : null,
       `CLABE / Tarjeta: ${config.pago.clabe}`,
     ].filter(Boolean);
-    const alto = 14 + lineasPago.length * 5;
+    const aviso = doc.splitTextToSize(AVISO_CONCEPTO_PDF, anchoUtil - 12);
+    const alto = 7 + 7 + lineasPago.length * PASO + 2 + aviso.length * 4.2 + 4;
+    cabe(alto + 4);
+    relleno(FONDO);
     doc.rect(margin, y, anchoUtil, alto, "F");
+    let yy = y + 8;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(CUERPO);
     tinta(TINTA);
-    // Corto a propósito: es el encabezado de un recuadro, no cabe la frase
-    // larga del mensaje de WhatsApp.
     doc.text(
       `Para apartar: 50% de anticipo. El resto ${form.entrega ? "a la entrega" : "al recoger"}, en efectivo o transferencia.`,
-      margin + 5,
-      y + 7
+      margin + 6,
+      yy
     );
+    yy += 7;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(CUERPO);
+    tinta(TINTA);
+    lineasPago.forEach((l) => { doc.text(l, margin + 6, yy); yy += PASO; });
+    yy += 2;
+    doc.setFontSize(ETIQUETA + 0.5);
     tinta(SUAVE);
-    doc.text(lineasPago, margin + 5, y + 13);
+    aviso.forEach((l) => { doc.text(l, margin + 6, yy); yy += 4.2; });
+    doc.setFontSize(CUERPO);
     y += alto + 6;
   }
 
