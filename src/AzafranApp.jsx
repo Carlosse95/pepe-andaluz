@@ -600,9 +600,9 @@ const ahorroTotalDe = (obj) =>
 // Renglón de un costo (envío o recoger) para el cliente: el precio, el precio
 // ya con descuento o "sin costo (cortesía)". Si se regala, sale aunque el
 // costo capturado sea $0, porque al cliente le importa saber que no paga.
-// Cuánto costaría normalmente SOLO se dice si se pide en ese presupuesto
-// (mostrarPrecioNormal): es para clientes como Daniel Xix, a quienes hay que
-// dejarles claro lo que no se les está cobrando; a los demás no.
+// Cuánto costaría normalmente SOLO se dice si ese presupuesto trae
+// mostrarPrecioNormal. No hay botón para eso: fue un caso único (el
+// presupuesto de Daniel Xix, oct 2026) y se le puso directo a ese registro.
 const textoCosto = (bruto, pct, mostrarNormal = true) => {
   const d = pctDescuento(pct);
   if (d >= 100) return mostrarNormal && bruto > 0 ? `sin costo (cortesía; normalmente ${money(bruto)})` : "sin costo (cortesía)";
@@ -12934,12 +12934,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 )}
               </div>
             )}
-            {((form.entrega && pctDescuento(form.descuentoEnvio) > 0) || (form.recogerPaellera && hayPaelleraEnForm && pctDescuento(form.descuentoRecoleccion) > 0)) && (
-              <label className="af-check-row af-check-row-small mt-2">
-                <Checkbox checked={!!form.mostrarPrecioNormal} onCheckedChange={(v) => setForm((p) => ({ ...p, mostrarPrecioNormal: v === true }))} />
-                <span>Mostrar al cliente lo que costaría normalmente</span>
-              </label>
-            )}
+
             <div className="af-mini-label mt-2">Ubicación</div>
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
             <div className="af-mini-label mt-2">Referencias (opcional)</div>
