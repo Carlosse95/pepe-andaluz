@@ -597,13 +597,16 @@ const ahorroTotalDe = (obj) =>
       (envioBrutoDe(obj) - envioDe(obj)) +
       (recoleccionBrutoDe(obj) - recoleccionDe(obj))
   );
-// Renglón de un costo (envío o recoger) para el cliente: completo, con
-// descuento o "sin costo (cortesía)". Si se regala, sale aunque el costo
-// capturado sea $0, porque al cliente le importa saber que no paga.
-const textoCosto = (bruto, pct) => {
+// Renglón de un costo (envío o recoger) para el cliente: el precio, el precio
+// ya con descuento o "sin costo (cortesía)". Si se regala, sale aunque el
+// costo capturado sea $0, porque al cliente le importa saber que no paga.
+// Cuánto costaría normalmente SOLO se dice si se pide en ese presupuesto
+// (mostrarPrecioNormal): es para clientes como Daniel Xix, a quienes hay que
+// dejarles claro lo que no se les está cobrando; a los demás no.
+const textoCosto = (bruto, pct, mostrarNormal = true) => {
   const d = pctDescuento(pct);
-  if (d >= 100) return bruto > 0 ? `sin costo (cortesía; normalmente ${money(bruto)})` : "sin costo (cortesía)";
-  if (d > 0) return `${money(aplicarPct(bruto, d))} (${d}% de descuento sobre ${money(bruto)})`;
+  if (d >= 100) return mostrarNormal && bruto > 0 ? `sin costo (cortesía; normalmente ${money(bruto)})` : "sin costo (cortesía)";
+  if (d > 0) return mostrarNormal ? `${money(aplicarPct(bruto, d))} (${d}% de descuento sobre ${money(bruto)})` : money(aplicarPct(bruto, d));
   return money(bruto);
 };
 
@@ -815,10 +818,10 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   lineas.push("");
   const envio = envioDe(datos);
   if (envioBrutoDe(datos) > 0 || (datos.entrega && pctDescuento(datos.descuentoEnvio)))
-    lineas.push(`Entrega a domicilio: ${textoCosto(envioBrutoDe(datos), datos.descuentoEnvio)}`);
+    lineas.push(`Entrega a domicilio: ${textoCosto(envioBrutoDe(datos), datos.descuentoEnvio, !!datos.mostrarPrecioNormal)}`);
   const recoleccion = recoleccionDe(datos);
   if (recoleccionBrutoDe(datos) > 0 || (datos.recogerPaellera && llevaPaellera(datos) && pctDescuento(datos.descuentoRecoleccion)))
-    lineas.push(`Recoger la paellera: ${textoCosto(recoleccionBrutoDe(datos), datos.descuentoRecoleccion)}`);
+    lineas.push(`Recoger la paellera: ${textoCosto(recoleccionBrutoDe(datos), datos.descuentoRecoleccion, !!datos.mostrarPrecioNormal)}`);
   const iva = ivaDe(datos);
   if (iva > 0) lineas.push(`IVA (16%): ${money(iva)}`);
   const total = computeTotal(datos.items) + envio + recoleccion + iva;
@@ -1298,6 +1301,7 @@ const emptyForm = () => ({
   costoRecoleccion: "0",
   descuentoEnvio: 0,
   descuentoRecoleccion: 0,
+  mostrarPrecioNormal: false,
   iva: false,
   abonos: [],
   estado: "pendiente",
@@ -12117,8 +12121,9 @@ const construirPDF = async (form, tipoDoc, config) => {
   // costaría normalmente, para que el cliente vea lo que se le da.
   const renglonCosto = (etiqueta, bruto, pct) => {
     const d = pctDescuento(pct);
-    if (d >= 100) renglonTotal(bruto > 0 ? `${etiqueta} (normalmente ${money(bruto)})` : etiqueta, "Cortesía");
-    else if (d > 0) renglonTotal(`${etiqueta} (-${d}% de ${money(bruto)})`, money(aplicarPct(bruto, d)));
+    const normal = !!form.mostrarPrecioNormal;
+    if (d >= 100) renglonTotal(normal && bruto > 0 ? `${etiqueta} (normalmente ${money(bruto)})` : etiqueta, "Cortesía");
+    else if (d > 0) renglonTotal(normal ? `${etiqueta} (-${d}% de ${money(bruto)})` : etiqueta, money(aplicarPct(bruto, d)));
     else if (bruto > 0) renglonTotal(etiqueta, money(bruto));
   };
   if (form.entrega) renglonCosto("Entrega a domicilio", envioBrutoDe(form), form.descuentoEnvio);
@@ -12928,6 +12933,12 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                   <SelectorDescuento etiqueta="Descuento a recoger" prefijo="Recoger: " valor={form.descuentoRecoleccion} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoRecoleccion: pct }))} />
                 )}
               </div>
+            )}
+            {((form.entrega && pctDescuento(form.descuentoEnvio) > 0) || (form.recogerPaellera && hayPaelleraEnForm && pctDescuento(form.descuentoRecoleccion) > 0)) && (
+              <label className="af-check-row af-check-row-small mt-2">
+                <Checkbox checked={!!form.mostrarPrecioNormal} onCheckedChange={(v) => setForm((p) => ({ ...p, mostrarPrecioNormal: v === true }))} />
+                <span>Mostrar al cliente lo que costaría normalmente</span>
+              </label>
             )}
             <div className="af-mini-label mt-2">Ubicación</div>
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
@@ -14861,6 +14872,7 @@ export default function App() {
       costoRecoleccion: String(pedido.envio || pedido.costoRecoleccion || 0),
       descuentoEnvio: pedido.descuentoEnvio || 0,
       descuentoRecoleccion: pedido.descuentoRecoleccion || 0,
+      mostrarPrecioNormal: !!pedido.mostrarPrecioNormal,
       iva: !!pedido.iva,
       abonos: pedido.abonos || [],
       estado: pedido.estado || "pendiente",
@@ -14896,6 +14908,7 @@ export default function App() {
       costoRecoleccion: String(presupuesto.envio || presupuesto.costoRecoleccion || 0),
       descuentoEnvio: presupuesto.descuentoEnvio || 0,
       descuentoRecoleccion: presupuesto.descuentoRecoleccion || 0,
+      mostrarPrecioNormal: !!presupuesto.mostrarPrecioNormal,
       iva: !!presupuesto.iva,
       abonos: [],
       estado: "pendiente",
@@ -14995,6 +15008,7 @@ export default function App() {
       costoRecoleccion: recoleccionBrutoDe(form),
       descuentoEnvio: pctDescuento(form.descuentoEnvio),
       descuentoRecoleccion: pctDescuento(form.descuentoRecoleccion),
+      mostrarPrecioNormal: !!form.mostrarPrecioNormal,
       iva: !!form.iva,
       abonos,
       pagado,
@@ -15150,6 +15164,7 @@ export default function App() {
       costoRecoleccion: recoleccionBrutoDe(form),
       descuentoEnvio: pctDescuento(form.descuentoEnvio),
       descuentoRecoleccion: pctDescuento(form.descuentoRecoleccion),
+      mostrarPrecioNormal: !!form.mostrarPrecioNormal,
       iva: !!form.iva,
       notas: form.notas,
       terminos: form.terminos,
@@ -15210,6 +15225,7 @@ export default function App() {
       costoRecoleccion: recoleccionBrutoDe(form),
       descuentoEnvio: pctDescuento(form.descuentoEnvio),
       descuentoRecoleccion: pctDescuento(form.descuentoRecoleccion),
+      mostrarPrecioNormal: !!form.mostrarPrecioNormal,
       iva: !!form.iva,
       abonos: [],
       pagado: 0,
@@ -15259,6 +15275,7 @@ export default function App() {
       costoRecoleccion: pr.costoRecoleccion || 0,
       descuentoEnvio: pr.descuentoEnvio || 0,
       descuentoRecoleccion: pr.descuentoRecoleccion || 0,
+      mostrarPrecioNormal: !!pr.mostrarPrecioNormal,
       iva: !!pr.iva,
       abonos: [],
       pagado: 0,
