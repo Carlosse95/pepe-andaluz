@@ -3127,7 +3127,7 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={() => { onMarcarDevuelta(item.pedidoId, item.itemId); setConfirmando(false); }}>Sí, ya volvió</AlertDialogAction>
+              <AlertDialogAction onClick={() => { onMarcarDevuelta(item.pedidoId, item.itemId); setConfirmando(false); }}>Devuelta</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
