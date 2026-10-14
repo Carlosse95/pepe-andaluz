@@ -11,6 +11,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel, AlertDialogMedia } from "@/components/ui/alert-dialog";
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from "@/components/ui/command";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
@@ -36,7 +37,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -2040,35 +2041,66 @@ const CampoBase = React.forwardRef(({ className, ...props }, ref) =>
     : <input ref={ref} className={className} {...props} />
 );
 
-// Elegir un descuento: pastillas rápidas (10, 15, 20, 50 %, Cortesía = gratis)
-// o cualquier otro porcentaje a mano. Se usa en cada platillo y en el envío y
-// recoger la paellera.
-const DESCUENTOS_RAPIDOS = [10, 15, 20, 50];
-function SelectorDescuento({ valor, onCambiar, onListo, className }) {
+// Elegir un descuento: un solo botón que enseña el actual ("Descuento",
+// "−10%", "Cortesía") y abre una ventana con buscador (Command de shadcn) con
+// los porcentajes de siempre y la cortesía. Si se escribe otro número sale
+// "Aplicar 12%". Antes eran siete pastillas en fila y en el celular se veían
+// amontonadas.
+const DESCUENTOS_RAPIDOS = [5, 10, 15, 20, 25, 30, 50];
+function SelectorDescuento({ valor, onCambiar, etiqueta = "Descuento", prefijo = "", className }) {
+  const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const actual = pctDescuento(valor);
+  const escrito = pctDescuento(leerNumero(busqueda.replace("%", "")));
+  const otro = busqueda.trim() && escrito > 0 && escrito < 100 && !DESCUENTOS_RAPIDOS.includes(escrito) ? escrito : null;
+  const elegir = (pct) => { onCambiar(pct); setAbierto(false); setBusqueda(""); };
   const pastilla = "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 ring-foreground/10 transition-colors";
-  const activo = (n) => pctDescuento(valor) === n;
+  const palomita = (n) => <Check className={cn("ml-auto", actual === n ? "opacity-100" : "opacity-0")} />;
   return (
-    <div className={cn("flex flex-wrap items-center gap-2", className)}>
-      <button type="button" className={cn(pastilla, !valor ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")} onClick={() => onCambiar(0)}>
-        Sin descuento
+    <>
+      <button
+        type="button"
+        className={cn(pastilla, actual ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground", className)}
+        onClick={() => setAbierto(true)}
+      >
+        {actual >= 100 ? <Gift size={14} /> : <BadgePercent size={14} />}
+        {actual ? `${prefijo}${actual >= 100 ? "Cortesía" : `−${actual}%`}` : etiqueta}
       </button>
-      {DESCUENTOS_RAPIDOS.map((n) => (
-        <button key={n} type="button" className={cn(pastilla, activo(n) ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")} onClick={() => onCambiar(n)}>
-          {n}%
-        </button>
-      ))}
-      <button type="button" className={cn(pastilla, activo(100) ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")} onClick={() => onCambiar(100)}>
-        <Gift size={14} /> Cortesía
-      </button>
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        Otro:
-        <NumberField value={pctDescuento(valor)} min={0} className="af-input af-input-small w-16" onChange={(v) => onCambiar(pctDescuento(v))} />
-        %
-      </span>
-      {onListo && (
-        <Button variant="link" size="auto" className="text-xs" onClick={onListo}>Listo</Button>
-      )}
-    </div>
+      <DialogS open={abierto} onOpenChange={(o) => { setAbierto(o); if (!o) setBusqueda(""); }}>
+        <DialogSContent className="max-w-sm gap-0 overflow-hidden p-0">
+          <DialogSTitle className="sr-only">{etiqueta}</DialogSTitle>
+          <Command>
+            <CommandInput data-teclear className="pr-8" placeholder="Escribe un porcentaje…" value={busqueda} onValueChange={setBusqueda} />
+            <CommandList className="max-h-[min(30rem,calc(var(--alto-visible,100dvh)-6rem))]">
+              <CommandEmpty>Escribe un número del 1 al 100.</CommandEmpty>
+              {otro != null && (
+                <CommandGroup heading="Otro">
+                  <CommandItem value={`aplicar ${busqueda}`} onSelect={() => elegir(otro)}>
+                    <BadgePercent /> Aplicar {otro}%
+                  </CommandItem>
+                </CommandGroup>
+              )}
+              <CommandGroup heading="Descuento">
+                <CommandItem value="sin descuento 0" onSelect={() => elegir(0)}>
+                  <CircleX /> Sin descuento {palomita(0)}
+                </CommandItem>
+                {DESCUENTOS_RAPIDOS.map((n) => (
+                  <CommandItem key={n} value={`${n}%`} onSelect={() => elegir(n)}>
+                    <BadgePercent /> {n}% {palomita(n)}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup heading="Regalo">
+                <CommandItem value="cortesia gratis regalo 100%" onSelect={() => elegir(100)}>
+                  <Gift /> Cortesía (sin costo) {palomita(100)}
+                </CommandItem>
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </DialogSContent>
+      </DialogS>
+    </>
   );
 }
 
@@ -12201,7 +12233,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const [mostrarPicker, setMostrarPicker] = useState(false);
   const [extrasAbierto, setExtrasAbierto] = useState(null); // id del ítem paella con el menú de extras abierto
   const [notaAbierta, setNotaAbierta] = useState(null); // id del ítem con el campo de nota abierto
-  const [descuentoAbierto, setDescuentoAbierto] = useState(null); // id del ítem con el descuento abierto
   const [mostrarAbono, setMostrarAbono] = useState(false);
   const [mostrarOtroMetodo, setMostrarOtroMetodo] = useState(false);
   const [abonoDraft, setAbonoDraft] = useState({ monto: 0, metodo: "efectivo" });
@@ -12727,14 +12758,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     <button type="button" className={cn(pastilla, it.nota ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setNotaAbierta(notaAbierta === it.id ? null : it.id)}>
                       {it.nota ? <CircleCheck size={14} /> : <StickyNote size={14} />} Nota
                     </button>
-                    <button
-                      type="button"
-                      className={cn(pastilla, pctDescuento(it.descuento) ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")}
-                      onClick={() => setDescuentoAbierto(descuentoAbierto === it.id ? null : it.id)}
-                    >
-                      <BadgePercent size={14} />
-                      {pctDescuento(it.descuento) ? (pctDescuento(it.descuento) >= 100 ? "Cortesía" : `−${pctDescuento(it.descuento)}%`) : "Descuento"}
-                    </button>
+                    <SelectorDescuento valor={it.descuento} onCambiar={(pct) => updateDescuentoItem(it.id, pct)} />
                   </div>
 
                   {/* Los extras ya puestos, cada uno con su más y menos. */}
@@ -12748,15 +12772,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                         </span>
                       ))}
                     </div>
-                  )}
-
-                  {descuentoAbierto === it.id && (
-                    <SelectorDescuento
-                      className="mt-2"
-                      valor={pctDescuento(it.descuento)}
-                      onCambiar={(pct) => updateDescuentoItem(it.id, pct)}
-                      onListo={() => setDescuentoAbierto(null)}
-                    />
                   )}
 
                   {notaAbierta === it.id && (
@@ -12887,7 +12902,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 onChange={(v) => setForm((p) => ({ ...p, envio: String(v), costoRecoleccion: String(v) }))}
               />
             </div>
-            {form.entrega && form.recogerPaellera && hayPaelleraEnForm && (parseFloat(form.envio) || 0) > 0 && (
+            {form.entrega && form.recogerPaellera && hayPaelleraEnForm && (parseFloat(form.envio) || 0) > 0 && !pctDescuento(form.descuentoEnvio) && !pctDescuento(form.descuentoRecoleccion) && (
               <div className="af-hint mt-2">
                 Llevar {pctDescuento(form.descuentoEnvio) >= 100 ? "cortesía" : money(envioNum)} + recoger la paellera{" "}
                 {pctDescuento(form.descuentoRecoleccion) >= 100 ? "cortesía" : money(recoleccionNum)} ={" "}
@@ -12897,16 +12912,14 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             {/* Descuento o cortesía del envío y de recoger la paellera, cada
                 uno aparte: hay quien recibe gratis la entrega pero paga la
                 recolección. En el presupuesto sale explícito. */}
-            {form.entrega && (
-              <div className="mt-2">
-                <div className="af-mini-label">Descuento al envío</div>
-                <SelectorDescuento valor={pctDescuento(form.descuentoEnvio)} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoEnvio: pct }))} />
-              </div>
-            )}
-            {form.recogerPaellera && hayPaelleraEnForm && (
-              <div className="mt-2">
-                <div className="af-mini-label">Descuento a recoger la paellera</div>
-                <SelectorDescuento valor={pctDescuento(form.descuentoRecoleccion)} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoRecoleccion: pct }))} />
+            {(form.entrega || (form.recogerPaellera && hayPaelleraEnForm)) && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {form.entrega && (
+                  <SelectorDescuento etiqueta="Descuento al envío" prefijo="Envío: " valor={form.descuentoEnvio} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoEnvio: pct }))} />
+                )}
+                {form.recogerPaellera && hayPaelleraEnForm && (
+                  <SelectorDescuento etiqueta="Descuento a recoger" prefijo="Recoger: " valor={form.descuentoRecoleccion} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoRecoleccion: pct }))} />
+                )}
               </div>
             )}
             <div className="af-mini-label mt-2">Ubicación</div>
