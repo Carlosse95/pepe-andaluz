@@ -2135,14 +2135,17 @@ function OpcionesPlatillo({ item, onCerrar, extrasDisponibles, cantidadDeExtra, 
     <Drawer open={!!item} onOpenChange={(o) => { if (!o) onCerrar(); }}>
       <DrawerContent>
         {it && (
-          <div className="mx-auto flex min-h-0 w-full max-w-sm flex-col">
+          <div className="flex min-h-0 w-full flex-col">
             <DrawerHeader>
               <DrawerTitle>{esPaella ? it.paellaNombre : it.nombre}</DrawerTitle>
               <DrawerDescription>
-                {esPaella ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg)}` : esPorKg(it) ? fmtKg(it.cantidad) : `${it.cantidad} pzas`} · {pctDescuento(it.descuento) >= 100 ? "Cortesía" : money(it.subtotal)}
+                {esPaella ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg)}` : esPorKg(it) ? fmtKg(it.cantidad) : `${it.cantidad} pza${it.cantidad === 1 ? "" : "s"}`} · {pctDescuento(it.descuento) >= 100 ? "Cortesía" : money(it.subtotal)}
               </DrawerDescription>
             </DrawerHeader>
-            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2">
+            {/* pt-1: sin él, el borde del botón de arriba (Descuento, en los
+                platillos que no llevan paellera) quedaba cortado por la orilla
+                de la zona que se desliza. */}
+            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2 pt-1">
               {esPaella && (
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="op-paellera">Va en paellera</Label>
