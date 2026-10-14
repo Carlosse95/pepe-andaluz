@@ -20,7 +20,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SwitchVista } from "@/components/ui/switch";
+import { Switch, SwitchVista } from "@/components/ui/switch";
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Ayuda } from "@/components/ayuda";
 import { Seccion } from "@/components/seccion";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -556,8 +557,10 @@ const pctDescuento = (x) => Math.min(100, Math.max(0, parseFloat(x) || 0));
 const redondear2 = (n) => Math.round(n * 100) / 100;
 const aplicarPct = (monto, pct) => (pctDescuento(pct) ? redondear2(monto * (1 - pctDescuento(pct) / 100)) : monto);
 // Precio del platillo antes del descuento.
+// Los extras (langosta, chorizo…) se pueden poner a cualquier platillo, no
+// solo a las paellas, y siempre se suman aparte.
 const brutoDe = (it) =>
-  it.tipo === "paella" ? calcPaellaSubtotal(it.kg, it.precioKg, it.extras) : calcExtraSubtotal(it.cantidad, it.precio);
+  it.tipo === "paella" ? calcPaellaSubtotal(it.kg, it.precioKg, it.extras) : calcExtraSubtotal(it.cantidad, it.precio) + sumaExtras(it.extras);
 // El subtotal de cada platillo ya va con su descuento: así el total, el saldo
 // y los reportes de ventas cuentan lo que de verdad se cobra.
 const conDescuento = (it) => ({ ...it, subtotal: aplicarPct(brutoDe(it), it.descuento) });
@@ -809,7 +812,11 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
         lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""}${pc.cortesia ? "" : ` — ${money(e.importe)}`}`);
       });
     } else {
-      lineas.push(`• ${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${pctDescuento(it.descuento) >= 100 ? "cortesía" : money(it.subtotal)}`);
+      const pc = preciosConDescuento(it);
+      lineas.push(`• ${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${pc.cortesia ? "cortesía" : money(pc.base)}`);
+      pc.extras.forEach((e) => {
+        lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""}${pc.cortesia ? "" : ` — ${money(e.importe)}`}`);
+      });
     }
     // Lo que pidió el cliente de ese platillo ("sin chícharos"): que vea que
     // quedó apuntado. Igual que en el PDF.
@@ -2113,6 +2120,70 @@ function SelectorDescuento({ valor, onCambiar, etiqueta = "Descuento", prefijo =
         </DialogSContent>
       </DialogS>
     </>
+  );
+}
+
+// Hoja de opciones de un platillo (Drawer de shadcn): se abre tocándolo en el
+// pedido o presupuesto. Extras, descuento y nota para cualquier platillo; "va
+// en paellera" solo para las paellas. Todo se guarda al momento.
+function OpcionesPlatillo({ item, onCerrar, extrasDisponibles, cantidadDeExtra, onCambiarExtra, onPaellera, onDescuento, onNota }) {
+  const [ultimo, setUltimo] = useState(item);
+  useEffect(() => { if (item) setUltimo(item); }, [item]);
+  const it = item || ultimo;
+  const esPaella = it?.tipo === "paella";
+  return (
+    <Drawer open={!!item} onOpenChange={(o) => { if (!o) onCerrar(); }}>
+      <DrawerContent>
+        {it && (
+          <div className="mx-auto flex min-h-0 w-full max-w-sm flex-col">
+            <DrawerHeader>
+              <DrawerTitle>{esPaella ? it.paellaNombre : it.nombre}</DrawerTitle>
+              <DrawerDescription>
+                {esPaella ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg)}` : esPorKg(it) ? fmtKg(it.cantidad) : `${it.cantidad} pzas`} · {pctDescuento(it.descuento) >= 100 ? "Cortesía" : money(it.subtotal)}
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2">
+              {esPaella && (
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="op-paellera">Va en paellera</Label>
+                  <Switch id="op-paellera" checked={!!it.enPaellera} onCheckedChange={(v) => onPaellera(it.id, v)} />
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <Label>Descuento</Label>
+                <SelectorDescuento valor={it.descuento} onCambiar={(pct) => onDescuento(it.id, pct)} />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="op-nota">Nota</Label>
+                <Textarea id="op-nota" rows={2} placeholder="Ej. sin chícharos, sin ejotes..." value={it.nota || ""} onChange={(e) => onNota(it.id, e.target.value)} />
+              </div>
+              {extrasDisponibles.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <Label>Extras</Label>
+                  {extrasDisponibles.map((ex) => {
+                    const n = cantidadDeExtra(it, ex.id);
+                    return (
+                      <div key={ex.id} className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1 truncate text-sm text-foreground">{ex.nombre}</span>
+                        <span className="text-sm text-muted-foreground tabular-nums">{money(ex.precio)}</span>
+                        <Button variant="outline" size="icon-sm" aria-label="Quitar uno" disabled={!n} onClick={() => onCambiarExtra(it, ex, -1)}><CircleMinus /></Button>
+                        <span className="w-5 text-center text-sm font-semibold tabular-nums">{n}</span>
+                        <Button variant="outline" size="icon-sm" aria-label="Agregar uno" onClick={() => onCambiarExtra(it, ex, 1)}><CirclePlus /></Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <DrawerFooter>
+              <DrawerClose asChild>
+                <Button>Listo</Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </div>
+        )}
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -12061,7 +12132,7 @@ const construirPDF = async (form, tipoDoc, config) => {
     const unitario = pc.cortesia ? "" : it.tipo === "paella" || esPorKg(it) ? `${money(pc.unidad)}/kg` : money(pc.unidad);
     // Para paellas con extras, la fila muestra solo la base; los extras van
     // en renglones propios para que la suma cuadre a la vista.
-    const subtotalFila = it.tipo === "paella" ? pc.base : it.subtotal;
+    const subtotalFila = pc.base;
     doc.setFont("helvetica", "bold");
     tinta(TINTA);
     doc.text(doc.splitTextToSize(nombre, anchoConcepto)[0], margin + 3, y);
@@ -12260,8 +12331,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const [confirmarBorrar, setConfirmarBorrar] = useState(false);
   const [mostrarClientes, setMostrarClientes] = useState(false);
   const [mostrarPicker, setMostrarPicker] = useState(false);
-  const [extrasAbierto, setExtrasAbierto] = useState(null); // id del ítem paella con el menú de extras abierto
-  const [notaAbierta, setNotaAbierta] = useState(null); // id del ítem con el campo de nota abierto
+  // Platillo con su hoja de opciones abierta (extras, nota, descuento, paellera).
+  const [opcionesDe, setOpcionesDe] = useState(null);
   const [mostrarAbono, setMostrarAbono] = useState(false);
   const [mostrarOtroMetodo, setMostrarOtroMetodo] = useState(false);
   const [abonoDraft, setAbonoDraft] = useState({ monto: 0, metodo: "efectivo" });
@@ -12702,29 +12773,18 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             {form.items.map((it) => {
               const esPaella = it.tipo === "paella";
               const porKg = esPaella || esPorKg(it);
-              const pastilla = "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 ring-foreground/10 transition-colors";
               return (
-                <div key={it.id} className="p-4">
+                <div
+                  key={it.id}
+                  role="button"
+                  tabIndex={0}
+                  className="cursor-pointer p-4 transition-colors hover:bg-muted/40"
+                  onClick={() => setOpcionesDe(it.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setOpcionesDe(it.id); }}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</span>
-                        {/* Junto al nombre: es una cualidad de esa paella, no
-                            una acción más de la fila de botones. */}
-                        {esPaella && (
-                          <button
-                            type="button"
-                            aria-pressed={!!it.enPaellera}
-                            className={cn(
-                              "inline-flex h-6 items-center gap-1 rounded-full px-2 text-2xs font-medium ring-1 transition-colors",
-                              it.enPaellera ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-muted-foreground ring-foreground/15"
-                            )}
-                            onClick={() => updateEnPaellera(it.id, !it.enPaellera)}
-                          >
-                            {it.enPaellera ? <CircleCheck size={12} /> : <ChefHat size={12} />} En paellera
-                          </button>
-                        )}
-                      </div>
+                      <div className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</div>
                       <div className="text-xs text-muted-foreground">
                         {porKg ? `${money(esPaella ? it.precioKg : it.precio)} por kg` : `${money(it.precio)} c/u`}
                         {/* Lo mismo que leerá el cliente en el mensaje y el PDF. */}
@@ -12741,7 +12801,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     </div>
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="mt-3 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       <Stepper
                         value={esPaella ? it.kg : it.cantidad}
@@ -12756,80 +12816,35 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     </Button>
                   </div>
 
-                  {/* La nota va también en presupuestos ("sin chícharos"): sale en
-                      el PDF y se queda al convertirlo en pedido. */}
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {/* El menú de extras NO se cierra al elegir: así se ponen
-                        tres chorizos con tres toques sin mover el dedo. */}
-                    {esPaella && (config.extrasPaella || []).length > 0 && (
-                      <div className="af-extra-wrap">
-                        <button type="button" className={cn(pastilla, (it.extras || []).length ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
-                          <CirclePlus size={14} /> Extras{(it.extras || []).length ? ` · ${(it.extras || []).reduce((a, e) => a + (e.cantidad || 1), 0)}` : ""}
-                        </button>
-                        {extrasAbierto === it.id && (
-                          <>
-                            <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
-                            <div className="af-extra-menu af-combo-wrap">
-                              {(config.extrasPaella || []).map((ex) => {
-                                const puestos = cantidadDeExtra(it, ex.id);
-                                return (
-                                  <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
-                                    <span className="af-extra-menu-nombre">{ex.nombre}</span>
-                                    <span className="af-ink-soft">{money(ex.precio)}</span>
-                                    <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
-                                      onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><CircleMinus size={12} /></button>
-                                    <span className="af-extra-menu-cuenta">{puestos}</span>
-                                    <button className="af-extra-mini-btn" title="Agregar uno"
-                                      onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><CirclePlus size={12} /></button>
-                                  </div>
-                                );
-                              })}
-                              <button className="af-extra-menu-listo" onClick={() => setExtrasAbierto(null)}>Listo</button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    <button type="button" className={cn(pastilla, it.nota ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setNotaAbierta(notaAbierta === it.id ? null : it.id)}>
-                      {it.nota ? <CircleCheck size={14} /> : <StickyNote size={14} />} Nota
-                    </button>
-                    <SelectorDescuento valor={it.descuento} onCambiar={(pct) => updateDescuentoItem(it.id, pct)} />
-                  </div>
-
-                  {/* Los extras ya puestos, cada uno con su más y menos. */}
-                  {esPaella && (it.extras || []).length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                  {/* Lo que trae puesto, de un vistazo. Todo se cambia en la hoja
+                      de opciones, que se abre tocando el platillo. */}
+                  {(it.enPaellera || (it.extras || []).length > 0 || it.nota || pctDescuento(it.descuento) > 0) && (
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      {esPaella && it.enPaellera && <Chip variant="secondary"><ChefHat size={12} /> En paellera</Chip>}
                       {(it.extras || []).map((e) => (
-                        <span key={e.id} className="inline-flex h-8 items-center gap-1 rounded-full bg-secondary/60 pl-3 pr-1 text-xs text-foreground">
-                          {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""} · {money(e.precio * e.cantidad)}
-                          <button className="af-extra-mini-btn" title="Quitar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, -1)}><CircleMinus size={12} /></button>
-                          <button className="af-extra-mini-btn" title="Agregar uno" onClick={() => cambiarCantidadExtra(it.id, e.id, 1)}><CirclePlus size={12} /></button>
-                        </span>
+                        <Chip key={e.id} variant="secondary">+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""}</Chip>
                       ))}
+                      {pctDescuento(it.descuento) > 0 && (
+                        <Chip variant="secondary">{pctDescuento(it.descuento) >= 100 ? "Cortesía" : `−${pctDescuento(it.descuento)}%`}</Chip>
+                      )}
+                      {it.nota && <Chip variant="secondary"><StickyNote size={12} /> {it.nota}</Chip>}
                     </div>
-                  )}
-
-                  {notaAbierta === it.id && (
-                    <Textarea
-                      autoFocus
-                      rows={2}
-                      className="mt-2"
-                      placeholder="Ej. sin chícharos, sin ejotes..."
-                      value={it.nota || ""}
-                      onChange={(e) => updateNotaItem(it.id, e.target.value)}
-                      onBlur={() => setNotaAbierta(null)}
-                    />
-                  )}
-                  {notaAbierta !== it.id && it.nota && (
-                    <button type="button" className="mt-2 flex w-full items-start gap-2 rounded-xl bg-aviso/10 px-3 py-2 text-left text-sm text-foreground" onClick={() => setNotaAbierta(it.id)}>
-                      <StickyNote size={14} className="mt-0.5 shrink-0 text-aviso-fuerte" /> {it.nota}
-                    </button>
                   )}
                 </div>
               );
             })}
           </Card>
         )}
+        <OpcionesPlatillo
+          item={form.items.find((x) => x.id === opcionesDe) || null}
+          onCerrar={() => setOpcionesDe(null)}
+          extrasDisponibles={config.extrasPaella || []}
+          cantidadDeExtra={cantidadDeExtra}
+          onCambiarExtra={cambiarExtraDesdeMenu}
+          onPaellera={updateEnPaellera}
+          onDescuento={updateDescuentoItem}
+          onNota={updateNotaItem}
+        />
         <button className="af-add-item-btn mt-2" onClick={() => setMostrarPicker(true)}>
           <CirclePlus size={16} /> Agregar ítem
         </button>
