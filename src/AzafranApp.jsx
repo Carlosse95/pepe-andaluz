@@ -12932,15 +12932,15 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     ? "Costo de envío"
                     : "Costo de recoger la paellera"}
               </span>
-              {/* En celular los botones bajan a su propio renglón (dentro del
+              {/* En celular el botón baja a su propio renglón (dentro del
                   cuadro); en pantallas anchas van entre el texto y el monto. */}
               <div className="order-last flex basis-full flex-wrap items-center gap-2 sm:order-none sm:basis-auto">
-                {form.entrega && (
-                  <SelectorDescuento etiqueta="Descuento" prefijo={form.recogerPaellera && hayPaelleraEnForm ? "Envío: " : ""} valor={form.descuentoEnvio} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoEnvio: pct }))} />
-                )}
-                {form.recogerPaellera && hayPaelleraEnForm && (
-                  <SelectorDescuento etiqueta={form.entrega ? "Desc. recoger" : "Descuento"} prefijo={form.entrega ? "Recoger: " : ""} valor={form.descuentoRecoleccion} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoRecoleccion: pct }))} />
-                )}
+                {/* UN solo descuento: llevar y recoger cuestan lo mismo, así que
+                    el porcentaje (o la cortesía) se aplica igual a los dos. */}
+                <SelectorDescuento
+                  valor={form.entrega ? form.descuentoEnvio : form.descuentoRecoleccion}
+                  onCambiar={(pct) => setForm((p) => ({ ...p, descuentoEnvio: pct, descuentoRecoleccion: pct }))}
+                />
               </div>
               <NumberField
                 value={parseFloat(form.envio) || 0}
