@@ -12602,7 +12602,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
         </div>
       )}
 
-      <div className="af-card-grid">
+      {/* Fecha y hora en el mismo renglón, también en el celular. */}
+      <div className="af-card-grid af-fecha-hora">
         <div className="af-field">
           <Label>Fecha</Label>
           {/* Las flechas son para capturar pedidos viejos: pasar del 5 al 6 de
@@ -17186,6 +17187,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
 
 .af-card-grid { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+.af-app .af-card-grid.af-fecha-hora { grid-template-columns: minmax(0, 1fr) 8rem; column-gap: 12px; }
+/* En el celular no caben las flechas de día anterior/siguiente junto a la
+   hora (son para capturar pedidos viejos, que se hace en el iPad), ni el
+   "Se verá como", que repite lo que ya enseña el cuadro de la hora. */
+@media (max-width: 699px) { .af-fecha-hora .af-fecha-paso, .af-fecha-hora .af-hora-preview { display: none; } }
+@media (min-width: 700px) { .af-app .af-card-grid.af-fecha-hora { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); column-gap: 16px; } }
 
 .af-ink-soft { color: var(--ink-soft); }
 .af-only-mobile { display: flex; }
