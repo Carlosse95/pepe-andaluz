@@ -561,6 +561,16 @@ const brutoDe = (it) =>
 // y los reportes de ventas cuentan lo que de verdad se cobra.
 const conDescuento = (it) => ({ ...it, subtotal: aplicarPct(brutoDe(it), it.descuento) });
 const ahorroDe = (it) => (pctDescuento(it.descuento) ? redondear2(brutoDe(it) - it.subtotal) : 0);
+// Al cliente se le enseña SOLO el precio ya con descuento (sin renglones de
+// "descuento" en cada platillo, que lo hacían ver amontonado). Los extras se
+// redondean cada uno y la base se ajusta para que todo sume exacto el subtotal.
+const preciosConDescuento = (it) => {
+  const f = 1 - pctDescuento(it.descuento) / 100;
+  const extras = (it.extras || []).map((e) => ({ ...e, precio: redondear2(e.precio * f), importe: redondear2(e.precio * e.cantidad * f) }));
+  const base = redondear2(it.subtotal - extras.reduce((a, e) => a + e.importe, 0));
+  const unidad = redondear2((it.tipo === "paella" ? it.precioKg : it.precio) * f);
+  return { base, unidad, extras, cortesia: pctDescuento(it.descuento) >= 100 };
+};
 const textoDescuento = (pct) => (pctDescuento(pct) >= 100 ? "Cortesía" : `${pctDescuento(pct)}% de descuento`);
 
 // Costo de envío: solo aplica cuando el pedido es a domicilio.
@@ -789,15 +799,14 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   lineas.push("");
   datos.items.forEach((it) => {
     if (it.tipo === "paella") {
-      lineas.push(`• ${nombreParaCliente(it)} ${fmtPersonas(it.kg)} — ${money(it.kg * it.precioKg)}`);
-      (it.extras || []).forEach((e) => {
-        lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""} — ${money(e.precio * e.cantidad)}`);
+      const pc = preciosConDescuento(it);
+      lineas.push(`• ${nombreParaCliente(it)} ${fmtPersonas(it.kg)} — ${pc.cortesia ? "cortesía" : money(pc.base)}`);
+      pc.extras.forEach((e) => {
+        lineas.push(`   + Extra ${e.nombre}${e.cantidad > 1 ? ` ×${e.cantidad}` : ""}${pc.cortesia ? "" : ` — ${money(e.importe)}`}`);
       });
     } else {
-      lineas.push(`• ${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${money(it.subtotal)}`);
+      lineas.push(`• ${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${pctDescuento(it.descuento) >= 100 ? "cortesía" : money(it.subtotal)}`);
     }
-    if (pctDescuento(it.descuento) >= 100) lineas.push(`   🎁 Cortesía: sin costo`);
-    else if (pctDescuento(it.descuento) > 0) lineas.push(`   Descuento ${pctDescuento(it.descuento)}%: −${money(ahorroDe(it))} (queda en ${money(it.subtotal)})`);
     // Lo que pidió el cliente de ese platillo ("sin chícharos"): que vea que
     // quedó apuntado. Igual que en el PDF.
     if ((it.nota || "").trim()) lineas.push(`   📝 ${it.nota.trim()}`);
@@ -813,8 +822,6 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
   if (iva > 0) lineas.push(`IVA (16%): ${money(iva)}`);
   const total = computeTotal(datos.items) + envio + recoleccion + iva;
   lineas.push(`Total: ${money(total)}`);
-  const ahorro = ahorroTotalDe(datos);
-  if (ahorro > 0) lineas.push(`🎁 Usted ahorra: ${money(ahorro)}`);
   if (esPedido) {
     const pagado = sumaAbonos(datos.abonos);
     if (pagado > 0) {
@@ -1243,16 +1250,6 @@ const productosDeConfig = (config, fecha) => [
     piezasPorUnidad: e.piezasPorUnidad || 0,
   })),
 ];
-
-// Texto para cuando un cliente pide que se le regalen cosas por ser un
-// pedido grande. Se agrega con un botón a las notas del presupuesto (salen en
-// el PDF) y se puede ajustar antes de mandarlo.
-const TEXTO_SIN_OBSEQUIOS =
-  "Estimados:\n" +
-  "Agradecemos mucho su preferencia y la confianza que depositan en nosotros. En Pepe El Andaluz nos distinguimos por ofrecer calidad y un servicio profesional, cuidando cada detalle para que reciban lo mejor.\n" +
-  "Nuestros precios están establecidos de acuerdo con la calidad de nuestros productos y el trabajo que implica. Por ello, no contemplamos obsequios adicionales, ya que cada elemento tiene un costo para mantener la calidad que nos caracteriza.\n" +
-  "Como siempre, con gusto les brindamos la entrega y la recolección de las paelleras sin costo adicional, una cortesía que seguimos manteniendo.\n" +
-  "Agradecemos su comprensión y su preferencia.";
 
 const TERMINOS_DEFAULT =
   "Este presupuesto tiene vigencia de 30 días.\n" +
@@ -12016,10 +12013,11 @@ const construirPDF = async (form, tipoDoc, config) => {
     const cant = it.tipo === "paella"
       ? `${fmtKg(it.kg)} · ${fmtPersonas(it.kg).replace("para ", "")}`
       : esPorKg(it) ? fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? `${it.cantidad * it.piezasPorUnidad} piezas` : `x${it.cantidad}`;
-    const unitario = it.tipo === "paella" ? `${money(it.precioKg)}/kg` : esPorKg(it) ? `${money(it.precio)}/kg` : money(it.precio);
+    const pc = preciosConDescuento(it);
+    const unitario = pc.cortesia ? "" : it.tipo === "paella" || esPorKg(it) ? `${money(pc.unidad)}/kg` : money(pc.unidad);
     // Para paellas con extras, la fila muestra solo la base; los extras van
     // en renglones propios para que la suma cuadre a la vista.
-    const subtotalFila = it.tipo === "paella" ? it.kg * it.precioKg : it.subtotal;
+    const subtotalFila = it.tipo === "paella" ? pc.base : it.subtotal;
     doc.setFont("helvetica", "bold");
     tinta(TINTA);
     doc.text(doc.splitTextToSize(nombre, anchoConcepto)[0], margin + 3, y);
@@ -12031,28 +12029,21 @@ const construirPDF = async (form, tipoDoc, config) => {
     doc.setFontSize(CUERPO);
     doc.setFont("helvetica", "bold");
     tinta(TINTA);
-    doc.text(money(subtotalFila), colSub - 3, y, { align: "right" });
+    doc.text(pc.cortesia ? "Cortesía" : money(subtotalFila), colSub - 3, y, { align: "right" });
     y += 7;
 
-    (it.extras || []).forEach((e) => {
+    pc.extras.forEach((e) => {
       cabe(9);
       doc.setFont("helvetica", "normal");
       tinta(SUAVE);
       doc.text(`   + ${e.nombre}`, margin + 3, y);
       doc.text(`x${e.cantidad}`, colCant, y);
-      doc.text(money(e.precio), colUnit, y, { align: "right" });
-      doc.text(money(e.precio * e.cantidad), colSub - 3, y, { align: "right" });
+      if (!pc.cortesia) {
+        doc.text(money(e.precio), colUnit, y, { align: "right" });
+        doc.text(money(e.importe), colSub - 3, y, { align: "right" });
+      }
       y += 6.5;
     });
-
-    if (pctDescuento(it.descuento)) {
-      cabe(9);
-      doc.setFont("helvetica", "normal");
-      tinta(SUAVE);
-      doc.text(`   ${pctDescuento(it.descuento) >= 100 ? "Cortesía (sin costo)" : `Descuento ${pctDescuento(it.descuento)}%`}`, margin + 3, y);
-      doc.text(`-${money(ahorroDe(it))}`, colSub - 3, y, { align: "right" });
-      y += 6.5;
-    }
 
     if (it.nota) {
       cabe(8);
@@ -12094,7 +12085,6 @@ const construirPDF = async (form, tipoDoc, config) => {
   if (form.entrega) renglonCosto("Entrega a domicilio", envioBrutoDe(form), form.descuentoEnvio);
   if (form.recogerPaellera && llevaPaellera(form)) renglonCosto("Recoger la paellera", recoleccionBrutoDe(form), form.descuentoRecoleccion);
   if (ivaNum > 0) renglonTotal("IVA (16%)", money(ivaNum));
-  if (ahorroTotalDe(form) > 0) renglonTotal("Usted ahorra", money(ahorroTotalDe(form)));
 
   y += 2;
   doc.setFont("helvetica", "bold");
@@ -12638,16 +12628,6 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             value={form.terminos}
             onChange={(e) => setForm((p) => ({ ...p, terminos: e.target.value }))}
           />
-          {!(form.terminos || "").includes("no contemplamos obsequios") && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-2 self-start"
-              onClick={() => setForm((p) => ({ ...p, terminos: TEXTO_SIN_OBSEQUIOS + ((p.terminos || "").trim() ? "\n\n" + p.terminos.trim() : "") }))}
-            >
-              <CirclePlus size={14} /> Agregar mensaje: sin obsequios adicionales
-            </Button>
-          )}
         </div>
       )}
 
