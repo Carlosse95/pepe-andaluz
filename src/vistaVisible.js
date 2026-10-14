@@ -14,9 +14,18 @@ export function seguirVistaVisible() {
   const raiz = document.documentElement;
   let tecladoAbierto = false;
   const medir = () => {
-    raiz.style.setProperty("--alto-visible", `${Math.round(vv.height)}px`);
-    raiz.style.setProperty("--arriba-visible", `${Math.round(vv.offsetTop)}px`);
     const abierto = vv.height < window.innerHeight - 120;
+    // Solo con el teclado de pantalla abierto. Sin teclado, las ventanas usan
+    // la pantalla completa: al desplazarse, Safari del iPad a veces reporta
+    // por un instante una vista más chica, y con esa medida el fondo oscuro
+    // de las ventanas se quedaba cubriendo solo media pantalla.
+    if (abierto) {
+      raiz.style.setProperty("--alto-visible", `${Math.round(vv.height)}px`);
+      raiz.style.setProperty("--arriba-visible", `${Math.round(vv.offsetTop)}px`);
+    } else {
+      raiz.style.removeProperty("--alto-visible");
+      raiz.style.removeProperty("--arriba-visible");
+    }
     // Al cerrarse el teclado, Safari a veces deja la página corrida (con un
     // hueco abajo o el encabezado escondido). Se regresa a donde debe estar.
     if (tecladoAbierto && !abierto) {

@@ -16186,7 +16186,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Modal "Agregar ítem" */
 /* Se mide con la vista visible (ver vistaVisible.js): con el teclado abierto
    la ventana cabe arriba de él en vez de quedar detrás. */
-.af-modal-overlay { position: fixed; left: 0; right: 0; top: var(--arriba-visible, 0px); height: var(--alto-visible, 100%); background: rgb(0 0 0 / 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
+.af-modal-overlay { position: fixed; left: 0; right: 0; top: var(--arriba-visible, 0px); height: var(--alto-visible, 100lvh); background: rgb(0 0 0 / 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
 /* Para el modal de "Mi perfil": centrado en cualquier tamaño de pantalla,
    no solo en escritorio (a diferencia de los demás modales, que en celular
    se abren pegados abajo). */
