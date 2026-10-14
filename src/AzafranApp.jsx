@@ -36,7 +36,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -545,8 +545,27 @@ const paelleraPorKilos = (antes, ahora, enPaelleraActual) => {
 
 const computeTotal = (items) => items.reduce((acc, it) => acc + it.subtotal, 0);
 
+// ---------- Descuentos (oct 2026) ----------
+// En porcentaje: por platillo, y aparte al envío y a recoger la paellera.
+// 100% es una cortesía (regalo): al cliente le sale explícito "sin costo".
+// Se guarda el precio COMPLETO y el porcentaje por separado, así el
+// presupuesto puede enseñar "normalmente $250 → cortesía" y nunca se
+// descuenta dos veces al volver a abrir el pedido.
+const pctDescuento = (x) => Math.min(100, Math.max(0, parseFloat(x) || 0));
+const redondear2 = (n) => Math.round(n * 100) / 100;
+const aplicarPct = (monto, pct) => (pctDescuento(pct) ? redondear2(monto * (1 - pctDescuento(pct) / 100)) : monto);
+// Precio del platillo antes del descuento.
+const brutoDe = (it) =>
+  it.tipo === "paella" ? calcPaellaSubtotal(it.kg, it.precioKg, it.extras) : calcExtraSubtotal(it.cantidad, it.precio);
+// El subtotal de cada platillo ya va con su descuento: así el total, el saldo
+// y los reportes de ventas cuentan lo que de verdad se cobra.
+const conDescuento = (it) => ({ ...it, subtotal: aplicarPct(brutoDe(it), it.descuento) });
+const ahorroDe = (it) => (pctDescuento(it.descuento) ? redondear2(brutoDe(it) - it.subtotal) : 0);
+const textoDescuento = (pct) => (pctDescuento(pct) >= 100 ? "Cortesía" : `${pctDescuento(pct)}% de descuento`);
+
 // Costo de envío: solo aplica cuando el pedido es a domicilio.
-const envioDe = (obj) => (obj.entrega ? parseFloat(obj.envio) || 0 : 0);
+const envioBrutoDe = (obj) => (obj.entrega ? parseFloat(obj.envio) || 0 : 0);
+const envioDe = (obj) => aplicarPct(envioBrutoDe(obj), obj.descuentoEnvio);
 
 // ¿Alguna paella del pedido va en paellera (que hay que recuperar después)?
 const llevaPaellera = (obj) => (obj.items || []).some((it) => it.tipo === "paella" && it.enPaellera);
@@ -557,8 +576,25 @@ const llevaPaellera = (obj) => (obj.items || []).some((it) => it.tipo === "paell
 // pasemos por la paellera. Cuesta lo mismo que un envío (se llena con ese
 // monto) pero se cobra por separado. Solo cuenta si de verdad hay paellera:
 // si se le quita la paellera a la paella, el cobro desaparece solo.
-const recoleccionDe = (obj) =>
+const recoleccionBrutoDe = (obj) =>
   obj.recogerPaellera && llevaPaellera(obj) ? parseFloat(obj.costoRecoleccion) || 0 : 0;
+const recoleccionDe = (obj) => aplicarPct(recoleccionBrutoDe(obj), obj.descuentoRecoleccion);
+// Lo que se le regala al cliente en total (para que lo vea en el presupuesto).
+const ahorroTotalDe = (obj) =>
+  redondear2(
+    (obj.items || []).reduce((a, it) => a + ahorroDe(it), 0) +
+      (envioBrutoDe(obj) - envioDe(obj)) +
+      (recoleccionBrutoDe(obj) - recoleccionDe(obj))
+  );
+// Renglón de un costo (envío o recoger) para el cliente: completo, con
+// descuento o "sin costo (cortesía)". Si se regala, sale aunque el costo
+// capturado sea $0, porque al cliente le importa saber que no paga.
+const textoCosto = (bruto, pct) => {
+  const d = pctDescuento(pct);
+  if (d >= 100) return bruto > 0 ? `sin costo (cortesía; normalmente ${money(bruto)})` : "sin costo (cortesía)";
+  if (d > 0) return `${money(aplicarPct(bruto, d))} (${d}% de descuento sobre ${money(bruto)})`;
+  return money(bruto);
+};
 
 // Hace falta saber a dónde ir si se entrega O si se pasa por la paellera.
 const vamosAlDomicilio = (obj) => !!obj.entrega || (!!obj.recogerPaellera && llevaPaellera(obj));
@@ -760,19 +796,25 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
     } else {
       lineas.push(`• ${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${money(it.subtotal)}`);
     }
+    if (pctDescuento(it.descuento) >= 100) lineas.push(`   🎁 Cortesía: sin costo`);
+    else if (pctDescuento(it.descuento) > 0) lineas.push(`   Descuento ${pctDescuento(it.descuento)}%: −${money(ahorroDe(it))} (queda en ${money(it.subtotal)})`);
     // Lo que pidió el cliente de ese platillo ("sin chícharos"): que vea que
     // quedó apuntado. Igual que en el PDF.
     if ((it.nota || "").trim()) lineas.push(`   📝 ${it.nota.trim()}`);
   });
   lineas.push("");
   const envio = envioDe(datos);
-  if (envio > 0) lineas.push(`Costo de envío: ${money(envio)}`);
+  if (envioBrutoDe(datos) > 0 || (datos.entrega && pctDescuento(datos.descuentoEnvio)))
+    lineas.push(`Entrega a domicilio: ${textoCosto(envioBrutoDe(datos), datos.descuentoEnvio)}`);
   const recoleccion = recoleccionDe(datos);
-  if (recoleccion > 0) lineas.push(`Costo de recoger la paellera: ${money(recoleccion)}`);
+  if (recoleccionBrutoDe(datos) > 0 || (datos.recogerPaellera && llevaPaellera(datos) && pctDescuento(datos.descuentoRecoleccion)))
+    lineas.push(`Recoger la paellera: ${textoCosto(recoleccionBrutoDe(datos), datos.descuentoRecoleccion)}`);
   const iva = ivaDe(datos);
   if (iva > 0) lineas.push(`IVA (16%): ${money(iva)}`);
   const total = computeTotal(datos.items) + envio + recoleccion + iva;
   lineas.push(`Total: ${money(total)}`);
+  const ahorro = ahorroTotalDe(datos);
+  if (ahorro > 0) lineas.push(`🎁 Usted ahorra: ${money(ahorro)}`);
   if (esPedido) {
     const pagado = sumaAbonos(datos.abonos);
     if (pagado > 0) {
@@ -1202,6 +1244,16 @@ const productosDeConfig = (config, fecha) => [
   })),
 ];
 
+// Texto para cuando un cliente pide que se le regalen cosas por ser un
+// pedido grande. Se agrega con un botón a las notas del presupuesto (salen en
+// el PDF) y se puede ajustar antes de mandarlo.
+const TEXTO_SIN_OBSEQUIOS =
+  "Estimados:\n" +
+  "Agradecemos mucho su preferencia y la confianza que depositan en nosotros. En Pepe El Andaluz nos distinguimos por ofrecer calidad y un servicio profesional, cuidando cada detalle para que reciban lo mejor.\n" +
+  "Nuestros precios están establecidos de acuerdo con la calidad de nuestros productos y el trabajo que implica. Por ello, no contemplamos obsequios adicionales, ya que cada elemento tiene un costo para mantener la calidad que nos caracteriza.\n" +
+  "Como siempre, con gusto les brindamos la entrega y la recolección de las paelleras sin costo adicional, una cortesía que seguimos manteniendo.\n" +
+  "Agradecemos su comprensión y su preferencia.";
+
 const TERMINOS_DEFAULT =
   "Este presupuesto tiene vigencia de 30 días.\n" +
   "Forma de pago: 50% de anticipo para apartar la fecha; el 50% restante al entregar, en efectivo o por transferencia.\n" +
@@ -1246,6 +1298,8 @@ const emptyForm = () => ({
   envio: "0",
   recogerPaellera: false,
   costoRecoleccion: "0",
+  descuentoEnvio: 0,
+  descuentoRecoleccion: 0,
   iva: false,
   abonos: [],
   estado: "pendiente",
@@ -1989,6 +2043,38 @@ const CampoBase = React.forwardRef(({ className, ...props }, ref) =>
     : <input ref={ref} className={className} {...props} />
 );
 
+// Elegir un descuento: pastillas rápidas (10, 15, 20, 50 %, Cortesía = gratis)
+// o cualquier otro porcentaje a mano. Se usa en cada platillo y en el envío y
+// recoger la paellera.
+const DESCUENTOS_RAPIDOS = [10, 15, 20, 50];
+function SelectorDescuento({ valor, onCambiar, onListo, className }) {
+  const pastilla = "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 ring-foreground/10 transition-colors";
+  const activo = (n) => pctDescuento(valor) === n;
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2", className)}>
+      <button type="button" className={cn(pastilla, !valor ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")} onClick={() => onCambiar(0)}>
+        Sin descuento
+      </button>
+      {DESCUENTOS_RAPIDOS.map((n) => (
+        <button key={n} type="button" className={cn(pastilla, activo(n) ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")} onClick={() => onCambiar(n)}>
+          {n}%
+        </button>
+      ))}
+      <button type="button" className={cn(pastilla, activo(100) ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")} onClick={() => onCambiar(100)}>
+        <Gift size={14} /> Cortesía
+      </button>
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        Otro:
+        <NumberField value={pctDescuento(valor)} min={0} className="af-input af-input-small w-16" onChange={(v) => onCambiar(pctDescuento(v))} />
+        %
+      </span>
+      {onListo && (
+        <Button variant="link" size="auto" className="text-xs" onClick={onListo}>Listo</Button>
+      )}
+    </div>
+  );
+}
+
 // Lee lo que se tecleó aceptando coma o punto. El teclado del iPhone en
 // español pone coma decimal: "7,5" kg se leía como 7 (parseFloat se detiene
 // en la coma) y el presupuesto salía "para 14 personas" en vez de 15. Una coma
@@ -2255,8 +2341,8 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
             )}
           </li>
         ))}
-        {pedido.envio > 0 && <li>Costo de envío — {money(pedido.envio)}</li>}
-        {recoleccionDe(pedido) > 0 && <li>Costo de recoger la paellera — {money(recoleccionDe(pedido))}</li>}
+        {(envioBrutoDe(pedido) > 0 || (pedido.entrega && pctDescuento(pedido.descuentoEnvio) > 0)) && <li>Costo de envío — {textoCosto(envioBrutoDe(pedido), pedido.descuentoEnvio)}</li>}
+        {(recoleccionBrutoDe(pedido) > 0 || (pedido.recogerPaellera && llevaPaellera(pedido) && pctDescuento(pedido.descuentoRecoleccion) > 0)) && <li>Costo de recoger la paellera — {textoCosto(recoleccionBrutoDe(pedido), pedido.descuentoRecoleccion)}</li>}
         {pedido.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
@@ -3739,8 +3825,8 @@ function PresupuestoCard({ presupuesto, onClick, onAceptar }) {
             {it.tipo === "paella" ? `${it.paellaNombre} — ${fmtKg(it.kg)}${resumenExtras(it)}` : `${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : "× " + it.cantidad}`}
           </li>
         ))}
-        {presupuesto.envio > 0 && <li>Costo de envío — {money(presupuesto.envio)}</li>}
-        {recoleccionDe(presupuesto) > 0 && <li>Costo de recoger la paellera — {money(recoleccionDe(presupuesto))}</li>}
+        {(envioBrutoDe(presupuesto) > 0 || (presupuesto.entrega && pctDescuento(presupuesto.descuentoEnvio) > 0)) && <li>Costo de envío — {textoCosto(envioBrutoDe(presupuesto), presupuesto.descuentoEnvio)}</li>}
+        {(recoleccionBrutoDe(presupuesto) > 0 || (presupuesto.recogerPaellera && llevaPaellera(presupuesto) && pctDescuento(presupuesto.descuentoRecoleccion) > 0)) && <li>Costo de recoger la paellera — {textoCosto(recoleccionBrutoDe(presupuesto), presupuesto.descuentoRecoleccion)}</li>}
         {presupuesto.iva && <li>IVA (16%) incluido</li>}
       </ul>
 
@@ -11959,6 +12045,15 @@ const construirPDF = async (form, tipoDoc, config) => {
       y += 6.5;
     });
 
+    if (pctDescuento(it.descuento)) {
+      cabe(9);
+      doc.setFont("helvetica", "normal");
+      tinta(SUAVE);
+      doc.text(`   ${pctDescuento(it.descuento) >= 100 ? "Cortesía (sin costo)" : `Descuento ${pctDescuento(it.descuento)}%`}`, margin + 3, y);
+      doc.text(`-${money(ahorroDe(it))}`, colSub - 3, y, { align: "right" });
+      y += 6.5;
+    }
+
     if (it.nota) {
       cabe(8);
       doc.setFont("helvetica", "italic");
@@ -11988,9 +12083,18 @@ const construirPDF = async (form, tipoDoc, config) => {
     doc.text(monto, colSub - 3, y, { align: "right" });
     y += 6;
   };
-  if (envioNum > 0) renglonTotal("Costo de envío", money(envioNum));
-  if (recoleccionNum > 0) renglonTotal("Costo de recoger la paellera", money(recoleccionNum));
+  // Envío y recoger: si se regalan, sale explícito ("Cortesía") con lo que
+  // costaría normalmente, para que el cliente vea lo que se le da.
+  const renglonCosto = (etiqueta, bruto, pct) => {
+    const d = pctDescuento(pct);
+    if (d >= 100) renglonTotal(bruto > 0 ? `${etiqueta} (normalmente ${money(bruto)})` : etiqueta, "Cortesía");
+    else if (d > 0) renglonTotal(`${etiqueta} (-${d}% de ${money(bruto)})`, money(aplicarPct(bruto, d)));
+    else if (bruto > 0) renglonTotal(etiqueta, money(bruto));
+  };
+  if (form.entrega) renglonCosto("Entrega a domicilio", envioBrutoDe(form), form.descuentoEnvio);
+  if (form.recogerPaellera && llevaPaellera(form)) renglonCosto("Recoger la paellera", recoleccionBrutoDe(form), form.descuentoRecoleccion);
   if (ivaNum > 0) renglonTotal("IVA (16%)", money(ivaNum));
+  if (ahorroTotalDe(form) > 0) renglonTotal("Usted ahorra", money(ahorroTotalDe(form)));
 
   y += 2;
   doc.setFont("helvetica", "bold");
@@ -12107,6 +12211,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const [mostrarPicker, setMostrarPicker] = useState(false);
   const [extrasAbierto, setExtrasAbierto] = useState(null); // id del ítem paella con el menú de extras abierto
   const [notaAbierta, setNotaAbierta] = useState(null); // id del ítem con el campo de nota abierto
+  const [descuentoAbierto, setDescuentoAbierto] = useState(null); // id del ítem con el descuento abierto
   const [mostrarAbono, setMostrarAbono] = useState(false);
   const [mostrarOtroMetodo, setMostrarOtroMetodo] = useState(false);
   const [abonoDraft, setAbonoDraft] = useState({ monto: 0, metodo: "efectivo" });
@@ -12233,7 +12338,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
       ...prev,
       items: prev.items.map((it) =>
         it.id === itemId
-          ? { ...it, kg, enPaellera: paelleraPorKilos(it.kg, kg, it.enPaellera), subtotal: calcPaellaSubtotal(kg, it.precioKg, it.extras) }
+          ? conDescuento({ ...it, kg, enPaellera: paelleraPorKilos(it.kg, kg, it.enPaellera) })
           : it
       ),
     }));
@@ -12242,7 +12347,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   const updateCantidad = (itemId, cantidad) => {
     setForm((prev) => ({
       ...prev,
-      items: prev.items.map((it) => (it.id === itemId ? { ...it, cantidad, subtotal: calcExtraSubtotal(cantidad, it.precio) } : it)),
+      items: prev.items.map((it) => (it.id === itemId ? conDescuento({ ...it, cantidad }) : it)),
     }));
   };
 
@@ -12259,6 +12364,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
   // Nota por ítem (ej. "sin ejotes, sin chícharos"): solo uso interno, no
   // sale en el PDF ni en el mensaje de WhatsApp.
+  const updateDescuentoItem = (itemId, pct) => {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => (it.id === itemId ? conDescuento({ ...it, descuento: pctDescuento(pct) }) : it)),
+    }));
+  };
+
   const updateNotaItem = (itemId, nota) => {
     setForm((prev) => ({
       ...prev,
@@ -12285,7 +12397,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   };
 
   // Extras de paella: se anclan a una paella específica del pedido.
-  const conExtrasActualizados = (it, extras) => ({ ...it, extras, subtotal: calcPaellaSubtotal(it.kg, it.precioKg, extras) });
+  const conExtrasActualizados = (it, extras) => conDescuento({ ...it, extras });
 
   // Cuántos lleva puestos de ESE extra del catálogo, y cómo subirle o bajarle
   // desde el propio menú. Antes había que cerrarlo, buscar el renglón del
@@ -12526,6 +12638,16 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             value={form.terminos}
             onChange={(e) => setForm((p) => ({ ...p, terminos: e.target.value }))}
           />
+          {!(form.terminos || "").includes("no contemplamos obsequios") && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2 self-start"
+              onClick={() => setForm((p) => ({ ...p, terminos: TEXTO_SIN_OBSEQUIOS + ((p.terminos || "").trim() ? "\n\n" + p.terminos.trim() : "") }))}
+            >
+              <CirclePlus size={14} /> Agregar mensaje: sin obsequios adicionales
+            </Button>
+          )}
         </div>
       )}
 
@@ -12552,7 +12674,14 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                         {esPaella && <> · <span className="font-medium text-foreground">{fmtPersonas(it.kg)}</span></>}
                       </div>
                     </div>
-                    <div className="shrink-0 text-right text-base font-semibold tabular-nums text-foreground">{money(it.subtotal)}</div>
+                    <div className="shrink-0 text-right tabular-nums">
+                      {pctDescuento(it.descuento) > 0 && (
+                        <div className="text-xs text-muted-foreground line-through">{money(brutoDe(it))}</div>
+                      )}
+                      <div className="text-base font-semibold text-foreground">
+                        {pctDescuento(it.descuento) >= 100 ? "Cortesía" : money(it.subtotal)}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="mt-3 flex items-center justify-between gap-3">
@@ -12618,6 +12747,14 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     <button type="button" className={cn(pastilla, it.nota ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setNotaAbierta(notaAbierta === it.id ? null : it.id)}>
                       {it.nota ? <CircleCheck size={14} /> : <StickyNote size={14} />} Nota
                     </button>
+                    <button
+                      type="button"
+                      className={cn(pastilla, pctDescuento(it.descuento) ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")}
+                      onClick={() => setDescuentoAbierto(descuentoAbierto === it.id ? null : it.id)}
+                    >
+                      <BadgePercent size={14} />
+                      {pctDescuento(it.descuento) ? (pctDescuento(it.descuento) >= 100 ? "Cortesía" : `−${pctDescuento(it.descuento)}%`) : "Descuento"}
+                    </button>
                   </div>
 
                   {/* Los extras ya puestos, cada uno con su más y menos. */}
@@ -12631,6 +12768,15 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                         </span>
                       ))}
                     </div>
+                  )}
+
+                  {descuentoAbierto === it.id && (
+                    <SelectorDescuento
+                      className="mt-2"
+                      valor={pctDescuento(it.descuento)}
+                      onCambiar={(pct) => updateDescuentoItem(it.id, pct)}
+                      onListo={() => setDescuentoAbierto(null)}
+                    />
                   )}
 
                   {notaAbierta === it.id && (
@@ -12665,16 +12811,22 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 <span>{money(totalItems)}</span>
               </div>
             )}
-            {envioNum > 0 && (
+            {(envioNum > 0 || (form.entrega && pctDescuento(form.descuentoEnvio) > 0)) && (
               <div className="af-total-row af-total-row-sub">
                 <span>Costo de envío</span>
-                <span>{money(envioNum)}</span>
+                <span>{pctDescuento(form.descuentoEnvio) >= 100 ? "Cortesía" : money(envioNum)}</span>
               </div>
             )}
-            {recoleccionNum > 0 && (
+            {(recoleccionNum > 0 || (form.recogerPaellera && hayPaelleraEnForm && pctDescuento(form.descuentoRecoleccion) > 0)) && (
               <div className="af-total-row af-total-row-sub">
                 <span>Costo de recoger la paellera</span>
-                <span>{money(recoleccionNum)}</span>
+                <span>{pctDescuento(form.descuentoRecoleccion) >= 100 ? "Cortesía" : money(recoleccionNum)}</span>
+              </div>
+            )}
+            {ahorroTotalDe(form) > 0 && (
+              <div className="af-total-row af-total-row-sub text-exito-fuerte">
+                <span>Descuentos y cortesías</span>
+                <span>−{money(ahorroTotalDe(form))}</span>
               </div>
             )}
             {ivaNum > 0 && (
@@ -12757,8 +12909,24 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             </div>
             {form.entrega && form.recogerPaellera && hayPaelleraEnForm && (parseFloat(form.envio) || 0) > 0 && (
               <div className="af-hint mt-2">
-                Llevar {money(parseFloat(form.envio) || 0)} + recoger la paellera {money(parseFloat(form.envio) || 0)} ={" "}
-                <strong>{money(2 * (parseFloat(form.envio) || 0))}</strong>
+                Llevar {pctDescuento(form.descuentoEnvio) >= 100 ? "cortesía" : money(envioNum)} + recoger la paellera{" "}
+                {pctDescuento(form.descuentoRecoleccion) >= 100 ? "cortesía" : money(recoleccionNum)} ={" "}
+                <strong>{money(envioNum + recoleccionNum)}</strong>
+              </div>
+            )}
+            {/* Descuento o cortesía del envío y de recoger la paellera, cada
+                uno aparte: hay quien recibe gratis la entrega pero paga la
+                recolección. En el presupuesto sale explícito. */}
+            {form.entrega && (
+              <div className="mt-2">
+                <div className="af-mini-label">Descuento al envío</div>
+                <SelectorDescuento valor={pctDescuento(form.descuentoEnvio)} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoEnvio: pct }))} />
+              </div>
+            )}
+            {form.recogerPaellera && hayPaelleraEnForm && (
+              <div className="mt-2">
+                <div className="af-mini-label">Descuento a recoger la paellera</div>
+                <SelectorDescuento valor={pctDescuento(form.descuentoRecoleccion)} onCambiar={(pct) => setForm((p) => ({ ...p, descuentoRecoleccion: pct }))} />
               </div>
             )}
             <div className="af-mini-label mt-2">Ubicación</div>
@@ -14691,6 +14859,8 @@ export default function App() {
       envio: String(pedido.envio || pedido.costoRecoleccion || 0),
       recogerPaellera: !!pedido.recogerPaellera,
       costoRecoleccion: String(pedido.envio || pedido.costoRecoleccion || 0),
+      descuentoEnvio: pedido.descuentoEnvio || 0,
+      descuentoRecoleccion: pedido.descuentoRecoleccion || 0,
       iva: !!pedido.iva,
       abonos: pedido.abonos || [],
       estado: pedido.estado || "pendiente",
@@ -14724,6 +14894,8 @@ export default function App() {
       envio: String(presupuesto.envio || presupuesto.costoRecoleccion || 0),
       recogerPaellera: !!presupuesto.recogerPaellera,
       costoRecoleccion: String(presupuesto.envio || presupuesto.costoRecoleccion || 0),
+      descuentoEnvio: presupuesto.descuentoEnvio || 0,
+      descuentoRecoleccion: presupuesto.descuentoRecoleccion || 0,
       iva: !!presupuesto.iva,
       abonos: [],
       estado: "pendiente",
@@ -14818,9 +14990,11 @@ export default function App() {
       entrega: form.entrega,
       direccion: vamosAlDomicilio(form) ? form.direccion.trim() : "",
       ubicacion: vamosAlDomicilio(form) ? form.ubicacion.trim() : "",
-      envio: envioDe(form),
+      envio: envioBrutoDe(form),
       recogerPaellera: !!form.recogerPaellera && llevaPaellera(form),
-      costoRecoleccion: recoleccionDe(form),
+      costoRecoleccion: recoleccionBrutoDe(form),
+      descuentoEnvio: pctDescuento(form.descuentoEnvio),
+      descuentoRecoleccion: pctDescuento(form.descuentoRecoleccion),
       iva: !!form.iva,
       abonos,
       pagado,
@@ -14971,9 +15145,11 @@ export default function App() {
       entrega: form.entrega,
       direccion: vamosAlDomicilio(form) ? form.direccion.trim() : "",
       ubicacion: vamosAlDomicilio(form) ? form.ubicacion.trim() : "",
-      envio: envioDe(form),
+      envio: envioBrutoDe(form),
       recogerPaellera: !!form.recogerPaellera && llevaPaellera(form),
-      costoRecoleccion: recoleccionDe(form),
+      costoRecoleccion: recoleccionBrutoDe(form),
+      descuentoEnvio: pctDescuento(form.descuentoEnvio),
+      descuentoRecoleccion: pctDescuento(form.descuentoRecoleccion),
       iva: !!form.iva,
       notas: form.notas,
       terminos: form.terminos,
@@ -15029,9 +15205,11 @@ export default function App() {
       entrega: form.entrega,
       direccion: vamosAlDomicilio(form) ? form.direccion.trim() : "",
       ubicacion: vamosAlDomicilio(form) ? form.ubicacion.trim() : "",
-      envio: envioDe(form),
+      envio: envioBrutoDe(form),
       recogerPaellera: !!form.recogerPaellera && llevaPaellera(form),
-      costoRecoleccion: recoleccionDe(form),
+      costoRecoleccion: recoleccionBrutoDe(form),
+      descuentoEnvio: pctDescuento(form.descuentoEnvio),
+      descuentoRecoleccion: pctDescuento(form.descuentoRecoleccion),
       iva: !!form.iva,
       abonos: [],
       pagado: 0,
@@ -15079,6 +15257,8 @@ export default function App() {
       envio: pr.envio || 0,
       recogerPaellera: !!pr.recogerPaellera,
       costoRecoleccion: pr.costoRecoleccion || 0,
+      descuentoEnvio: pr.descuentoEnvio || 0,
+      descuentoRecoleccion: pr.descuentoRecoleccion || 0,
       iva: !!pr.iva,
       abonos: [],
       pagado: 0,
