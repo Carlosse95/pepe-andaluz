@@ -2134,8 +2134,10 @@ function OpcionesPlatillo({ item, onCerrar, extrasDisponibles, cantidadDeExtra, 
   return (
     <Drawer open={!!item} onOpenChange={(o) => { if (!o) onCerrar(); }}>
       <DrawerContent>
+        {/* Todo el ancho en celular y iPad; en la laptop se centra para que
+            el nombre de cada extra no quede lejísimos de sus botones. */}
         {it && (
-          <div className="flex min-h-0 w-full flex-col">
+          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col">
             <DrawerHeader>
               <DrawerTitle>{esPaella ? it.paellaNombre : it.nombre}</DrawerTitle>
               <DrawerDescription>
