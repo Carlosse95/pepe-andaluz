@@ -760,6 +760,9 @@ const mensajeWhatsApp = (datos, modo, pago, mensajes, local) => {
     } else {
       lineas.push(`• ${it.nombre} ${esPorKg(it) ? "— " + fmtKg(it.cantidad) : it.piezasPorUnidad > 0 ? "— " + (it.cantidad * it.piezasPorUnidad) + " piezas" : "× " + it.cantidad} — ${money(it.subtotal)}`);
     }
+    // Lo que pidió el cliente de ese platillo ("sin chícharos"): que vea que
+    // quedó apuntado. Igual que en el PDF.
+    if ((it.nota || "").trim()) lineas.push(`   📝 ${it.nota.trim()}`);
   });
   lineas.push("");
   const envio = envioDe(datos);
@@ -1986,12 +1989,24 @@ const CampoBase = React.forwardRef(({ className, ...props }, ref) =>
     : <input ref={ref} className={className} {...props} />
 );
 
+// Lee lo que se tecleó aceptando coma o punto. El teclado del iPhone en
+// español pone coma decimal: "7,5" kg se leía como 7 (parseFloat se detiene
+// en la coma) y el presupuesto salía "para 14 personas" en vez de 15. Una coma
+// con grupos de tres cifras ("1,500") sigue siendo de miles.
+const leerNumero = (texto) => {
+  let t = String(texto ?? "").trim().replace(/\s+/g, "").replace(/\$/g, "");
+  if (t.includes(",") && t.includes(".")) t = t.replace(/,/g, "");
+  else if (/^-?\d{1,3}(,\d{3})+$/.test(t)) t = t.replace(/,/g, "");
+  else t = t.replace(",", ".");
+  return parseFloat(t);
+};
+
 function NumberField({ value, onChange, min, className, disabled }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
 
   const commit = () => {
-    const v = parseFloat(text);
+    const v = leerNumero(text);
     const limpio = Number.isNaN(v) ? (min != null ? min : 0) : (min != null ? Math.max(min, v) : v);
     onChange(limpio);
     setText(String(limpio));
@@ -12533,6 +12548,8 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       <div className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</div>
                       <div className="text-xs text-muted-foreground">
                         {porKg ? `${money(esPaella ? it.precioKg : it.precio)} por kg` : `${money(it.precio)} c/u`}
+                        {/* Lo mismo que leerá el cliente en el mensaje y el PDF. */}
+                        {esPaella && <> · <span className="font-medium text-foreground">{fmtPersonas(it.kg)}</span></>}
                       </div>
                     </div>
                     <div className="shrink-0 text-right text-base font-semibold tabular-nums text-foreground">{money(it.subtotal)}</div>
@@ -12553,57 +12570,55 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     </Button>
                   </div>
 
-                  {(esPaella || modo === "pedido") && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      {/* El menú de extras NO se cierra al elegir: así se ponen
-                          tres chorizos con tres toques sin mover el dedo. */}
-                      {esPaella && (config.extrasPaella || []).length > 0 && (
-                        <div className="af-extra-wrap">
-                          <button type="button" className={cn(pastilla, (it.extras || []).length ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
-                            <CirclePlus size={14} /> Extras{(it.extras || []).length ? ` · ${(it.extras || []).reduce((a, e) => a + (e.cantidad || 1), 0)}` : ""}
-                          </button>
-                          {extrasAbierto === it.id && (
-                            <>
-                              <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
-                              <div className="af-extra-menu af-combo-wrap">
-                                {(config.extrasPaella || []).map((ex) => {
-                                  const puestos = cantidadDeExtra(it, ex.id);
-                                  return (
-                                    <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
-                                      <span className="af-extra-menu-nombre">{ex.nombre}</span>
-                                      <span className="af-ink-soft">{money(ex.precio)}</span>
-                                      <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
-                                        onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><CircleMinus size={12} /></button>
-                                      <span className="af-extra-menu-cuenta">{puestos}</span>
-                                      <button className="af-extra-mini-btn" title="Agregar uno"
-                                        onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><CirclePlus size={12} /></button>
-                                    </div>
-                                  );
-                                })}
-                                <button className="af-extra-menu-listo" onClick={() => setExtrasAbierto(null)}>Listo</button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                      {/* También en presupuestos: si va en paellera cambia el total. */}
-                      {esPaella && (
-                        <button
-                          type="button"
-                          aria-pressed={!!it.enPaellera}
-                          className={cn(pastilla, it.enPaellera ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")}
-                          onClick={() => updateEnPaellera(it.id, !it.enPaellera)}
-                        >
-                          {it.enPaellera ? <CircleCheck size={14} /> : <ChefHat size={14} />} En paellera
+                  {/* La nota va también en presupuestos ("sin chícharos"): sale en
+                      el PDF y se queda al convertirlo en pedido. */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {/* El menú de extras NO se cierra al elegir: así se ponen
+                        tres chorizos con tres toques sin mover el dedo. */}
+                    {esPaella && (config.extrasPaella || []).length > 0 && (
+                      <div className="af-extra-wrap">
+                        <button type="button" className={cn(pastilla, (it.extras || []).length ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setExtrasAbierto(extrasAbierto === it.id ? null : it.id)}>
+                          <CirclePlus size={14} /> Extras{(it.extras || []).length ? ` · ${(it.extras || []).reduce((a, e) => a + (e.cantidad || 1), 0)}` : ""}
                         </button>
-                      )}
-                      {modo === "pedido" && (
-                        <button type="button" className={cn(pastilla, it.nota ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setNotaAbierta(notaAbierta === it.id ? null : it.id)}>
-                          {it.nota ? <CircleCheck size={14} /> : <StickyNote size={14} />} Nota
-                        </button>
-                      )}
-                    </div>
-                  )}
+                        {extrasAbierto === it.id && (
+                          <>
+                            <div className="af-clickaway" onClick={() => setExtrasAbierto(null)} />
+                            <div className="af-extra-menu af-combo-wrap">
+                              {(config.extrasPaella || []).map((ex) => {
+                                const puestos = cantidadDeExtra(it, ex.id);
+                                return (
+                                  <div key={ex.id} className={"af-extra-menu-item" + (puestos > 0 ? " puesto" : "")}>
+                                    <span className="af-extra-menu-nombre">{ex.nombre}</span>
+                                    <span className="af-ink-soft">{money(ex.precio)}</span>
+                                    <button className="af-extra-mini-btn" title="Quitar uno" disabled={puestos === 0}
+                                      onClick={() => cambiarExtraDesdeMenu(it, ex, -1)}><CircleMinus size={12} /></button>
+                                    <span className="af-extra-menu-cuenta">{puestos}</span>
+                                    <button className="af-extra-mini-btn" title="Agregar uno"
+                                      onClick={() => cambiarExtraDesdeMenu(it, ex, 1)}><CirclePlus size={12} /></button>
+                                  </div>
+                                );
+                              })}
+                              <button className="af-extra-menu-listo" onClick={() => setExtrasAbierto(null)}>Listo</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {/* También en presupuestos: si va en paellera cambia el total. */}
+                    {esPaella && (
+                      <button
+                        type="button"
+                        aria-pressed={!!it.enPaellera}
+                        className={cn(pastilla, it.enPaellera ? "bg-primary text-primary-foreground ring-primary" : "bg-card text-foreground")}
+                        onClick={() => updateEnPaellera(it.id, !it.enPaellera)}
+                      >
+                        {it.enPaellera ? <CircleCheck size={14} /> : <ChefHat size={14} />} En paellera
+                      </button>
+                    )}
+                    <button type="button" className={cn(pastilla, it.nota ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground")} onClick={() => setNotaAbierta(notaAbierta === it.id ? null : it.id)}>
+                      {it.nota ? <CircleCheck size={14} /> : <StickyNote size={14} />} Nota
+                    </button>
+                  </div>
 
                   {/* Los extras ya puestos, cada uno con su más y menos. */}
                   {esPaella && (it.extras || []).length > 0 && (
@@ -12618,7 +12633,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                     </div>
                   )}
 
-                  {modo === "pedido" && notaAbierta === it.id && (
+                  {notaAbierta === it.id && (
                     <Textarea
                       autoFocus
                       rows={2}
@@ -12629,7 +12644,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                       onBlur={() => setNotaAbierta(null)}
                     />
                   )}
-                  {modo === "pedido" && notaAbierta !== it.id && it.nota && (
+                  {notaAbierta !== it.id && it.nota && (
                     <button type="button" className="mt-2 flex w-full items-start gap-2 rounded-xl bg-aviso/10 px-3 py-2 text-left text-sm text-foreground" onClick={() => setNotaAbierta(it.id)}>
                       <StickyNote size={14} className="mt-0.5 shrink-0 text-aviso-fuerte" /> {it.nota}
                     </button>
