@@ -12787,20 +12787,24 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold leading-snug text-foreground">{esPaella ? it.paellaNombre : it.nombre}</span>
+                        {esPaella && it.enPaellera && <Chip variant="secondary"><ChefHat size={12} /> En paellera</Chip>}
+                      </div>
                       <div className="text-xs text-muted-foreground">
-                        {porKg ? `${money(esPaella ? it.precioKg : it.precio)} por kg` : `${money(it.precio)} c/u`}
+                        {/* Precio unitario ya con descuento, para que cuadre con el total
+                            (en cortesía se deja el de lista como referencia). */}
+                        {(() => {
+                          const unidad = pctDescuento(it.descuento) >= 100 ? (esPaella ? it.precioKg : it.precio) : preciosConDescuento(it).unidad;
+                          return porKg ? `${money(unidad)} por kg` : `${money(unidad)} c/u`;
+                        })()}
                         {/* Lo mismo que leerá el cliente en el mensaje y el PDF. */}
                         {esPaella && <> · <span className="font-medium text-foreground">{fmtPersonas(it.kg)}</span></>}
                       </div>
                     </div>
-                    <div className="shrink-0 text-right tabular-nums">
-                      {pctDescuento(it.descuento) > 0 && (
-                        <div className="text-xs text-muted-foreground line-through">{money(brutoDe(it))}</div>
-                      )}
-                      <div className="text-base font-semibold text-foreground">
-                        {pctDescuento(it.descuento) >= 100 ? "Cortesía" : money(it.subtotal)}
-                      </div>
+                    {/* Solo el precio que se cobra (ya con descuento) o "Cortesía". */}
+                    <div className="shrink-0 text-right text-base font-semibold tabular-nums text-foreground">
+                      {pctDescuento(it.descuento) >= 100 ? "Cortesía" : money(it.subtotal)}
                     </div>
                   </div>
 
@@ -12821,16 +12825,14 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
 
                   {/* Lo que trae puesto, de un vistazo. Todo se cambia en la hoja
                       de opciones, que se abre tocando el platillo. */}
-                  {(it.enPaellera || (it.extras || []).length > 0 || it.nota || pctDescuento(it.descuento) > 0) && (
+                  {/* Abajo solo extras y nota (si hay). La paellera va junto al
+                      nombre y el descuento ya está en el precio. */}
+                  {((it.extras || []).length > 0 || (it.nota || "").trim()) && (
                     <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {esPaella && it.enPaellera && <Chip variant="secondary"><ChefHat size={12} /> En paellera</Chip>}
                       {(it.extras || []).map((e) => (
                         <Chip key={e.id} variant="secondary">+ {e.nombre}{e.cantidad > 1 ? ` ×${e.cantidad}` : ""}</Chip>
                       ))}
-                      {pctDescuento(it.descuento) > 0 && (
-                        <Chip variant="secondary">{pctDescuento(it.descuento) >= 100 ? "Cortesía" : `−${pctDescuento(it.descuento)}%`}</Chip>
-                      )}
-                      {it.nota && <Chip variant="secondary"><StickyNote size={12} /> {it.nota}</Chip>}
+                      {(it.nota || "").trim() && <Chip variant="secondary"><StickyNote size={12} /> {it.nota.trim()}</Chip>}
                     </div>
                   )}
                 </div>
@@ -12945,7 +12947,7 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             <div className="af-envio-row flex-wrap">
               <span className="af-mini-label min-w-0 flex-1" style={{ marginBottom: 0 }}>
                 {form.entrega && form.recogerPaellera && hayPaelleraEnForm
-                  ? "Costo de envío (recoger cuesta lo mismo)"
+                  ? "Costo de llevar y recoger"
                   : form.entrega
                     ? "Costo de envío"
                     : "Costo de recoger la paellera"}
