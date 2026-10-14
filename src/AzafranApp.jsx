@@ -17192,6 +17192,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    hora (son para capturar pedidos viejos, que se hace en el iPad), ni el
    "Se verá como", que repite lo que ya enseña el cuadro de la hora. */
 @media (max-width: 699px) { .af-fecha-hora .af-fecha-paso, .af-fecha-hora .af-hora-preview { display: none; } }
+/* Con la fecha completa (con año) a media pantalla del celular faltaban unos
+   pixeles: se recorta un poco el relleno del botón de la fecha. */
+@media (max-width: 699px) { .af-fecha-hora button.af-input { padding-left: 8px; padding-right: 8px; gap: 4px; } }
 @media (min-width: 700px) { .af-app .af-card-grid.af-fecha-hora { column-gap: 16px; } }
 
 .af-ink-soft { color: var(--ink-soft); }
