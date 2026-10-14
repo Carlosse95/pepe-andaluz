@@ -11,7 +11,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel, AlertDialogMedia } from "@/components/ui/alert-dialog";
 import { Toggle } from "@/components/ui/toggle";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from "@/components/ui/command";
+import { Command, CommandList, CommandGroup, CommandItem, CommandSeparator } from "@/components/ui/command";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Combobox } from "@/components/ui/combobox";
@@ -2042,18 +2042,16 @@ const CampoBase = React.forwardRef(({ className, ...props }, ref) =>
 );
 
 // Elegir un descuento: un solo botón que enseña el actual ("Descuento",
-// "−10%", "Cortesía") y abre una ventana con buscador (Command de shadcn) con
-// los porcentajes de siempre y la cortesía. Si se escribe otro número sale
-// "Aplicar 12%". Antes eran siete pastillas en fila y en el celular se veían
-// amontonadas.
-const DESCUENTOS_RAPIDOS = [5, 10, 15, 20, 25, 30, 50];
+// "−10%", "Cortesía") y abre una ventana (Command de shadcn) con los
+// porcentajes típicos —los de propina, para que sean pocos—, la cortesía y,
+// hasta abajo, un cuadro para escribir uno en específico.
+const DESCUENTOS_RAPIDOS = [10, 15, 20];
 function SelectorDescuento({ valor, onCambiar, etiqueta = "Descuento", prefijo = "", className }) {
   const [abierto, setAbierto] = useState(false);
-  const [busqueda, setBusqueda] = useState("");
+  const [otro, setOtro] = useState("");
   const actual = pctDescuento(valor);
-  const escrito = pctDescuento(leerNumero(busqueda.replace("%", "")));
-  const otro = busqueda.trim() && escrito > 0 && escrito < 100 && !DESCUENTOS_RAPIDOS.includes(escrito) ? escrito : null;
-  const elegir = (pct) => { onCambiar(pct); setAbierto(false); setBusqueda(""); };
+  const escrito = pctDescuento(leerNumero(otro.replace("%", "")));
+  const elegir = (pct) => { onCambiar(pct); setAbierto(false); setOtro(""); };
   const pastilla = "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 ring-foreground/10 transition-colors";
   const palomita = (n) => <Check className={cn("ml-auto", actual === n ? "opacity-100" : "opacity-0")} />;
   return (
@@ -2061,27 +2059,18 @@ function SelectorDescuento({ valor, onCambiar, etiqueta = "Descuento", prefijo =
       <button
         type="button"
         className={cn(pastilla, actual ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground", className)}
-        onClick={() => setAbierto(true)}
+        onClick={() => { setOtro(actual && actual < 100 && !DESCUENTOS_RAPIDOS.includes(actual) ? String(actual) : ""); setAbierto(true); }}
       >
         {actual >= 100 ? <Gift size={14} /> : <BadgePercent size={14} />}
         {actual ? `${prefijo}${actual >= 100 ? "Cortesía" : `−${actual}%`}` : etiqueta}
       </button>
-      <DialogS open={abierto} onOpenChange={(o) => { setAbierto(o); if (!o) setBusqueda(""); }}>
+      <DialogS open={abierto} onOpenChange={setAbierto}>
         <DialogSContent className="max-w-sm gap-0 overflow-hidden p-0">
-          <DialogSTitle className="sr-only">{etiqueta}</DialogSTitle>
+          <DialogSTitle className="px-4 pb-1 pt-4 text-base">{etiqueta}</DialogSTitle>
           <Command>
-            <CommandInput data-teclear className="pr-8" placeholder="Escribe un porcentaje…" value={busqueda} onValueChange={setBusqueda} />
-            <CommandList className="max-h-[min(30rem,calc(var(--alto-visible,100dvh)-6rem))]">
-              <CommandEmpty>Escribe un número del 1 al 100.</CommandEmpty>
-              {otro != null && (
-                <CommandGroup heading="Otro">
-                  <CommandItem value={`aplicar ${busqueda}`} onSelect={() => elegir(otro)}>
-                    <BadgePercent /> Aplicar {otro}%
-                  </CommandItem>
-                </CommandGroup>
-              )}
+            <CommandList className="max-h-none">
               <CommandGroup heading="Descuento">
-                <CommandItem value="sin descuento 0" onSelect={() => elegir(0)}>
+                <CommandItem value="sin descuento" onSelect={() => elegir(0)}>
                   <CircleX /> Sin descuento {palomita(0)}
                 </CommandItem>
                 {DESCUENTOS_RAPIDOS.map((n) => (
@@ -2092,12 +2081,30 @@ function SelectorDescuento({ valor, onCambiar, etiqueta = "Descuento", prefijo =
               </CommandGroup>
               <CommandSeparator />
               <CommandGroup heading="Regalo">
-                <CommandItem value="cortesia gratis regalo 100%" onSelect={() => elegir(100)}>
+                <CommandItem value="cortesia" onSelect={() => elegir(100)}>
                   <Gift /> Cortesía (sin costo) {palomita(100)}
                 </CommandItem>
               </CommandGroup>
             </CommandList>
           </Command>
+          {/* Hasta abajo: un porcentaje en específico. */}
+          <form
+            className="flex items-center gap-2 border-t border-border p-3"
+            onSubmit={(e) => { e.preventDefault(); if (escrito > 0) elegir(escrito); }}
+          >
+            <div className="relative flex-1">
+              <Input
+                data-teclear
+                inputMode="decimal"
+                placeholder="Otro porcentaje"
+                value={otro}
+                onChange={(e) => setOtro(e.target.value)}
+                className="pr-8"
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+            </div>
+            <Button type="submit" size="sm" disabled={!(escrito > 0)}>Aplicar</Button>
+          </form>
         </DialogSContent>
       </DialogS>
     </>
