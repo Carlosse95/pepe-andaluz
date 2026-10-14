@@ -39,7 +39,9 @@ function DatePicker({ value, onChange, placeholder = "Elegir día", className, d
         >
           <CalendarDays className="size-4 shrink-0 opacity-60" />
           <span className="truncate first-letter:uppercase">
-            {fecha ? format(fecha, "EEE d 'de' MMM yyyy", { locale: esFechas }) : placeholder}
+            {/* El año solo si no es el actual (como en el resto de la app): así
+                cabe junto a la hora en el celular. */}
+            {fecha ? format(fecha, fecha.getFullYear() === new Date().getFullYear() ? "EEE d 'de' MMM" : "EEE d 'de' MMM yyyy", { locale: esFechas }) : placeholder}
           </span>
         </button>
       </PopoverTrigger>
