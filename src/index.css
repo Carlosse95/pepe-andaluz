@@ -87,8 +87,16 @@
   }
 }
 
-html, body, #root {
+/* El cuerpo CRECE con el contenido (min-height), no mide exactamente la
+   pantalla. Con height:100% todo el contenido quedaba "desbordado" fuera del
+   body, y Safari del iPad —sobre todo con el teclado magnético— calculaba mal
+   dónde estaba el campo en que se escribía y brincaba la página hasta abajo
+   con cada tecla (Ubicación y Referencias del pedido, oct 2026). */
+html {
   height: 100%;
+}
+body, #root {
+  min-height: 100%;
 }
 
 body {

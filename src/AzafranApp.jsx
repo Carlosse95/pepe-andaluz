@@ -34,11 +34,12 @@ import {
   DialogTitle as DialogSTitle, DialogDescription as DialogSDescription, DialogClose as DialogSClose,
 } from "@/components/ui/dialog-shadcn";
 import { Button as ButtonS } from "@/components/ui/button-shadcn";
+import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentDescription, AttachmentActions, AttachmentAction, AttachmentTrigger } from "@/components/ui/attachment";
 import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -6462,6 +6463,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [nuevoGasto, setNuevoGasto] = useState({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0 });
   const [subiendoTicket, setSubiendoTicket] = useState(false);
   const [leyendoTicket, setLeyendoTicket] = useState(false);
+  // La foto que se acaba de elegir, para verla en miniatura (vive solo en
+  // este aparato; lo que se guarda es la ruta en Storage). Y si falló.
+  const [vistaTicket, setVistaTicket] = useState(null);
+  const [errorTicket, setErrorTicket] = useState(false);
   const [tiendaOtra, setTiendaOtra] = useState(false);
   const [abrirGasto, setAbrirGasto] = useState(false);
   const [abrirFijos, setAbrirFijos] = useState(false);
@@ -7131,6 +7136,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
     // guardado en la nube falla, `persist` avisa aparte con su error.)
     showToast(`Gasto guardado · ${money(g.monto)}`);
     setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0, tienda: "", ticket: null, folio: null, folio2: null, ambito: "negocio" });
+    setVistaTicket(null);
+    setErrorTicket(false);
     setTiendaOtra(false);
     setAbrirGasto(false);
     setPosibleDuplicado(null);
@@ -8372,20 +8379,34 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 antes de guardar, y corrige lo que haga falta.
               </Ayuda>
             </Label>
-            {nuevoGasto.ticket ? (
-              <div className="af-ticket-listo">
-                <Receipt size={15} /> Ticket guardado
-                <Button variant="link" size="auto" onClick={() => setNuevoGasto({ ...nuevoGasto, ticket: null })}>
-                  Quitar
-                </Button>
-              </div>
-            ) : (
-              <label className={cn(buttonVariants({ variant: "secondary" }), "af-boton-archivo w-full cursor-pointer")}>
-                {subiendoTicket
-                  ? "Subiendo…"
-                  : leyendoTicket
-                    ? "Leyendo el ticket…"
-                    : <><Camera size={15} /> Tomar o elegir foto</>}
+            {/* Attachment de shadcn: vacío (punteado) → subiendo → leyendo →
+                guardado con miniatura y una X para quitarla; o error. */}
+            <Attachment
+              className="w-full"
+              state={subiendoTicket ? "uploading" : leyendoTicket ? "processing" : nuevoGasto.ticket ? "done" : errorTicket ? "error" : "idle"}
+            >
+              <AttachmentMedia variant={vistaTicket && (nuevoGasto.ticket || subiendoTicket) ? "image" : "icon"}>
+                {vistaTicket && (nuevoGasto.ticket || subiendoTicket)
+                  ? <img src={vistaTicket} alt="" />
+                  : nuevoGasto.ticket ? <Receipt /> : errorTicket ? <TriangleAlert /> : <Camera />}
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>
+                  {subiendoTicket ? "Subiendo foto…" : leyendoTicket ? "Leyendo el ticket…" : nuevoGasto.ticket ? "Ticket guardado" : errorTicket ? "No se pudo guardar la foto" : "Tomar o elegir foto"}
+                </AttachmentTitle>
+                <AttachmentDescription>
+                  {subiendoTicket ? "Un momento" : leyendoTicket ? "Llenando los datos" : nuevoGasto.ticket ? "Revisa los datos" : errorTicket ? "Toca para intentar otra vez" : "Se lee sola y llena los datos"}
+                </AttachmentDescription>
+              </AttachmentContent>
+              {nuevoGasto.ticket && !leyendoTicket ? (
+                <AttachmentActions>
+                  <AttachmentAction aria-label="Quitar foto" onClick={() => { setNuevoGasto({ ...nuevoGasto, ticket: null }); setVistaTicket(null); }}>
+                    <X />
+                  </AttachmentAction>
+                </AttachmentActions>
+              ) : !nuevoGasto.ticket && (
+              <AttachmentTrigger asChild>
+              <label aria-label="Tomar o elegir foto del ticket">
                 {/* Sin "capture". Ese atributo manda al iPhone directo a la
                     cámara y ESCONDE la galería: no había forma de subir un
                     ticket que te mandaron por WhatsApp, aunque el botón dice
@@ -8400,12 +8421,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     const archivo = e.target.files && e.target.files[0];
                     e.target.value = "";
                     if (!archivo) return;
+                    setVistaTicket((vieja) => { if (vieja) URL.revokeObjectURL(vieja); return URL.createObjectURL(archivo); });
+                    setErrorTicket(false);
                     setSubiendoTicket(true);
                     let ruta = null;
                     try {
                       ruta = await subirTicket(archivo);
                       setNuevoGasto((prev) => ({ ...prev, ticket: ruta }));
                     } catch (err) {
+                      setErrorTicket(true);
                       showToast("No se pudo guardar la foto: " + (err.message || ""), "error");
                     }
                     setSubiendoTicket(false);
@@ -8453,7 +8477,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   }}
                 />
               </label>
-            )}
+              </AttachmentTrigger>
+              )}
+            </Attachment>
           </div>
 
 
@@ -15900,7 +15926,12 @@ const AZAFRAN_CSS = `
 .af-borrar-pendiente { text-align: left; font-size: var(--text-sm); line-height: 1.5; color: hsl(var(--error-fuerte)); background: color-mix(in srgb, hsl(var(--error)) 10%, transparent); border-radius: var(--radius-md); padding: 12px 12px; margin-bottom: 16px; }
 .af-borrar-pendiente ul { margin: 4px 0 0; padding-left: 16px; }
 
-.af-content { flex: 1; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); overflow-y: auto; }
+/* Sin overflow-y:auto. La que se desplaza es la página, no esta caja; pero
+   con "auto" quedaba como caja de scroll (que nunca scrollea) y Safari del
+   iPad, con el teclado magnético, al escribir en Ubicación/Referencias
+   calculaba mal dónde estaba el cursor y aventaba la página hasta abajo.
+   clip en x: lo ancho se sigue recortando aquí, sin volverse caja de scroll. */
+.af-content { flex: 1; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); overflow-x: clip; }
 
 .af-greeting { font-family: var(--fuente-titulos); font-size: var(--text-2xl); font-weight: 700; }
 .af-today-date { color: var(--ink-soft); font-size: var(--text-sm); margin-top: 2px; }

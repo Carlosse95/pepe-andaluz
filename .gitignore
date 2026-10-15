@@ -5,3 +5,6 @@ dist
 # Vista local con nube de prueba (no se publica)
 prueba-sync/
 vite.prueba.config.js
+
+# Fuera de la sincronización de iCloud (iCloud las vaciaba y todo se trababa)
+*.nosync
