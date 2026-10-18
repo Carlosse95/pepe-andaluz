@@ -22,7 +22,10 @@ export function seguirVistaVisible() {
     if (abierto) {
       raiz.style.setProperty("--alto-visible", `${Math.round(vv.height)}px`);
       raiz.style.setProperty("--arriba-visible", `${Math.round(vv.offsetTop)}px`);
+      // Ya se mide justo lo visible: no hay que subir la ventana además.
+      raiz.style.setProperty("--hueco-abajo", "0px");
     } else {
+      raiz.style.removeProperty("--hueco-abajo");
       raiz.style.removeProperty("--alto-visible");
       raiz.style.removeProperty("--arriba-visible");
     }

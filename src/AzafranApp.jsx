@@ -11759,12 +11759,6 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                 </Toggle>
               ))}
             </div>
-            {itemsCarrito.length > 0 && (
-              <button className="af-carrito-bar" onClick={() => setVerResumen(true)}>
-                <span>{itemsCarrito.length} {itemsCarrito.length === 1 ? "producto" : "productos"} · {money(totalCarrito)}</span>
-                <span className="af-carrito-bar-link">Ver resumen ›</span>
-              </button>
-            )}
             <div className="af-picker-scroll">
               {agrupados.length === 0 && <div className="af-hint" style={{ padding: "14px 2px" }}>Sin resultados para tu búsqueda.</div>}
               {agrupados.map((g) => (
@@ -11829,6 +11823,15 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                 <CirclePlus size={16} /> <span>Ingresar nuevo producto</span>
               </button>
             </div>
+            {/* Abajo de la lista, no arriba: al salir arriba con el primer
+                platillo, recorría toda la lista y el siguiente toque caía en
+                otro renglón (parecía que había que picar dos veces). */}
+            {itemsCarrito.length > 0 && (
+              <button className="af-carrito-bar" onClick={() => setVerResumen(true)}>
+                <span>{itemsCarrito.length} {itemsCarrito.length === 1 ? "producto" : "productos"} · {money(totalCarrito)}</span>
+                <span className="af-carrito-bar-link">Ver resumen ›</span>
+              </button>
+            )}
           </div>
 
           <div className={"af-modal-detail-pane" + (mostrarDetalle ? "" : " af-pane-hide-mobile")}>
@@ -16453,13 +16456,16 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 
 /* Modal "Agregar ítem" */
 /* Se mide con la vista visible (ver vistaVisible.js): con el teclado abierto
-   la ventana cabe arriba de él en vez de quedar detrás. */
-.af-modal-overlay { position: fixed; left: 0; right: 0; top: var(--arriba-visible, 0px); height: var(--alto-visible, 100lvh); background: rgb(0 0 0 / 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
+   la ventana cabe arriba de él en vez de quedar detrás.
+   El fondo oscuro cubre la pantalla entera (lvh), pero la ventana se sube lo
+   que tapa la barra de Safari abajo (lvh − dvh): en el iPhone, el botón de
+   "Agregar ítems" quedaba medio metido detrás de esa barra. */
+.af-modal-overlay { position: fixed; left: 0; right: 0; top: var(--arriba-visible, 0px); height: var(--alto-visible, 100lvh); padding-bottom: var(--hueco-abajo, calc(100lvh - 100dvh)); background: rgb(0 0 0 / 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 60; }
 /* Para el modal de "Mi perfil": centrado en cualquier tamaño de pantalla,
    no solo en escritorio (a diferencia de los demás modales, que en celular
    se abren pegados abajo). */
-.af-modal-overlay-center { align-items: center; padding: 24px; }
-.af-modal { background: var(--bg); width: 100%; height: min(92vh, calc(var(--alto-visible, 100vh) - 24px)); max-height: min(92vh, calc(var(--alto-visible, 100vh) - 24px)); border-radius: var(--radius-lg) var(--radius-lg) 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -8px 30px rgb(0 0 0 / 0.3); }
+.af-modal-overlay-center { align-items: center; padding: 24px 24px calc(24px + var(--hueco-abajo, calc(100lvh - 100dvh))); }
+.af-modal { background: var(--bg); width: 100%; height: min(92dvh, calc(var(--alto-visible, 100dvh) - 24px)); max-height: min(92dvh, calc(var(--alto-visible, 100dvh) - 24px)); border-radius: var(--radius-lg) var(--radius-lg) 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -8px 30px rgb(0 0 0 / 0.3); }
 .af-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px; border-bottom: 1px solid var(--line); font-family: var(--fuente-titulos); font-weight: 700; font-size: var(--text-base); background: var(--surface); flex-shrink: 0; }
 .af-modal-panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
 .af-modal-list-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 16px 16px; overflow: hidden; }
@@ -16483,7 +16489,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-picker-back-btn { display: flex; align-items: center; gap: 8px; background: none; border: none; color: var(--wine); font-weight: 600; font-size: var(--text-sm); padding: 0 0 16px; cursor: pointer; }
 .af-add-card-row { flex-direction: row; min-height: unset; padding: 12px; margin-top: 8px; }
 .af-picker-add-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--wine); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; transition: transform 0.15s ease, background 0.15s ease; }
-.af-carrito-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: var(--wine-soft); border: none; border-radius: var(--radius-md); padding: 12px 16px; margin-top: 12px; font-size: var(--text-sm); font-weight: 700; color: var(--wine); cursor: pointer; text-align: left; }
+.af-carrito-bar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: var(--wine-soft); border: none; border-radius: var(--radius-md); padding: 12px 16px; margin-top: 12px; font-size: var(--text-sm); font-weight: 700; color: var(--wine); cursor: pointer; text-align: left; }
 .af-carrito-bar-link { flex-shrink: 0; }
 .af-carrito-lista { display: flex; flex-direction: column; }
 .af-carrito-row { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -16550,7 +16556,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   /* En computadora hay espacio de sobra: la ventana era de 720px y dejaba las
      dos columnas apretadas —los filtros de categoría se cortaban y en el
      resumen el nombre del platillo chocaba con su precio—. */
-  .af-modal { width: min(1180px, 94vw); max-width: 100%; border-radius: var(--radius-lg); height: min(86vh, calc(var(--alto-visible, 100vh) - 48px)); max-height: min(86vh, calc(var(--alto-visible, 100vh) - 48px)); }
+  .af-modal { width: min(1180px, 94vw); max-width: 100%; border-radius: var(--radius-lg); height: min(86dvh, calc(var(--alto-visible, 100dvh) - 48px)); max-height: min(86dvh, calc(var(--alto-visible, 100dvh) - 48px)); }
   .af-modal-panes { }
   .af-modal-list-pane { border-right: 1px solid var(--line); }
   /* En fila (el valor por omisión de flex) los hijos se encogen a lo que mide
