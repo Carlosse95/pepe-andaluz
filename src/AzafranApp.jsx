@@ -13450,9 +13450,13 @@ export default function App() {
   const [cargandoSesion, setCargandoSesion] = useState(nubeActiva);
 
   // Avisos cortos (Toast de shadcn: Sonner).
+  // Los avisos de "listo" o de error bajan de arriba y quedaban ENCIMA del
+  // botón del menú y de la búsqueda: el toque caía en el aviso y había que
+  // picar otra vez. Solo informan, así que el toque los atraviesa
+  // (af-aviso-pasa). Los avisos de otro aparato sí se pueden tocar.
   const showToast = (msg, tipo = "ok") => {
-    if (tipo === "error") toast.error(msg);
-    else toast.success(msg);
+    if (tipo === "error") toast.error(msg, { className: "af-aviso-pasa" });
+    else toast.success(msg, { className: "af-aviso-pasa" });
   };
 
 
@@ -16913,8 +16917,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Modo oscuro: la franja de marca (encabezado) y el sello del logo. */
 .dark .af-app { --marca: hsl(230 30% 12%); --glass: rgba(20, 24, 38, 0.7); --chrome-deep: hsl(230 30% 8%); }
 .dark .af-logo-barra, .dark .af-logo-mark { background-color: hsl(var(--lavanda)); }
+/* Azul sobre fondo azulado no se leía en oscuro: letra clara. */
+.dark .af-aviso-cobro { color: hsl(var(--foreground)); }
 /* Al llegar desde el "+": que el formulario no quede debajo de la barra de arriba. */
 .af-form-gasto { scroll-margin-top: 80px; }
+.af-aviso-pasa, .af-aviso-pasa * { pointer-events: none !important; }
 .af-fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 40; width: 56px; height: 56px; border-radius: 999px; box-shadow: 0 8px 24px hsl(var(--higo) / 0.35); }
 .af-fab svg { width: 26px; height: 26px; }
 .af-fab[data-state=open] svg { transform: rotate(45deg); }

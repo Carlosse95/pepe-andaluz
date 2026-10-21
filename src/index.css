@@ -99,13 +99,13 @@
     --card-foreground: 225 100% 94%;
     --popover: 230 27% 15%;
     --popover-foreground: 225 100% 94%;
-    --primary: 226 62% 56%;
+    --primary: 226 62% 60%;
     --primary-foreground: 0 0% 100%;
     --secondary: 230 25% 20%;
     --secondary-foreground: 225 100% 94%;
     --muted: 230 24% 17%;
     --muted-foreground: 228 22% 70%;
-    --accent: 229 32% 24%;
+    --accent: 229 32% 18%;
     --accent-foreground: 225 100% 94%;
     --destructive: 11 90% 58%;
     --destructive-foreground: 0 0% 100%;
@@ -119,7 +119,7 @@
     --info: 226 70% 66%;
     --sidebar-background: 230 30% 12%;
     --sidebar-foreground: 225 100% 92%;
-    --sidebar-primary: 226 62% 56%;
+    --sidebar-primary: 226 62% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 230 25% 20%;
     --sidebar-accent-foreground: 225 100% 94%;
