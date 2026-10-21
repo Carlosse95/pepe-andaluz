@@ -15682,7 +15682,7 @@ export default function App() {
         {view !== "nuevo" && (
           <MenuS modal={false}>
             <MenuSTrigger asChild>
-              <Button size="icon" className="af-fab" aria-label="Crear nuevo"><Plus /></Button>
+              <Button variant="ghost" size="icon" className="af-fab af-vidrio" aria-label="Crear nuevo"><Plus /></Button>
             </MenuSTrigger>
             <MenuSContent side="top" align="end" sideOffset={12} className="af-fab-menu min-w-56 rounded-2xl p-1.5">
               <MenuSItem onSelect={() => goToNuevoPedido()}><CirclePlus /> Nuevo pedido</MenuSItem>
@@ -16922,7 +16922,32 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Al llegar desde el "+": que el formulario no quede debajo de la barra de arriba. */
 .af-form-gasto { scroll-margin-top: 80px; }
 .af-aviso-pasa, .af-aviso-pasa * { pointer-events: none !important; }
-.af-fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 40; width: 56px; height: 56px; border-radius: 999px; box-shadow: 0 8px 24px hsl(var(--higo) / 0.35); }
+.af-fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 40; width: 56px; height: 56px; border-radius: 999px; }
+/* "Liquid glass" de Apple hecho con CSS: vidrio translúcido que desenfoca y
+   satura lo de atrás, orilla clara, brillo arriba y sombra suave. Las
+   librerías (liquid-glass-react) solo agregan la refracción, y esa en Safari
+   no se ve; así se ve igual en iPhone y Mac sin cargar nada extra. */
+.af-vidrio {
+  position: fixed; isolation: isolate; overflow: hidden;
+  color: hsl(var(--higo));
+  background: linear-gradient(160deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18)) , hsl(var(--lavanda) / 0.25);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.7);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.9), inset 0 -1px 2px hsl(var(--higo) / 0.12), 0 8px 24px hsl(var(--higo) / 0.22), 0 2px 6px hsl(var(--higo) / 0.12);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.af-vidrio::before { content: ""; position: absolute; inset: 1px 6px auto 6px; height: 45%; border-radius: 999px; background: linear-gradient(to bottom, rgba(255,255,255,0.75), rgba(255,255,255,0)); z-index: -1; pointer-events: none; }
+.af-vidrio:hover { background: linear-gradient(160deg, rgba(255,255,255,0.65), rgba(255,255,255,0.25)), hsl(var(--lavanda) / 0.3); color: hsl(var(--higo)); }
+.af-vidrio:active, .af-vidrio[data-state=open] { transform: scale(0.94); }
+.dark .af-vidrio {
+  color: hsl(var(--foreground));
+  background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04)), hsl(var(--primary) / 0.18);
+  border-color: rgba(255,255,255,0.22);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.3), 0 8px 24px rgba(0,0,0,0.45);
+}
+.dark .af-vidrio::before { background: linear-gradient(to bottom, rgba(255,255,255,0.22), rgba(255,255,255,0)); }
+.dark .af-vidrio:hover { color: hsl(var(--foreground)); }
 .af-fab svg { width: 26px; height: 26px; }
 .af-fab[data-state=open] svg { transform: rotate(45deg); }
 .af-fab svg { transition: transform 0.2s ease; }
