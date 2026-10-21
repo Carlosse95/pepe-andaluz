@@ -4988,6 +4988,8 @@ const esPedidoDeIA = (pedido) => (pedido?.notas || "").includes("tomado por IA")
 // la casa ahora lo dice el ámbito, arriba del formulario, y tenerlo también
 // como categoría hacía que el mismo dato se capturara dos veces (y que se
 // pudiera capturar contradictorio: categoría familiar con ámbito del negocio).
+// Celular: cuántos gastos se ven antes de "Ver todos".
+const GASTOS_A_LA_VISTA = 6;
 const CATEGORIAS_GASTO = ["Ingredientes", "Sueldos", "Renta", "Transporte", "Servicios", "Otros"];
 
 // Nombres de tienda y descripción: la primera letra en mayúscula y el resto
@@ -6483,6 +6485,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // día al cambiarle algo) y la hoja de filtros.
   const [gastoAbiertoId, setGastoAbiertoId] = useState(null);
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
+  // Celular: se ven los primeros gastos y "Ver todos" abre el resto, para no
+  // bajar sin fin. Al cambiar de mes o de filtro se vuelve a recortar.
+  const [verTodosGastos, setVerTodosGastos] = useState(false);
+  useEffect(() => { setVerTodosGastos(false); }, [mesGasto, filtroAmbito, filtroCategoria, filtroTienda, filtroFactura, diaGasto]);
+  // Editar y borrar gastos: el administrador y Pepe (José), que es quien los
+  // captura. Lo que cambie cualquiera queda en el Historial con su nombre.
+  const puedeEditarGastos = esAdmin || /\b(pepe|jos[eé])\b/i.test(perfil?.nombre || "");
   const [borrandoTipos, setBorrandoTipos] = useState(false);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
@@ -6819,6 +6828,8 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // Si hay algún filtro puesto, "no hay nada" significa "no encontré", no
   // "todavía no capturas gastos".
   const hayFiltro = cuantosFiltros > 0;
+  // El botón de Filtros del celular ya dice el mes: ese no se vuelve a contar.
+  const filtrosSinMes = cuantosFiltros - (mesGasto !== mesPorDefecto && !hayRango ? 1 : 0);
   const limpiarFiltros = () => {
     setFiltroAmbito("todos");
     setFiltroFactura("todos");
@@ -7608,6 +7619,49 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
 
 
+  // Aviso de lo que falta facturar y los meses: a la vista en iPad y compu;
+  // en el celular viven en la hoja de Filtros (llenaban la pantalla).
+  const avisoFacturarJSX = (
+    <>
+          {pendientesFactura.length > 0 && (
+            <button
+              className="af-aviso-facturar"
+              onClick={() => { setFiltroFactura("pendiente"); setFiltroAmbito("todos"); setMesGasto("todos"); }}
+            >
+              <Receipt size={14} />
+              {pendientesFactura.length} por facturar · {money(totalPorFacturar)}
+              {pendienteMasUrgente && pendienteMasUrgente.quedan <= 7 && (
+                <span className="af-aviso-urgente">
+                  {pendienteMasUrgente.quedan < 0
+                    ? "una ya se venció"
+                    : pendienteMasUrgente.quedan === 0
+                    ? "una vence hoy"
+                    : `una vence en ${pendienteMasUrgente.quedan} días`}
+                </span>
+              )}
+            </button>
+          )}
+    </>
+  );
+  const mesesGastoJSX = (
+          <div className="af-mes-pills">
+            <button
+              className={"af-mes-pill" + (mesGasto === "todos" ? " active" : "")}
+              onClick={() => { setMesGasto("todos"); setDiaGasto(""); setDesdeGasto(""); setHastaGasto(""); }}
+            >
+              Todo el año
+            </button>
+            {mesesConGastos.map((i) => (
+              <button
+                key={i}
+                className={"af-mes-pill" + (mesGasto === i && !hayRango ? " active" : "")}
+                onClick={() => { setMesGasto(i); setDiaGasto(""); setDesdeGasto(""); setHastaGasto(""); }}
+              >
+                {MESES[i].slice(0, 3)}
+              </button>
+            ))}
+          </div>
+  );
   // Los filtros de gastos: a la vista en iPad y compu, en una hoja en el celular.
   const filtrosGastoJSX = (
           <div className="af-filtros-fila">
@@ -7677,14 +7731,6 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {cuantosFiltros > 0 && (
             <button className="af-btn-quitar-filtros" onClick={limpiarFiltros} title="Quitar todos los filtros">
               <CircleX size={15} /> Quitar filtros
-            </button>
-          )}
-          {/* Los tipos que se inventaron y ya no se quieren. Solo se pueden
-              quitar los que no están en uso: borrar uno que tiene gastos
-              dejaría esos gastos apuntando a un tipo que ya no existe. */}
-          {esAdmin && categoriasPropias.length > 0 && (
-            <button className="af-btn-quitar-filtros" onClick={() => setBorrandoTipos(true)} title="Quitar tipos de gasto">
-              <Trash size={15} /> Tipos
             </button>
           )}
           </div>
@@ -8381,24 +8427,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {/* El aviso de lo que falta facturar era una sección entera que
               repetía la misma lista de compras. Ahora es un aviso de un
               renglón: se pica y la lista de abajo se filtra a eso. */}
-          {pendientesFactura.length > 0 && (
-            <button
-              className="af-aviso-facturar"
-              onClick={() => { setFiltroFactura("pendiente"); setFiltroAmbito("todos"); setMesGasto("todos"); }}
-            >
-              <Receipt size={14} />
-              {pendientesFactura.length} por facturar · {money(totalPorFacturar)}
-              {pendienteMasUrgente && pendienteMasUrgente.quedan <= 7 && (
-                <span className="af-aviso-urgente">
-                  {pendienteMasUrgente.quedan < 0
-                    ? "una ya se venció"
-                    : pendienteMasUrgente.quedan === 0
-                    ? "una vence hoy"
-                    : `una vence en ${pendienteMasUrgente.quedan} días`}
-                </span>
-              )}
-            </button>
-          )}
+          <div className="af-solo-grande">{avisoFacturarJSX}</div>
           <button
             className={"af-btn-accion" + (abrirGasto ? "" : " af-btn-verde")}
             onClick={() => setAbrirGasto((v) => !v)}
@@ -8621,6 +8650,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   la lista se llena de cosas que no van y ya no se entiende. */}
               {esAdmin && <option value="__nueva__">Otro tipo…</option>}
             </Combobox>
+            {/* Aquí, junto a la categoría: antes era un botón "Tipos" con bote
+                de basura entre los filtros y no se entendía qué hacía. Solo se
+                pueden quitar los que no tienen gastos. */}
+            {esAdmin && categoriasPropias.length > 0 && (
+              <Button variant="link" size="auto" className="mt-1 self-start" onClick={() => setBorrandoTipos(true)}>
+                Quitar categorías que ya no uso
+              </Button>
+            )}
           </div>
           <div className="af-field">
             <Label>Descripción (opcional)</Label>
@@ -8653,23 +8690,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             y cerrar cada mes en la lista para encontrar algo; ahora se pica
             el mes y la lista ya viene con lo de ese mes y nada más. */}
         <div className="af-barra-gastos mb-3">
-          <div className="af-mes-pills">
-            <button
-              className={"af-mes-pill" + (mesGasto === "todos" ? " active" : "")}
-              onClick={() => { setMesGasto("todos"); setDiaGasto(""); setDesdeGasto(""); setHastaGasto(""); }}
-            >
-              Todo el año
-            </button>
-            {mesesConGastos.map((i) => (
-              <button
-                key={i}
-                className={"af-mes-pill" + (mesGasto === i && !hayRango ? " active" : "")}
-                onClick={() => { setMesGasto(i); setDiaGasto(""); setDesdeGasto(""); setHastaGasto(""); }}
-              >
-                {MESES[i].slice(0, 3)}
-              </button>
-            ))}
-          </div>
+          <div className="af-solo-grande">{mesesGastoJSX}</div>
 
           {/* Los filtros que de verdad se usan, a la vista y todos del mismo
               tipo: se elige de una lista. Antes vivían escondidos detrás de un
@@ -8680,8 +8701,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
         {/* Celular: los filtros viven en una hoja que sale de abajo. A la
             vista ocupaban más de media pantalla antes del primer gasto. */}
         <div className="af-filtros-movil mb-3">
-          <Button variant="outline" size="sm" onClick={() => setFiltrosAbiertos(true)}>
-            <SlidersHorizontal /> Filtros{cuantosFiltros > 0 ? ` · ${cuantosFiltros}` : ""}
+          <Button variant="outline" size="sm" className="relative" onClick={() => setFiltrosAbiertos(true)}>
+            <SlidersHorizontal /> {mesGasto === "todos" ? "Todo el año" : MESES[mesGasto]}{filtrosSinMes > 0 ? ` · ${filtrosSinMes} ${filtrosSinMes === 1 ? "filtro" : "filtros"}` : ""}
+            {/* Puntito rojo si una factura ya venció o vence pronto: el aviso
+                completo está adentro. */}
+            {pendienteMasUrgente && pendienteMasUrgente.quedan <= 7 && <span className="af-punto-aviso" aria-label="Hay una factura por vencer" />}
           </Button>
           {cuantosFiltros > 0 && (
             <Button variant="ghost" size="sm" onClick={limpiarFiltros}><CircleX /> Quitar</Button>
@@ -8694,7 +8718,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 <DrawerTitle>Filtros</DrawerTitle>
                 <DrawerDescription>{gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · {money(totalFiltrado)}</DrawerDescription>
               </DrawerHeader>
-              <div className="af-filtros-hoja min-h-0 overflow-y-auto px-4 pb-2 pt-1">{filtrosGastoJSX}</div>
+              <div className="af-filtros-hoja flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2 pt-1">
+                <div onClick={(e) => { if (e.target.closest("button")) setFiltrosAbiertos(false); }}>{avisoFacturarJSX}</div>
+                {mesesGastoJSX}
+                {filtrosGastoJSX}
+              </div>
               <DrawerFooter>
                 <DrawerClose asChild><Button>Ver gastos</Button></DrawerClose>
               </DrawerFooter>
@@ -8809,7 +8837,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <TableCell>
                     <Combobox compacto
                       value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"}
-                      disabled={!esAdmin}
+                      disabled={!puedeEditarGastos}
                       onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}
                     >
                       {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
@@ -8818,7 +8846,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <TableCell>
                     <Combobox compacto
                       value={esDelNegocio(g) ? "negocio" : "familia"}
-                      disabled={!esAdmin}
+                      disabled={!puedeEditarGastos}
                       onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}
                     >
                       {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
@@ -8827,7 +8855,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <TableCell className="af-col-cadames">
                     <Combobox compacto
                       value={g.esFijo ? "si" : "no"}
-                      disabled={!esAdmin}
+                      disabled={!puedeEditarGastos}
                       onChange={(e) => cambiarFijo(g, e.target.value === "si")}
                     >
                       <option value="no">Suelto</option>
@@ -8838,14 +8866,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                   <TableCell>
                     <Combobox compacto
                       value={estadoFacturaDe(g)}
-                      disabled={!esAdmin}
+                      disabled={!puedeEditarGastos}
                       onChange={(e) => cambiarEstadoFactura(g, e.target.value)}
                     >
                       {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
                     </Combobox>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right">
-                    {esAdmin && (
+                    {puedeEditarGastos && (
                       <>
                         <Button variant="ghost" size="icon-sm" title="Editar" onClick={() => abrirEdicionGasto(g)}><SquarePen size={16} /></Button>
                         <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash size={16} /></Button>
@@ -8861,7 +8889,7 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {/* Celular: lista limpia (Item de shadcn). Al picar un gasto se abre
               con todo lo demás: tipo, bolsa, factura, ticket, editar y borrar. */}
           <ItemGroup className="af-solo-celular af-lista-gastos mb-4">
-            {gastosFiltrados.map((g) => {
+            {(verTodosGastos ? gastosFiltrados : gastosFiltrados.slice(0, GASTOS_A_LA_VISTA)).map((g) => {
               const factura = estadoFacturaDe(g);
               return (
                 <Item key={g.id} asChild size="sm">
@@ -8884,6 +8912,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </Item>
               );
             })}
+            {!verTodosGastos && gastosFiltrados.length > GASTOS_A_LA_VISTA && (
+              <Button variant="secondary" className="mt-2 w-full" onClick={() => setVerTodosGastos(true)}>
+                Ver los otros {gastosFiltrados.length - GASTOS_A_LA_VISTA}
+              </Button>
+            )}
+            {verTodosGastos && gastosFiltrados.length > GASTOS_A_LA_VISTA && (
+              <Button variant="ghost" className="mt-2 w-full" onClick={() => setVerTodosGastos(false)}>
+                Ver menos
+              </Button>
+            )}
           </ItemGroup>
           </>
         )}
@@ -9227,27 +9265,27 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     )}
                     <div className="af-gasto-detalle-campos">
                       <Label>Tipo</Label>
-                      <Combobox compacto value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"} disabled={!esAdmin} onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}>
+                      <Combobox compacto value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"} disabled={!puedeEditarGastos} onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}>
                         {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
                       </Combobox>
                       <Label>Bolsa</Label>
-                      <Combobox compacto value={esDelNegocio(g) ? "negocio" : "familia"} disabled={!esAdmin} onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}>
+                      <Combobox compacto value={esDelNegocio(g) ? "negocio" : "familia"} disabled={!puedeEditarGastos} onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}>
                         {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
                       </Combobox>
                       <Label>Se repite</Label>
-                      <Combobox compacto value={g.esFijo ? "si" : "no"} disabled={!esAdmin} onChange={(e) => cambiarFijo(g, e.target.value === "si")}>
+                      <Combobox compacto value={g.esFijo ? "si" : "no"} disabled={!puedeEditarGastos} onChange={(e) => cambiarFijo(g, e.target.value === "si")}>
                         <option value="no">Suelto</option>
                         <option value="si">Cada mes</option>
                       </Combobox>
                       <Label>Factura</Label>
-                      <Combobox compacto value={estadoFacturaDe(g)} disabled={!esAdmin} onChange={(e) => cambiarEstadoFactura(g, e.target.value)}>
+                      <Combobox compacto value={estadoFacturaDe(g)} disabled={!puedeEditarGastos} onChange={(e) => cambiarEstadoFactura(g, e.target.value)}>
                         {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
                       </Combobox>
                       {(g.folio || g.folio2) && (<><Label>Folio</Label><span className="text-sm tabular-nums">{[g.folio, g.folio2].filter(Boolean).join(" · ")}</span></>)}
                     </div>
                   </div>
                   <DrawerFooter>
-                    {esAdmin && (
+                    {puedeEditarGastos && (
                       <div className="grid grid-cols-2 gap-2">
                         <Button variant="outline" onClick={() => cerrarY(() => abrirEdicionGasto(g))}><SquarePen /> Editar</Button>
                         <Button variant="destructive" onClick={() => cerrarY(() => setConfirmarBorrarGasto(g))}><Trash /> Borrar</Button>
@@ -16959,6 +16997,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-lista-gastos { gap: 0; }
 .af-gasto-icono { width: 40px; height: 40px; border-radius: 12px; background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .af-gasto-icono svg { width: 18px; height: 18px; }
+.af-punto-aviso { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 999px; background: hsl(var(--destructive)); border: 2px solid var(--bg); }
+.af-filtros-hoja .af-mes-pills { flex-wrap: wrap; overflow: visible; }
+.af-filtros-hoja .af-aviso-facturar { width: 100%; justify-content: flex-start; text-align: left; flex-wrap: wrap; }
 .af-gasto-falta { font-size: var(--text-2xs); font-weight: 600; color: hsl(var(--destructive)); }
 .af-gasto-detalle-monto { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .af-gasto-detalle-campos { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px 16px; }
