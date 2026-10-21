@@ -23,7 +23,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Switch, SwitchVista } from "@/components/ui/switch";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { DropdownMenu as MenuS, DropdownMenuContent as MenuSContent, DropdownMenuItem as MenuSItem, DropdownMenuTrigger as MenuSTrigger } from "@/components/ui/dropdown-menu";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText, inputGroupControlClases } from "@/components/ui/input-group";
 import { temaGuardado, guardarTema } from "./tema.js";
 import { Item, ItemGroup, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions } from "@/components/ui/item";
 import { Ayuda } from "@/components/ayuda";
@@ -38,12 +39,11 @@ import {
   DialogTitle as DialogSTitle, DialogDescription as DialogSDescription, DialogClose as DialogSClose,
 } from "@/components/ui/dialog-shadcn";
 import { Button as ButtonS } from "@/components/ui/button-shadcn";
-import { Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentDescription, AttachmentActions, AttachmentAction, AttachmentTrigger } from "@/components/ui/attachment";
 import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, Plus, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, Plus, LoaderCircle, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -2209,7 +2209,7 @@ const leerNumero = (texto) => {
   return parseFloat(t);
 };
 
-function NumberField({ value, onChange, min, className, disabled }) {
+function NumberField({ value, onChange, min, className, disabled, ...resto }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
 
@@ -2231,6 +2231,7 @@ function NumberField({ value, onChange, min, className, disabled }) {
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+      {...resto}
     />
   );
 }
@@ -7624,6 +7625,66 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
   const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
 
 
+  // La foto del ticket: se sube a Storage y luego se lee para llenar el gasto.
+  const alElegirTicket = async (e) => {
+    const archivo = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!archivo) return;
+    setVistaTicket((vieja) => { if (vieja) URL.revokeObjectURL(vieja); return URL.createObjectURL(archivo); });
+    setErrorTicket(false);
+    setSubiendoTicket(true);
+    let ruta = null;
+    try {
+      ruta = await subirTicket(archivo);
+      setNuevoGasto((prev) => ({ ...prev, ticket: ruta }));
+    } catch (err) {
+      setErrorTicket(true);
+      showToast("No se pudo guardar la foto: " + (err.message || ""), "error");
+    }
+    setSubiendoTicket(false);
+    if (!ruta) return;
+
+    // Con la foto guardada se lee sola y se llenan los campos.
+    // Quedan escritos pero editables: la app propone, Pepe
+    // confirma. Si la lectura falla, el gasto se captura a mano
+    // como siempre — la foto ya está a salvo.
+    setLeyendoTicket(true);
+    try {
+      const leido = await leerTicket(ruta);
+      if (leido) {
+        setNuevoGasto((prev) => ({
+          ...prev,
+          tienda: leido.tienda || prev.tienda,
+          fecha: leido.fecha || prev.fecha,
+          monto: leido.total > 0 ? leido.total : prev.monto,
+          categoria: categoriaDeTienda(leido.tienda) || prev.categoria,
+          folio: limpiarFolio(leido.folio) || prev.folio,
+          folio2: limpiarFolio(leido.folio2) || prev.folio2,
+        }));
+        const partes = [
+          leido.tienda,
+          leido.total > 0 ? money(leido.total) : null,
+        ].filter(Boolean);
+        // La fecha es el dato que más se equivoca al leer una
+        // foto, y el que más caro sale: con el año mal, el
+        // gasto desaparece de la vista del año en curso y
+        // parece que no se guardó. Pasó con un ticket de Aki
+        // al que le leyó 2025. Si sale rara, eso es lo que se
+        // avisa, por encima de la tienda y el monto.
+        const fechaRara = fechaFueraDeLugar(leido.fecha);
+        showToast(
+          fechaRara
+            ? `Ojo: le leí la fecha ${fmtDateHuman(leido.fecha)}. Revísala antes de guardar.`
+            : partes.length ? `Leí: ${partes.join(" · ")}. Revísalo.` : "No pude sacar los datos; captúralos a mano.",
+          fechaRara || leido.confianza === "baja" ? "error" : "ok"
+        );
+      }
+    } catch (err) {
+      showToast(err.message || "No se pudo leer el ticket.", "error");
+    }
+    setLeyendoTicket(false);
+  };
+
   // Aviso de lo que falta facturar y los meses: a la vista en iPad y compu;
   // en el celular viven en la hoja de Filtros (llenaban la pantalla).
   const avisoFacturarJSX = (
@@ -8454,14 +8515,59 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
               ticket. Lo demás tiene una respuesta buena por omisión (hoy, del
               negocio, la categoría de esa tienda) y vive en "Más detalles".
               Antes eran siete campos para apuntar una compra de $200. */}
+          {/* La foto del ticket ya no es un cuadro aparte en medio del
+              formulario: es la camarita DENTRO del monto (InputGroup de
+              shadcn). Si no se usa, casi ni se nota; al subirla se vuelve la
+              miniatura y la app lee tienda, fecha y monto solos. */}
           <Field>
-            <FieldLabel>¿Cuánto fue?</FieldLabel>
-            <NumberField
-              value={nuevoGasto.monto}
-              min={0}
-              className="af-input af-monto-grande"
-              onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })}
-            />
+            <FieldLabel htmlFor="gasto-monto">¿Cuánto fue?</FieldLabel>
+            <InputGroup className="h-12">
+              <InputGroupAddon><InputGroupText className="text-lg">$</InputGroupText></InputGroupAddon>
+              <NumberField
+                id="gasto-monto"
+                data-slot="input-group-control"
+                value={nuevoGasto.monto}
+                min={0}
+                className={cn(inputGroupControlClases, "af-monto-grande h-full text-left")}
+                onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })}
+              />
+              <InputGroupAddon align="inline-end">
+                {subiendoTicket || leyendoTicket ? (
+                  <span className="flex size-9 items-center justify-center" aria-label={subiendoTicket ? "Subiendo foto" : "Leyendo el ticket"}>
+                    <LoaderCircle className="size-5 animate-spin" />
+                  </span>
+                ) : nuevoGasto.ticket ? (
+                  <span className="relative">
+                    <span className="block size-9 overflow-hidden rounded-xl bg-muted ring-1 ring-border">
+                      {vistaTicket ? <img src={vistaTicket} alt="Foto del ticket" className="size-full object-cover" /> : <Receipt className="m-2 size-5" />}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Quitar la foto"
+                      className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-foreground text-background"
+                      onClick={() => { setNuevoGasto({ ...nuevoGasto, ticket: null }); setVistaTicket(null); }}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ) : (
+                  <InputGroupButton asChild size="icon-sm" className={errorTicket ? "text-destructive" : ""}>
+                    <label aria-label="Tomar o elegir foto del ticket" className="cursor-pointer">
+                      <Camera className="size-5" />
+                      {/* Sin "capture": así iOS deja elegir entre tomar foto,
+                          fototeca o archivo (un ticket que llegó por WhatsApp). */}
+                      <input type="file" accept="image/*" className="hidden" onChange={alElegirTicket} />
+                    </label>
+                  </InputGroupButton>
+                )}
+              </InputGroupAddon>
+            </InputGroup>
+            {/* Solo se dice algo cuando hay foto: sin foto, nada que leer. */}
+            {(subiendoTicket || leyendoTicket || nuevoGasto.ticket || errorTicket) && (
+              <FieldDescription className={errorTicket && !nuevoGasto.ticket ? "text-destructive" : ""}>
+                {subiendoTicket ? "Subiendo la foto…" : leyendoTicket ? "Leyendo el ticket…" : nuevoGasto.ticket ? "Ticket guardado · revisa los datos" : "No se pudo subir. Toca la cámara otra vez."}
+              </FieldDescription>
+            )}
           </Field>
 
           <Field>
@@ -8508,117 +8614,6 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
                 {esAdmin && <option value="__otra__">Otra tienda…</option>}
               </Combobox>
             )}
-          </Field>
-          <Field className="af-ticket-campo">
-            <FieldLabel>
-              Foto del ticket
-              {/* La "i" junto al título, no sola debajo del botón. */}
-              <Ayuda enLinea>
-                Al subirla se lee sola y llena la tienda, la fecha y el monto. Revísalos
-                antes de guardar, y corrige lo que haga falta.
-              </Ayuda>
-            </FieldLabel>
-            {/* Attachment de shadcn: vacío (punteado) → subiendo → leyendo →
-                guardado con miniatura y una X para quitarla; o error. */}
-            <Attachment
-              className="w-full"
-              state={subiendoTicket ? "uploading" : leyendoTicket ? "processing" : nuevoGasto.ticket ? "done" : errorTicket ? "error" : "idle"}
-            >
-              <AttachmentMedia variant={vistaTicket && (nuevoGasto.ticket || subiendoTicket) ? "image" : "icon"}>
-                {vistaTicket && (nuevoGasto.ticket || subiendoTicket)
-                  ? <img src={vistaTicket} alt="" />
-                  : nuevoGasto.ticket ? <Receipt /> : errorTicket ? <TriangleAlert /> : <Camera />}
-              </AttachmentMedia>
-              <AttachmentContent>
-                <AttachmentTitle>
-                  {subiendoTicket ? "Subiendo foto…" : leyendoTicket ? "Leyendo el ticket…" : nuevoGasto.ticket ? "Ticket guardado" : errorTicket ? "No se pudo guardar la foto" : "Tomar o elegir foto"}
-                </AttachmentTitle>
-                <AttachmentDescription>
-                  {subiendoTicket ? "Un momento" : leyendoTicket ? "Llenando los datos" : nuevoGasto.ticket ? "Revisa los datos" : errorTicket ? "Toca para intentar otra vez" : "Se lee sola y llena los datos"}
-                </AttachmentDescription>
-              </AttachmentContent>
-              {nuevoGasto.ticket && !leyendoTicket ? (
-                <AttachmentActions>
-                  <AttachmentAction aria-label="Quitar foto" onClick={() => { setNuevoGasto({ ...nuevoGasto, ticket: null }); setVistaTicket(null); }}>
-                    <X />
-                  </AttachmentAction>
-                </AttachmentActions>
-              ) : !nuevoGasto.ticket && (
-              <AttachmentTrigger asChild>
-              <label aria-label="Tomar o elegir foto del ticket">
-                {/* Sin "capture". Ese atributo manda al iPhone directo a la
-                    cámara y ESCONDE la galería: no había forma de subir un
-                    ticket que te mandaron por WhatsApp, aunque el botón dice
-                    "tomar o elegir". Sin él, iOS pregunta: tomar foto,
-                    fototeca o archivo. */}
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  disabled={subiendoTicket || leyendoTicket}
-                  onChange={async (e) => {
-                    const archivo = e.target.files && e.target.files[0];
-                    e.target.value = "";
-                    if (!archivo) return;
-                    setVistaTicket((vieja) => { if (vieja) URL.revokeObjectURL(vieja); return URL.createObjectURL(archivo); });
-                    setErrorTicket(false);
-                    setSubiendoTicket(true);
-                    let ruta = null;
-                    try {
-                      ruta = await subirTicket(archivo);
-                      setNuevoGasto((prev) => ({ ...prev, ticket: ruta }));
-                    } catch (err) {
-                      setErrorTicket(true);
-                      showToast("No se pudo guardar la foto: " + (err.message || ""), "error");
-                    }
-                    setSubiendoTicket(false);
-                    if (!ruta) return;
-
-                    // Con la foto guardada se lee sola y se llenan los campos.
-                    // Quedan escritos pero editables: la app propone, Pepe
-                    // confirma. Si la lectura falla, el gasto se captura a mano
-                    // como siempre — la foto ya está a salvo.
-                    setLeyendoTicket(true);
-                    try {
-                      const leido = await leerTicket(ruta);
-                      if (leido) {
-                        setNuevoGasto((prev) => ({
-                          ...prev,
-                          tienda: leido.tienda || prev.tienda,
-                          fecha: leido.fecha || prev.fecha,
-                          monto: leido.total > 0 ? leido.total : prev.monto,
-                          categoria: categoriaDeTienda(leido.tienda) || prev.categoria,
-                          folio: limpiarFolio(leido.folio) || prev.folio,
-                          folio2: limpiarFolio(leido.folio2) || prev.folio2,
-                        }));
-                        const partes = [
-                          leido.tienda,
-                          leido.total > 0 ? money(leido.total) : null,
-                        ].filter(Boolean);
-                        // La fecha es el dato que más se equivoca al leer una
-                        // foto, y el que más caro sale: con el año mal, el
-                        // gasto desaparece de la vista del año en curso y
-                        // parece que no se guardó. Pasó con un ticket de Aki
-                        // al que le leyó 2025. Si sale rara, eso es lo que se
-                        // avisa, por encima de la tienda y el monto.
-                        const fechaRara = fechaFueraDeLugar(leido.fecha);
-                        showToast(
-                          fechaRara
-                            ? `Ojo: le leí la fecha ${fmtDateHuman(leido.fecha)}. Revísala antes de guardar.`
-                            : partes.length ? `Leí: ${partes.join(" · ")}. Revísalo.` : "No pude sacar los datos; captúralos a mano.",
-                          fechaRara || leido.confianza === "baja" ? "error" : "ok"
-                        );
-                      }
-                    } catch (err) {
-                      showToast(err.message || "No se pudo leer el ticket.", "error");
-                    }
-                    setLeyendoTicket(false);
-                  }}
-                />
-              </label>
-              </AttachmentTrigger>
-              )}
-            </Attachment>
           </Field>
 
 
