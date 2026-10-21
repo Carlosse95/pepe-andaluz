@@ -22,6 +22,9 @@ import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch, SwitchVista } from "@/components/ui/switch";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { DropdownMenu as MenuS, DropdownMenuContent as MenuSContent, DropdownMenuItem as MenuSItem, DropdownMenuTrigger as MenuSTrigger } from "@/components/ui/dropdown-menu";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { temaGuardado, guardarTema } from "./tema.js";
 import { Item, ItemGroup, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions } from "@/components/ui/item";
 import { Ayuda } from "@/components/ayuda";
 import { Seccion } from "@/components/seccion";
@@ -40,7 +43,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, Plus, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -3445,16 +3448,8 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
       <InvitacionAvisos showToast={showToast} />
 
 
-      <div className="af-quick-row">
-        <button className="af-quick-btn" onClick={onNuevoPedido}>
-          {/* En pantallas muy angostas (iPhone chico) "Nuevo" no cabe: el
-              ícono ya dice que es nuevo. */}
-          <CirclePlus size={16} /> <span className="hidden min-[360px]:inline">Nuevo</span> <span className="min-[360px]:lowercase">Pedido</span>
-        </button>
-        <button className="af-quick-btn" onClick={onNuevoPresupuesto}>
-          <FileText size={16} /> <span className="hidden min-[360px]:inline">Nuevo</span> <span className="min-[360px]:lowercase">Presupuesto</span>
-        </button>
-      </div>
+      {/* "Nuevo pedido" y "Nuevo presupuesto" ya no van aquí: están en el
+          botón flotante "+" de abajo, junto con "Nuevo gasto". */}
 
       <div className="af-section-title mt-4">Por hacer hoy</div>
 
@@ -5866,16 +5861,17 @@ const recetaDeProducto = (prod, config) => {
   return { ingredientes: [], rendimiento: 0 };
 };
 
-const COLOR_WINE = "#212C59";
+// Siguen al modo claro/oscuro: en claro dan los mismos colores de antes.
+const COLOR_WINE = "hsl(var(--primary))";
 const COLOR_GOLD = "#AF842E";
-const COLOR_AZUL = "#4257B8";
+const COLOR_AZUL = "hsl(var(--info))";
 const COLOR_OLIVE = "#1FA971";
 const COLOR_GASTO = "#FF5D37";
 // Lo de la casa, en Oro oliva: contra el Pimentón del gasto del negocio se
 // separa solo, y los dos son de la paleta de la marca.
 const COLOR_CASA = "#AF842E";
-const COLOR_LINE_CHART = "#DCE2F7";
-const COLOR_INK_SOFT = "#5B6488";
+const COLOR_LINE_CHART = "hsl(var(--border))";
+const COLOR_INK_SOFT = "hsl(var(--muted-foreground))";
 const chartTooltipStyle = { borderRadius: "var(--radius-md)", border: `1px solid ${COLOR_LINE_CHART}`, fontSize: "var(--text-xs)", boxShadow: "0 4px 14px rgba(43,32,21,0.12)" };
 const miles = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v);
 
@@ -6419,7 +6415,7 @@ function ADondeSeFue({ gastos }) {
   );
 }
 
-function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig, showToast }) {
+function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, clientes, gastos, onGuardarGastos, perfil, config, onGuardarConfig, showToast }) {
   const esAdmin = !perfil || perfil.rol === "admin";
   const [tab, setTab] = useState("comparar");
   const [anio, setAnio] = useState(new Date().getFullYear());
@@ -6472,6 +6468,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const [errorTicket, setErrorTicket] = useState(false);
   const [tiendaOtra, setTiendaOtra] = useState(false);
   const [abrirGasto, setAbrirGasto] = useState(false);
+  // Desde el botón flotante "+ Nuevo gasto": a Finanzas, con el formulario
+  // abierto y a la vista.
+  const formGastoRef = useRef(null);
+  useEffect(() => {
+    if (!pedirGasto) return;
+    setTab("finanzas");
+    setAbrirGasto(true);
+    setTimeout(() => formGastoRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 150);
+  }, [pedirGasto]);
   const [abrirFijos, setAbrirFijos] = useState(false);
   const [abrirFiltros, setAbrirFiltros] = useState(false);
   const [datosParaCopiar, setDatosParaCopiar] = useState(null);
@@ -8422,38 +8427,45 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             El formulario no está siempre desplegado: se abre desde el botón y
             se cierra al guardar. Ocupaba media pantalla todos los días, aunque
             casi siempre se entra aquí a consultar, no a capturar. */}
-        <div className="af-encabezado-accion">
-          <div className="af-section-title" style={{ margin: 0 }}>Gastos</div>
-          {/* El aviso de lo que falta facturar era una sección entera que
-              repetía la misma lista de compras. Ahora es un aviso de un
-              renglón: se pica y la lista de abajo se filtra a eso. */}
-          <div className="af-solo-grande">{avisoFacturarJSX}</div>
-          <button
-            className={"af-btn-accion" + (abrirGasto ? "" : " af-btn-verde")}
-            onClick={() => setAbrirGasto((v) => !v)}
-          >
-            {abrirGasto ? <><CircleX size={15} /> Cerrar</> : <><CirclePlus size={15} /> Agregar gasto</>}
-          </button>
+        {/* Un solo renglón: Filtros a la izquierda (dice el mes; adentro están
+            los meses, lo que falta facturar y los filtros) y Agregar gasto a
+            la derecha, del mismo alto. Igual en celular, iPad y compu. */}
+        <div className="af-encabezado-accion af-gastos-barra">
+          <div className="flex min-w-0 items-center gap-1">
+            <Button variant="outline" className="relative" onClick={() => setFiltrosAbiertos(true)}>
+              <SlidersHorizontal /> {mesGasto === "todos" ? "Todo el año" : MESES[mesGasto]}{filtrosSinMes > 0 ? ` · ${filtrosSinMes}` : ""}
+              {/* Puntito rojo si una factura ya venció o vence pronto: el
+                  aviso completo está adentro. */}
+              {pendienteMasUrgente && pendienteMasUrgente.quedan <= 7 && <span className="af-punto-aviso" aria-label="Hay una factura por vencer" />}
+            </Button>
+            {cuantosFiltros > 0 && (
+              <Button variant="ghost" size="icon" aria-label="Quitar filtros" onClick={limpiarFiltros}><CircleX /></Button>
+            )}
+          </div>
+          <Button variant={abrirGasto ? "outline" : "exito"} onClick={() => setAbrirGasto((v) => !v)}>
+            {abrirGasto ? <><CircleX /> Cerrar</> : <><CirclePlus /> Agregar gasto</>}
+          </Button>
         </div>
 
         {abrirGasto && (
-        <Card className="p-4 mb-5 af-form-gasto">
+        <Card ref={formGastoRef} className="p-4 mb-5 af-form-gasto">
+          <FieldGroup className="gap-5">
           {/* Capturar un gasto es contestar tres cosas: cuánto, dónde y el
               ticket. Lo demás tiene una respuesta buena por omisión (hoy, del
               negocio, la categoría de esa tienda) y vive en "Más detalles".
               Antes eran siete campos para apuntar una compra de $200. */}
-          <div className="af-field">
-            <Label>¿Cuánto fue?</Label>
+          <Field>
+            <FieldLabel>¿Cuánto fue?</FieldLabel>
             <NumberField
               value={nuevoGasto.monto}
               min={0}
               className="af-input af-monto-grande"
               onChange={(v) => setNuevoGasto({ ...nuevoGasto, monto: v })}
             />
-          </div>
+          </Field>
 
-          <div className="af-field">
-            <Label>¿En qué tienda?</Label>
+          <Field>
+            <FieldLabel>¿En qué tienda?</FieldLabel>
             {/* Lista en vez de campo libre: se elige de las que ya se han
                 usado, así el nombre sale idéntico siempre y no acaba escrito
                 de tres formas. Solo se escribe cuando es una tienda nueva. */}
@@ -8496,16 +8508,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 {esAdmin && <option value="__otra__">Otra tienda…</option>}
               </Combobox>
             )}
-          </div>
-          <div className="af-field af-ticket-campo">
-            <Label>
+          </Field>
+          <Field className="af-ticket-campo">
+            <FieldLabel>
               Foto del ticket
               {/* La "i" junto al título, no sola debajo del botón. */}
               <Ayuda enLinea>
                 Al subirla se lee sola y llena la tienda, la fecha y el monto. Revísalos
                 antes de guardar, y corrige lo que haga falta.
               </Ayuda>
-            </Label>
+            </FieldLabel>
             {/* Attachment de shadcn: vacío (punteado) → subiendo → leyendo →
                 guardado con miniatura y una X para quitarla; o error. */}
             <Attachment
@@ -8607,14 +8619,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
               </AttachmentTrigger>
               )}
             </Attachment>
-          </div>
+          </Field>
 
 
           {/* Todo se ve desde el principio. Antes la mitad vivía detrás de
               "Más detalles" y había que descubrirla; en una pantalla ancha
               caben los seis campos sin que estorben. */}
-          <div className="af-field">
-            <Label>¿De dónde sale?</Label>
+          <Field>
+            <FieldLabel>¿De dónde sale?</FieldLabel>
             <div className="af-ambito-switch">
               {AMBITOS.map((a) => (
                 <Toggle
@@ -8626,17 +8638,17 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 </Toggle>
               ))}
             </div>
-          </div>
+          </Field>
           {/* La foto va arriba, siempre visible y sin depender de qué tienda
               se eligió. Antes solo aparecía después de elegir una tienda que
               factura, y Pepe no la encontraba: el paso natural es llegar con
               el ticket en la mano y retratarlo antes de teclear nada. */}
-          <div className="af-field">
-            <Label>Fecha</Label>
+          <Field>
+            <FieldLabel>Fecha</FieldLabel>
             <DatePicker value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
-          </div>
-          <div className="af-field">
-            <Label>Categoría</Label>
+          </Field>
+          <Field>
+            <FieldLabel>Categoría</FieldLabel>
             <Combobox
              
               value={nuevoGasto.categoria}
@@ -8654,13 +8666,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 de basura entre los filtros y no se entendía qué hacía. Solo se
                 pueden quitar los que no tienen gastos. */}
             {esAdmin && categoriasPropias.length > 0 && (
-              <Button variant="link" size="auto" className="mt-1 self-start" onClick={() => setBorrandoTipos(true)}>
+              <Button variant="link" size="auto" className="!w-fit text-xs text-muted-foreground" onClick={() => setBorrandoTipos(true)}>
                 Quitar categorías que ya no uso
               </Button>
             )}
-          </div>
-          <div className="af-field">
-            <Label>Descripción (opcional)</Label>
+          </Field>
+          <Field>
+            <FieldLabel>Descripción (opcional)</FieldLabel>
             {/* Ofrece los nombres ya usados: así "Chedraui" se escribe igual
                 todas las veces y no acaba escrito de tres formas distintas. */}
             <CampoConSugerencias
@@ -8680,37 +8692,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                 }
               }}
             />
-          </div>
+          </Field>
 
           <Button className="af-gasto-guardar w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</Button>
+                  </FieldGroup>
         </Card>
         )}
 
         {/* El mes se elige aquí arriba, como pestañas. Antes había que abrir
             y cerrar cada mes en la lista para encontrar algo; ahora se pica
             el mes y la lista ya viene con lo de ese mes y nada más. */}
-        <div className="af-barra-gastos mb-3">
-          <div className="af-solo-grande">{mesesGastoJSX}</div>
-
-          {/* Los filtros que de verdad se usan, a la vista y todos del mismo
-              tipo: se elige de una lista. Antes vivían escondidos detrás de un
-              botón y había que descubrirlos. */}
-          {filtrosGastoJSX}
-        </div>
-
-        {/* Celular: los filtros viven en una hoja que sale de abajo. A la
-            vista ocupaban más de media pantalla antes del primer gasto. */}
-        <div className="af-filtros-movil mb-3">
-          <Button variant="outline" size="sm" className="relative" onClick={() => setFiltrosAbiertos(true)}>
-            <SlidersHorizontal /> {mesGasto === "todos" ? "Todo el año" : MESES[mesGasto]}{filtrosSinMes > 0 ? ` · ${filtrosSinMes} ${filtrosSinMes === 1 ? "filtro" : "filtros"}` : ""}
-            {/* Puntito rojo si una factura ya venció o vence pronto: el aviso
-                completo está adentro. */}
-            {pendienteMasUrgente && pendienteMasUrgente.quedan <= 7 && <span className="af-punto-aviso" aria-label="Hay una factura por vencer" />}
-          </Button>
-          {cuantosFiltros > 0 && (
-            <Button variant="ghost" size="sm" onClick={limpiarFiltros}><CircleX /> Quitar</Button>
-          )}
-        </div>
         <Drawer open={filtrosAbiertos} onOpenChange={setFiltrosAbiertos}>
           <DrawerContent>
             <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col">
@@ -8795,100 +8786,11 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           />
         ) : (
           <>
-          <div className="af-tabla-pista af-solo-grande">
-            <CircleArrowRight size={14} /> Desliza la tabla de lado para ver todo
-          </div>
-          {/* Sin alto máximo: la tabla mide lo que sus renglones y solo se
-              desliza de lado. Con alto tope quedaba un desliz dentro de otro
-              (en el celular se atoraba el dedo) y los renglones de abajo, ocultos,
-              seguían ocupando lugar encima de "A dónde se fue el dinero". */}
-          <ScrollArea type="auto" horizontal className="af-tabla-scroll af-solo-grande mb-4 w-full min-w-0 max-w-full rounded-2xl border">
-          <Table sinMarco className="af-tabla-gastos">
-            <TableHeader className="bg-background">
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>En qué</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Bolsa</TableHead>
-                <TableHead className="af-col-cadames">Cada mes</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead>Factura</TableHead>
-                <TableHead aria-label="Acciones" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {gastosFiltrados.map((g) => (
-                <TableRow key={g.id}>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{fmtDiaCorto(g.fecha)}</TableCell>
-                  <TableCell className="min-w-[10rem]">
-                    <div className="flex items-center gap-1">
-                      <span className="font-medium">{g.tienda || g.descripcion || g.categoria}</span>
-                      {/* La foto del ticket se abre desde aquí, pegada al nombre. */}
-                      {g.ticket && (
-                        <Button variant="ghost" size="icon-sm" title="Ver el ticket" onClick={() => abrirTicket(g)}>
-                          <Receipt size={15} />
-                        </Button>
-                      )}
-                    </div>
-                    {g.tienda && g.descripcion && <div className="text-xs text-muted-foreground">{g.descripcion}</div>}
-                  </TableCell>
-                  {/* Tipo, bolsa, cada mes y factura se cambian aquí mismo,
-                      sin abrir a editar: casi siempre es lo único que se corrige. */}
-                  <TableCell>
-                    <Combobox compacto
-                      value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"}
-                      disabled={!puedeEditarGastos}
-                      onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}
-                    >
-                      {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
-                    </Combobox>
-                  </TableCell>
-                  <TableCell>
-                    <Combobox compacto
-                      value={esDelNegocio(g) ? "negocio" : "familia"}
-                      disabled={!puedeEditarGastos}
-                      onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}
-                    >
-                      {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
-                    </Combobox>
-                  </TableCell>
-                  <TableCell className="af-col-cadames">
-                    <Combobox compacto
-                      value={g.esFijo ? "si" : "no"}
-                      disabled={!puedeEditarGastos}
-                      onChange={(e) => cambiarFijo(g, e.target.value === "si")}
-                    >
-                      <option value="no">Suelto</option>
-                      <option value="si">Cada mes</option>
-                    </Combobox>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-medium">{money(g.monto)}</TableCell>
-                  <TableCell>
-                    <Combobox compacto
-                      value={estadoFacturaDe(g)}
-                      disabled={!puedeEditarGastos}
-                      onChange={(e) => cambiarEstadoFactura(g, e.target.value)}
-                    >
-                      {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
-                    </Combobox>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right">
-                    {puedeEditarGastos && (
-                      <>
-                        <Button variant="ghost" size="icon-sm" title="Editar" onClick={() => abrirEdicionGasto(g)}><SquarePen size={16} /></Button>
-                        <Button variant="ghost" size="icon-sm" title="Borrar" onClick={() => setConfirmarBorrarGasto(g)}><Trash size={16} /></Button>
-                      </>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          </ScrollArea>
 
-          {/* Celular: lista limpia (Item de shadcn). Al picar un gasto se abre
-              con todo lo demás: tipo, bolsa, factura, ticket, editar y borrar. */}
-          <ItemGroup className="af-solo-celular af-lista-gastos mb-4">
+          {/* Lista limpia (Item de shadcn), en celular, iPad y compu. Al picar
+              un gasto se abre con todo lo demás: tipo, bolsa, factura, ticket,
+              editar y borrar. Antes en iPad y compu era una tabla. */}
+          <ItemGroup className="af-lista-gastos mb-4">
             {(verTodosGastos ? gastosFiltrados : gastosFiltrados.slice(0, GASTOS_A_LA_VISTA)).map((g) => {
               const factura = estadoFacturaDe(g);
               return (
@@ -9484,8 +9386,9 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           <Dialog open onOpenChange={(abierto) => { if (!abierto) (() => setGastoEditando(null))?.(); }}>
             <DialogContent className="af-editar-modal" overlayClassName="af-modal-overlay-center">
               <div className="af-alerta-titulo mb-3">Editar gasto</div>
-              <div className="af-field">
-                <Label>¿De dónde sale?</Label>
+              <FieldGroup className="gap-5">
+              <Field>
+                <FieldLabel>¿De dónde sale?</FieldLabel>
                 <div className="af-ambito-switch">
                   {AMBITOS.map((a) => (
                     <Toggle
@@ -9497,16 +9400,16 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     </Toggle>
                   ))}
                 </div>
-              </div>
-              <div className="af-field">
-                <Label>Fecha</Label>
+              </Field>
+              <Field>
+                <FieldLabel>Fecha</FieldLabel>
                 <DatePicker value={gastoEditando.fecha} onChange={(e) => setGastoEditando({ ...gastoEditando, fecha: e.target.value })} />
-              </div>
+              </Field>
               {/* La tienda y la descripción se ELIGEN de las que ya hay, igual
                   que al capturar. Escritas a mano acababan con una letra de
                   diferencia y en los reportes contaban como dos cosas. */}
-              <div className="af-field">
-                <Label>¿En qué tienda?</Label>
+              <Field>
+                <FieldLabel>¿En qué tienda?</FieldLabel>
                 <Combobox
                  
                   value={gastoEditando.tienda || ""}
@@ -9518,15 +9421,15 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     <option value={gastoEditando.tienda}>{gastoEditando.tienda}</option>
                   )}
                 </Combobox>
-              </div>
-              <div className="af-field">
-                <Label>Categoría</Label>
+              </Field>
+              <Field>
+                <FieldLabel>Categoría</FieldLabel>
                 <Combobox value={gastoEditando.categoria} onChange={(e) => setGastoEditando({ ...gastoEditando, categoria: e.target.value })}>
                   {categoriasEnUso.map((c) => <option key={c} value={c}>{c}</option>)}
                 </Combobox>
-              </div>
-              <div className="af-field">
-                <Label>Descripción (opcional)</Label>
+              </Field>
+              <Field>
+                <FieldLabel>Descripción (opcional)</FieldLabel>
                 <Combobox
                  
                   value={nombresUsados.includes(gastoEditando.descripcion) ? gastoEditando.descripcion : "__otra__"}
@@ -9543,12 +9446,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                     onChange={(e) => setGastoEditando({ ...gastoEditando, descripcion: e.target.value })}
                   />
                 )}
-              </div>
-              <div className="af-field">
-                <Label>Monto</Label>
+              </Field>
+              <Field>
+                <FieldLabel>Monto</FieldLabel>
                 <NumberField value={gastoEditando.monto} min={0} className="af-input" onChange={(v) => setGastoEditando({ ...gastoEditando, monto: v })} />
-              </div>
-              <Button className="w-full" onClick={guardarEdicionGasto} disabled={!gastoEditando.monto}>Guardar cambios</Button>
+              </Field>
+              </FieldGroup>
+              <Button className="mt-6 w-full" onClick={guardarEdicionGasto} disabled={!gastoEditando.monto}>Guardar cambios</Button>
               <Button variant="secondary" className="w-full mt-2" onClick={() => setGastoEditando(null)}>Cancelar</Button>
             </DialogContent>
           </Dialog>
@@ -13459,6 +13363,10 @@ export default function App() {
   const [saludoInicioSaliendo, setSaludoInicioSaliendo] = useState(false);
 
   const [view, setView] = useState("hoy");
+  // El botón flotante "+" pide abrir el formulario de gasto: cada vez que
+  // sube este número, Reportes se va a Finanzas y abre "Agregar gasto".
+  const [pedirGasto, setPedirGasto] = useState(0);
+  const [tema, setTema] = useState(temaGuardado);
   const yoRef = useRef({ nombre: "", email: "" });
   const irAEditarRef = useRef(null);
   // "Mi perfil" se abre desde el menú del usuario en la barra lateral.
@@ -15727,6 +15635,8 @@ export default function App() {
         usuario={{ nombre: nombreUsuario, email: perfil?.email || "", foto: fotoUsuario }}
         onPerfil={() => setPerfilAbierto(true)}
         onCerrarSesion={cerrarSesion}
+        tema={tema}
+        onCambiarTema={(t) => { guardarTema(t); setTema(t); }}
       />
       <PerfilDialog
         abierto={perfilAbierto}
@@ -15766,6 +15676,23 @@ export default function App() {
           )}
         </div>
 
+        {/* Botón flotante "+": lo que más se usa (nuevo pedido, nuevo gasto,
+            nuevo presupuesto) a un toque desde cualquier pantalla. Con el
+            menú de shadcn (DropdownMenu) para que se vea como el resto de la
+            app. No sale dentro del formulario de pedido. */}
+        {view !== "nuevo" && (
+          <MenuS modal={false}>
+            <MenuSTrigger asChild>
+              <Button size="icon" className="af-fab" aria-label="Crear nuevo"><Plus /></Button>
+            </MenuSTrigger>
+            <MenuSContent side="top" align="end" sideOffset={12} className="af-fab-menu min-w-56 rounded-2xl p-1.5">
+              <MenuSItem onSelect={() => goToNuevoPedido()}><CirclePlus /> Nuevo pedido</MenuSItem>
+              <MenuSItem onSelect={() => { setError(""); setView("reportes"); setPedirGasto((n) => n + 1); }}><Receipt /> Nuevo gasto</MenuSItem>
+              <MenuSItem onSelect={() => goToNuevoPresupuesto()}><FileText /> Nuevo presupuesto</MenuSItem>
+            </MenuSContent>
+          </MenuS>
+        )}
+
         <div className="af-content">
           {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
@@ -15798,7 +15725,7 @@ export default function App() {
               avisosPendientes={avisosPendientes}
             />
           )}
-          {view === "reportes" && <ReportesView pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} showToast={showToast} />}
+          {view === "reportes" && <ReportesView pedirGasto={pedirGasto} pedidos={pedidos} historico={historico} onGuardarHistorico={guardarHistorico} clientes={clientes} gastos={gastos} onGuardarGastos={guardarGastos} perfil={perfil} config={config} onGuardarConfig={guardarConfig} showToast={showToast} />}
           {view === "presupuestos" && <PresupuestosView presupuestos={presupuestos} onAbrir={irAEditarPresupuesto} onAceptar={aceptarPresupuesto} onNuevo={() => goToNuevoPresupuesto()} />}
           {view === "deudas" && <DeudasView deudas={config?.deudas || []} onGuardar={guardarDeudas} showToast={showToast} />}
           {view === "historial" && (
@@ -16985,19 +16912,22 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    caber parte sus propios filtros en dos renglones. En pantalla ancha sigue
    junto a los meses, igual que antes. */
 .af-filtros-fila { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; min-width: 0; }
-/* Celular: gastos en lista (Item) y filtros en hoja; iPad y compu: tabla y
-   filtros a la vista. */
-.af-filtros-movil { display: none; align-items: center; gap: 8px; }
-.af-solo-celular { display: none; }
-@media (max-width: 699px) {
-  .af-barra-gastos > .af-filtros-fila { display: none; }
-  .af-filtros-movil { display: flex; }
-  .af-solo-grande { display: none !important; }
-  .af-solo-celular { display: flex; }
-}
 .af-filtros-hoja .af-filtros-fila { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .af-filtros-hoja .af-filtro-dia { grid-column: 1 / -1; }
 .af-lista-gastos { gap: 0; }
+/* Modo oscuro: la franja de marca (encabezado) y el sello del logo. */
+.dark .af-app { --marca: hsl(230 30% 12%); --glass: rgba(20, 24, 38, 0.7); --chrome-deep: hsl(230 30% 8%); }
+.dark .af-logo-barra, .dark .af-logo-mark { background-color: hsl(var(--lavanda)); }
+/* Al llegar desde el "+": que el formulario no quede debajo de la barra de arriba. */
+.af-form-gasto { scroll-margin-top: 80px; }
+.af-fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 40; width: 56px; height: 56px; border-radius: 999px; box-shadow: 0 8px 24px hsl(var(--higo) / 0.35); }
+.af-fab svg { width: 26px; height: 26px; }
+.af-fab[data-state=open] svg { transform: rotate(45deg); }
+.af-fab svg { transition: transform 0.2s ease; }
+.af-fab-menu [role=menuitem] { min-height: 44px; font-size: var(--text-base); gap: 12px; }
+/* Que el último renglón de cada pantalla no quede debajo del "+". */
+.af-content { padding-bottom: calc(64px + 32px + env(safe-area-inset-bottom)) !important; }
+.af-gastos-barra { flex-wrap: nowrap; margin-top: 8px; }
 .af-gasto-icono { width: 40px; height: 40px; border-radius: 12px; background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .af-gasto-icono svg { width: 18px; height: 18px; }
 .af-punto-aviso { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 999px; background: hsl(var(--destructive)); border: 2px solid var(--bg); }

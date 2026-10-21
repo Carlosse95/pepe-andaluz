@@ -1,8 +1,9 @@
 import * as React from "react";
 import {
-  ChevronsUpDown, LogOut, CircleUserRound,
+  ChevronsUpDown, LogOut, CircleUserRound, Moon,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -15,7 +16,7 @@ import {
 
 // Barra lateral de Pepe El Andaluz (base: sidebar-07 de shadcn/ui).
 // Se encoge a solo íconos en iPad/compu y en celular sale como cajón.
-export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrarSesion, ...props }) {
+export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrarSesion, tema, onCambiarTema, ...props }) {
   const { isMobile, setOpenMobile, setOpen } = useSidebar();
   // Como la barra de Aceternity UI: en iPad y compu vive angosta (solo
   // íconos), se ABRE sola al pasar el mouse o tocarla y se GUARDA sola al
@@ -52,18 +53,19 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Celular: renglones altos y repartidos parejo en el alto que hay.
-            Chicos y pegados, el dedo caía en la sección de al lado. */}
-        <SidebarGroup className={isMobile ? "flex-1" : undefined}>
+        {/* Celular: renglones más altos y con aire entre ellos (chicos y
+            pegados, el dedo caía en la sección de al lado), pero juntos
+            arriba: repartidos en todo el alto se veía exagerado. */}
+        <SidebarGroup>
           <SidebarGroupLabel>Secciones</SidebarGroupLabel>
-          <SidebarMenu className={isMobile ? "flex-1 justify-evenly gap-1" : undefined}>
+          <SidebarMenu className={isMobile ? "gap-1.5" : undefined}>
             {secciones.map((s) => (
               <SidebarMenuItem key={s.key}>
-                <SidebarMenuButton tooltip={s.label} isActive={vista === s.key} onClick={ir(() => onIr(s.key))} className={"data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground" + (isMobile ? " h-12 gap-4 rounded-xl px-4 text-base [&>svg]:size-[22px]" : "")}>
+                <SidebarMenuButton tooltip={s.label} isActive={vista === s.key} onClick={ir(() => onIr(s.key))} className={"data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground" + (isMobile ? " h-11 gap-3.5 rounded-xl px-3.5 text-base [&>svg]:size-5" : "")}>
                   {s.icono}
                   <span>{s.label}</span>
                 </SidebarMenuButton>
-                {s.badge > 0 && <SidebarMenuBadge className={(s.badgeSuave ? "bg-aviso/25 text-higo" : "bg-pimenton text-white") + (isMobile ? " right-3 !top-3.5" : "")}>{s.badge > 9 ? "9+" : s.badge}</SidebarMenuBadge>}
+                {s.badge > 0 && <SidebarMenuBadge className={(s.badgeSuave ? "bg-aviso/25 text-higo dark:text-sidebar-foreground" : "bg-pimenton text-white") + (isMobile ? " right-3 !top-3" : "")}>{s.badge > 9 ? "9+" : s.badge}</SidebarMenuBadge>}
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
@@ -98,6 +100,13 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
                 <DropdownMenuItem onSelect={ir(onPerfil)}>
                   <CircleUserRound /> Mi perfil
                 </DropdownMenuItem>
+                {/* Modo oscuro: el renglón entero prende o apaga el switch y el
+                    menú no se cierra, para ver el cambio al momento. */}
+                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); onCambiarTema?.(tema === "oscuro" ? "claro" : "oscuro"); }}>
+                  <Moon /> Modo oscuro
+                  <Switch className="pointer-events-none ml-auto" checked={tema === "oscuro"} tabIndex={-1} aria-hidden />
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={onCerrarSesion}>
                   <LogOut /> Cerrar sesión
                 </DropdownMenuItem>
