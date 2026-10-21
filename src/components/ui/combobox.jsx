@@ -36,11 +36,23 @@ function Combobox({ value, onChange, children, className, style, disabled, place
   const opciones = opcionesDe(children);
   const elegido = opciones.find((o) => o.valor === String(value ?? ""));
   const conBuscador = buscar ?? opciones.length > 7;
+  // Dentro de una hoja de abajo (Drawer), la lista se monta DENTRO de la
+  // hoja. Montada fuera, la hoja tomaba el toque como "picaste afuera": se
+  // cerraba antes de elegir la opción y no se aplicaba nada.
+  const botonRef = React.useRef(null);
+  const [dentroDe, setDentroDe] = React.useState(undefined);
 
   return (
-    <Popover open={abierto} onOpenChange={setAbierto}>
+    <Popover
+      open={abierto}
+      onOpenChange={(o) => {
+        if (o) setDentroDe(botonRef.current?.closest("[data-slot=drawer-content]") || undefined);
+        setAbierto(o);
+      }}
+    >
       <PopoverTrigger asChild>
         <button
+          ref={botonRef}
           type="button"
           id={id}
           role="combobox"
@@ -63,6 +75,7 @@ function Combobox({ value, onChange, children, className, style, disabled, place
         </button>
       </PopoverTrigger>
       <PopoverContent
+        container={dentroDe}
         className="z-[70] w-[--radix-popover-trigger-width] min-w-[12rem] p-0"
         align="start"
         onOpenAutoFocus={(e) => { if (!conBuscador) e.preventDefault(); }}

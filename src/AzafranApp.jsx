@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch, SwitchVista } from "@/components/ui/switch";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Item, ItemGroup, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions } from "@/components/ui/item";
 import { Ayuda } from "@/components/ayuda";
 import { Seccion } from "@/components/seccion";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -39,7 +40,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -6478,6 +6479,10 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   // El bote de basura está junto al lápiz y en el iPad se pica con el dedo:
   // demasiado fácil borrar una compra sin querer y no enterarse.
   const [confirmarBorrarGasto, setConfirmarBorrarGasto] = useState(null);
+  // Celular: el gasto que se abrió (su id, para que lo de adentro se vea al
+  // día al cambiarle algo) y la hoja de filtros.
+  const [gastoAbiertoId, setGastoAbiertoId] = useState(null);
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const [borrandoTipos, setBorrandoTipos] = useState(false);
   const [gastoEditando, setGastoEditando] = useState(null); // copia del gasto que se está editando
   const [rentAbierta, setRentAbierta] = useState({}); // clave de producto -> desglose de costo abierto
@@ -7603,6 +7608,99 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
   const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
 
 
+  // Los filtros de gastos: a la vista en iPad y compu, en una hoja en el celular.
+  const filtrosGastoJSX = (
+          <div className="af-filtros-fila">
+          {/* Cada filtro dice de qué es: sin el título, tres listas seguidas
+              obligan a abrirlas para saber qué filtran. */}
+          <label className="af-filtro">
+            <span className="af-mini-label">Bolsa</span>
+            <Combobox value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
+              <option value="todos">Todo</option>
+              {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
+            </Combobox>
+          </label>
+
+          <label className="af-filtro">
+            <span className="af-mini-label">Tipo</span>
+            <Combobox value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+              <option value="todos">Todos</option>
+              {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
+            </Combobox>
+          </label>
+
+          {/* Por tienda. El filtro ya existía por dentro —y hasta se contaba
+              en el número de filtros puestos— pero nunca se le puso su lista,
+              así que no había manera de usarlo. */}
+          {opcionesTienda.length > 1 && (
+            <label className="af-filtro af-filtro-tienda">
+              <span className="af-mini-label">Tienda</span>
+              <Combobox value={filtroTienda} onChange={(e) => setFiltroTienda(e.target.value)}>
+                <option value="todas">Todas</option>
+                {opcionesTienda.map((t) => (
+                  // El nombre se recorta: un select se estira hasta su opción
+                  // más larga, y "Integradora de carnes especializadas del
+                  // sureste" descuadraba la fila entera. El valor que se
+                  // guarda sigue siendo el nombre completo.
+                  <option key={t.clave} value={t.nombre}>
+                    {t.nombre.length > 16 ? t.nombre.slice(0, 16).trimEnd() + "…" : t.nombre}
+                  </option>
+                ))}
+              </Combobox>
+            </label>
+          )}
+
+          <label className="af-filtro">
+            <span className="af-mini-label">Factura</span>
+            <Combobox value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
+              <option value="todos">Todas</option>
+              {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
+            </Combobox>
+          </label>
+
+          {/* Un día concreto, en vez del buscador de texto. Para encontrar
+              algo ya están la bolsa, el tipo y la factura; lo que no había era
+              cómo llegar a "lo del sábado pasado". */}
+          <label className="af-filtro af-filtro-dia">
+            <span className="af-mini-label">Un día</span>
+            <div className="af-buscador-gastos">
+              <DatePicker
+                value={diaGasto}
+                onChange={(e) => setDiaGasto(e.target.value)}
+              />
+              {diaGasto && (
+                <Button variant="ghost" size="icon-sm" title="Quitar el día" onClick={() => setDiaGasto("")}><CircleX size={16} /></Button>
+              )}
+            </div>
+          </label>
+
+          {cuantosFiltros > 0 && (
+            <button className="af-btn-quitar-filtros" onClick={limpiarFiltros} title="Quitar todos los filtros">
+              <CircleX size={15} /> Quitar filtros
+            </button>
+          )}
+          {/* Los tipos que se inventaron y ya no se quieren. Solo se pueden
+              quitar los que no están en uso: borrar uno que tiene gastos
+              dejaría esos gastos apuntando a un tipo que ya no existe. */}
+          {esAdmin && categoriasPropias.length > 0 && (
+            <button className="af-btn-quitar-filtros" onClick={() => setBorrandoTipos(true)} title="Quitar tipos de gasto">
+              <Trash size={15} /> Tipos
+            </button>
+          )}
+          </div>
+  );
+  // Ícono de cada gasto en la lista del celular, según su tipo.
+  const iconoGasto = (g) => {
+    if (!esDelNegocio(g)) return <HeartHandshake />;
+    const c = g.categoria;
+    if (c === "Ingredientes") return <ShoppingBasket />;
+    if (c === "Sueldos") return <Users />;
+    if (c === "Renta") return <House />;
+    if (c === "Transporte") return <Truck />;
+    if (c === "Servicios") return <Zap />;
+    return <Receipt />;
+  };
+  const gastoAbierto = gastoAbiertoId ? gastos.find((x) => x.id === gastoAbiertoId) : null;
   return (
     <div>
       <div className="af-subtabs mb-4">
@@ -8576,85 +8674,33 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           {/* Los filtros que de verdad se usan, a la vista y todos del mismo
               tipo: se elige de una lista. Antes vivían escondidos detrás de un
               botón y había que descubrirlos. */}
-          <div className="af-filtros-fila">
-          {/* Cada filtro dice de qué es: sin el título, tres listas seguidas
-              obligan a abrirlas para saber qué filtran. */}
-          <label className="af-filtro">
-            <span className="af-mini-label">Bolsa</span>
-            <Combobox value={filtroAmbito} onChange={(e) => setFiltroAmbito(e.target.value)}>
-              <option value="todos">Todo</option>
-              {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
-            </Combobox>
-          </label>
-
-          <label className="af-filtro">
-            <span className="af-mini-label">Tipo</span>
-            <Combobox value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
-              <option value="todos">Todos</option>
-              {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
-            </Combobox>
-          </label>
-
-          {/* Por tienda. El filtro ya existía por dentro —y hasta se contaba
-              en el número de filtros puestos— pero nunca se le puso su lista,
-              así que no había manera de usarlo. */}
-          {opcionesTienda.length > 1 && (
-            <label className="af-filtro af-filtro-tienda">
-              <span className="af-mini-label">Tienda</span>
-              <Combobox value={filtroTienda} onChange={(e) => setFiltroTienda(e.target.value)}>
-                <option value="todas">Todas</option>
-                {opcionesTienda.map((t) => (
-                  // El nombre se recorta: un select se estira hasta su opción
-                  // más larga, y "Integradora de carnes especializadas del
-                  // sureste" descuadraba la fila entera. El valor que se
-                  // guarda sigue siendo el nombre completo.
-                  <option key={t.clave} value={t.nombre}>
-                    {t.nombre.length > 16 ? t.nombre.slice(0, 16).trimEnd() + "…" : t.nombre}
-                  </option>
-                ))}
-              </Combobox>
-            </label>
-          )}
-
-          <label className="af-filtro">
-            <span className="af-mini-label">Factura</span>
-            <Combobox value={filtroFactura} onChange={(e) => setFiltroFactura(e.target.value)}>
-              <option value="todos">Todas</option>
-              {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
-            </Combobox>
-          </label>
-
-          {/* Un día concreto, en vez del buscador de texto. Para encontrar
-              algo ya están la bolsa, el tipo y la factura; lo que no había era
-              cómo llegar a "lo del sábado pasado". */}
-          <label className="af-filtro af-filtro-dia">
-            <span className="af-mini-label">Un día</span>
-            <div className="af-buscador-gastos">
-              <DatePicker
-                value={diaGasto}
-                onChange={(e) => setDiaGasto(e.target.value)}
-              />
-              {diaGasto && (
-                <Button variant="ghost" size="icon-sm" title="Quitar el día" onClick={() => setDiaGasto("")}><CircleX size={16} /></Button>
-              )}
-            </div>
-          </label>
-
-          {cuantosFiltros > 0 && (
-            <button className="af-btn-quitar-filtros" onClick={limpiarFiltros} title="Quitar todos los filtros">
-              <CircleX size={15} /> Quitar filtros
-            </button>
-          )}
-          {/* Los tipos que se inventaron y ya no se quieren. Solo se pueden
-              quitar los que no están en uso: borrar uno que tiene gastos
-              dejaría esos gastos apuntando a un tipo que ya no existe. */}
-          {esAdmin && categoriasPropias.length > 0 && (
-            <button className="af-btn-quitar-filtros" onClick={() => setBorrandoTipos(true)} title="Quitar tipos de gasto">
-              <Trash size={15} /> Tipos
-            </button>
-          )}
-          </div>
+          {filtrosGastoJSX}
         </div>
+
+        {/* Celular: los filtros viven en una hoja que sale de abajo. A la
+            vista ocupaban más de media pantalla antes del primer gasto. */}
+        <div className="af-filtros-movil mb-3">
+          <Button variant="outline" size="sm" onClick={() => setFiltrosAbiertos(true)}>
+            <SlidersHorizontal /> Filtros{cuantosFiltros > 0 ? ` · ${cuantosFiltros}` : ""}
+          </Button>
+          {cuantosFiltros > 0 && (
+            <Button variant="ghost" size="sm" onClick={limpiarFiltros}><CircleX /> Quitar</Button>
+          )}
+        </div>
+        <Drawer open={filtrosAbiertos} onOpenChange={setFiltrosAbiertos}>
+          <DrawerContent>
+            <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col">
+              <DrawerHeader>
+                <DrawerTitle>Filtros</DrawerTitle>
+                <DrawerDescription>{gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · {money(totalFiltrado)}</DrawerDescription>
+              </DrawerHeader>
+              <div className="af-filtros-hoja min-h-0 overflow-y-auto px-4 pb-2 pt-1">{filtrosGastoJSX}</div>
+              <DrawerFooter>
+                <DrawerClose asChild><Button>Ver gastos</Button></DrawerClose>
+              </DrawerFooter>
+            </div>
+          </DrawerContent>
+        </Drawer>
 
         <div className="af-filtros-resultado mb-2">
           {gastosFiltrados.length} {gastosFiltrados.length === 1 ? "gasto" : "gastos"} · <strong>{money(totalFiltrado)}</strong>
@@ -8721,14 +8767,14 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
           />
         ) : (
           <>
-          <div className="af-tabla-pista">
+          <div className="af-tabla-pista af-solo-grande">
             <CircleArrowRight size={14} /> Desliza la tabla de lado para ver todo
           </div>
           {/* Sin alto máximo: la tabla mide lo que sus renglones y solo se
               desliza de lado. Con alto tope quedaba un desliz dentro de otro
               (en el celular se atoraba el dedo) y los renglones de abajo, ocultos,
               seguían ocupando lugar encima de "A dónde se fue el dinero". */}
-          <ScrollArea type="auto" horizontal className="af-tabla-scroll mb-4 w-full min-w-0 max-w-full rounded-2xl border">
+          <ScrollArea type="auto" horizontal className="af-tabla-scroll af-solo-grande mb-4 w-full min-w-0 max-w-full rounded-2xl border">
           <Table sinMarco className="af-tabla-gastos">
             <TableHeader className="bg-background">
               <TableRow>
@@ -8811,6 +8857,34 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </TableBody>
           </Table>
           </ScrollArea>
+
+          {/* Celular: lista limpia (Item de shadcn). Al picar un gasto se abre
+              con todo lo demás: tipo, bolsa, factura, ticket, editar y borrar. */}
+          <ItemGroup className="af-solo-celular af-lista-gastos mb-4">
+            {gastosFiltrados.map((g) => {
+              const factura = estadoFacturaDe(g);
+              return (
+                <Item key={g.id} asChild size="sm">
+                  <button type="button" onClick={() => setGastoAbiertoId(g.id)}>
+                    <ItemMedia variant="icon" className="af-gasto-icono">{iconoGasto(g)}</ItemMedia>
+                    <ItemContent className="min-w-0">
+                      <ItemTitle className="w-full">
+                        <span className="truncate">{g.tienda || g.descripcion || g.categoria}</span>
+                        {g.ticket && <Receipt className="size-3.5 shrink-0 text-muted-foreground" />}
+                      </ItemTitle>
+                      <ItemDescription className="line-clamp-1">
+                        {g.categoria} · {fmtDiaCorto(g.fecha)}
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemActions className="flex-col items-end gap-0.5">
+                      <span className="font-semibold tabular-nums">−{money(g.monto)}</span>
+                      {factura === "pendiente" && <span className="af-gasto-falta">Sin factura</span>}
+                    </ItemActions>
+                  </button>
+                </Item>
+              );
+            })}
+          </ItemGroup>
           </>
         )}
 
@@ -9131,6 +9205,61 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
             </DialogContent>
           </Dialog>
         )}
+
+        <Drawer open={!!gastoAbierto} onOpenChange={(o) => { if (!o) setGastoAbiertoId(null); }}>
+          <DrawerContent>
+            {gastoAbierto && (() => {
+              const g = gastoAbierto;
+              // Primero se cierra la hoja y luego se abre lo demás: dos
+              // ventanas encimadas se pelean el toque en el iPhone.
+              const cerrarY = (hacer) => { setGastoAbiertoId(null); setTimeout(hacer, 300); };
+              return (
+                <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col">
+                  <DrawerHeader>
+                    <DrawerTitle>{g.tienda || g.descripcion || g.categoria}</DrawerTitle>
+                    <DrawerDescription>{fmtDateHuman(g.fecha)}</DrawerDescription>
+                  </DrawerHeader>
+                  <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2 pt-1">
+                    <div className="af-gasto-detalle-monto">−{money(g.monto)}</div>
+                    {g.tienda && g.descripcion && <p className="text-sm text-muted-foreground">{g.descripcion}</p>}
+                    {g.ticket && (
+                      <Button variant="outline" onClick={() => abrirTicket(g)}><Receipt /> Ver la foto del ticket</Button>
+                    )}
+                    <div className="af-gasto-detalle-campos">
+                      <Label>Tipo</Label>
+                      <Combobox compacto value={categoriasEnUso.includes(g.categoria) ? g.categoria : "Otros"} disabled={!esAdmin} onChange={(e) => cambiarCategoriaGasto(g.id, e.target.value)}>
+                        {categoriasEnUso.map((c) => (<option key={c} value={c}>{c}</option>))}
+                      </Combobox>
+                      <Label>Bolsa</Label>
+                      <Combobox compacto value={esDelNegocio(g) ? "negocio" : "familia"} disabled={!esAdmin} onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}>
+                        {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
+                      </Combobox>
+                      <Label>Se repite</Label>
+                      <Combobox compacto value={g.esFijo ? "si" : "no"} disabled={!esAdmin} onChange={(e) => cambiarFijo(g, e.target.value === "si")}>
+                        <option value="no">Suelto</option>
+                        <option value="si">Cada mes</option>
+                      </Combobox>
+                      <Label>Factura</Label>
+                      <Combobox compacto value={estadoFacturaDe(g)} disabled={!esAdmin} onChange={(e) => cambiarEstadoFactura(g, e.target.value)}>
+                        {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
+                      </Combobox>
+                      {(g.folio || g.folio2) && (<><Label>Folio</Label><span className="text-sm tabular-nums">{[g.folio, g.folio2].filter(Boolean).join(" · ")}</span></>)}
+                    </div>
+                  </div>
+                  <DrawerFooter>
+                    {esAdmin && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" onClick={() => cerrarY(() => abrirEdicionGasto(g))}><SquarePen /> Editar</Button>
+                        <Button variant="destructive" onClick={() => cerrarY(() => setConfirmarBorrarGasto(g))}><Trash /> Borrar</Button>
+                      </div>
+                    )}
+                    <DrawerClose asChild><Button variant="ghost">Cerrar</Button></DrawerClose>
+                  </DrawerFooter>
+                </div>
+              );
+            })()}
+          </DrawerContent>
+        </Drawer>
 
         {confirmarBorrarGasto && (
           <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setConfirmarBorrarGasto(null); }}>
@@ -16815,6 +16944,25 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
    caber parte sus propios filtros en dos renglones. En pantalla ancha sigue
    junto a los meses, igual que antes. */
 .af-filtros-fila { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; min-width: 0; }
+/* Celular: gastos en lista (Item) y filtros en hoja; iPad y compu: tabla y
+   filtros a la vista. */
+.af-filtros-movil { display: none; align-items: center; gap: 8px; }
+.af-solo-celular { display: none; }
+@media (max-width: 699px) {
+  .af-barra-gastos > .af-filtros-fila { display: none; }
+  .af-filtros-movil { display: flex; }
+  .af-solo-grande { display: none !important; }
+  .af-solo-celular { display: flex; }
+}
+.af-filtros-hoja .af-filtros-fila { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.af-filtros-hoja .af-filtro-dia { grid-column: 1 / -1; }
+.af-lista-gastos { gap: 0; }
+.af-gasto-icono { width: 40px; height: 40px; border-radius: 12px; background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.af-gasto-icono svg { width: 18px; height: 18px; }
+.af-gasto-falta { font-size: var(--text-2xs); font-weight: 600; color: hsl(var(--destructive)); }
+.af-gasto-detalle-monto { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.af-gasto-detalle-campos { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px 16px; }
+.af-gasto-detalle-campos > label { margin: 0; }
 .af-filtro { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 
 /* Capturar un gasto, en dos columnas cuando hay ancho: una sola columna de
