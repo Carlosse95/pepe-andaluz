@@ -52,16 +52,18 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
+        {/* Celular: renglones altos y repartidos parejo en el alto que hay.
+            Chicos y pegados, el dedo caía en la sección de al lado. */}
+        <SidebarGroup className={isMobile ? "flex-1" : undefined}>
           <SidebarGroupLabel>Secciones</SidebarGroupLabel>
-          <SidebarMenu>
+          <SidebarMenu className={isMobile ? "flex-1 justify-evenly gap-1" : undefined}>
             {secciones.map((s) => (
               <SidebarMenuItem key={s.key}>
-                <SidebarMenuButton tooltip={s.label} isActive={vista === s.key} onClick={ir(() => onIr(s.key))} className="data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground">
+                <SidebarMenuButton tooltip={s.label} isActive={vista === s.key} onClick={ir(() => onIr(s.key))} className={"data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground" + (isMobile ? " h-12 gap-4 rounded-xl px-4 text-base [&>svg]:size-[22px]" : "")}>
                   {s.icono}
                   <span>{s.label}</span>
                 </SidebarMenuButton>
-                {s.badge > 0 && <SidebarMenuBadge className={s.badgeSuave ? "bg-aviso/25 text-higo" : "bg-pimenton text-white"}>{s.badge > 9 ? "9+" : s.badge}</SidebarMenuBadge>}
+                {s.badge > 0 && <SidebarMenuBadge className={(s.badgeSuave ? "bg-aviso/25 text-higo" : "bg-pimenton text-white") + (isMobile ? " right-3 !top-3.5" : "")}>{s.badge > 9 ? "9+" : s.badge}</SidebarMenuBadge>}
               </SidebarMenuItem>
             ))}
           </SidebarMenu>

@@ -9272,10 +9272,13 @@ function ReportesView({ pedidos, historico, onGuardarHistorico, clientes, gastos
                       <Combobox compacto value={esDelNegocio(g) ? "negocio" : "familia"} disabled={!puedeEditarGastos} onChange={(e) => cambiarAmbitoGasto(g.id, e.target.value)}>
                         {AMBITOS.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
                       </Combobox>
-                      <Label>Se repite</Label>
+                      {/* Antes "Se repite: Suelto / Cada mes", que había que
+                          pensarle. Un gasto fijo es el que se paga cada mes
+                          (renta, luz, sueldos) y la app lo apunta sola. */}
+                      <Label>¿Gasto fijo?</Label>
                       <Combobox compacto value={g.esFijo ? "si" : "no"} disabled={!puedeEditarGastos} onChange={(e) => cambiarFijo(g, e.target.value === "si")}>
-                        <option value="no">Suelto</option>
-                        <option value="si">Cada mes</option>
+                        <option value="no">No, solo esta vez</option>
+                        <option value="si">Sí, se paga cada mes</option>
                       </Combobox>
                       <Label>Factura</Label>
                       <Combobox compacto value={estadoFacturaDe(g)} disabled={!puedeEditarGastos} onChange={(e) => cambiarEstadoFactura(g, e.target.value)}>

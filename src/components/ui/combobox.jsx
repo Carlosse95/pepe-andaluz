@@ -78,7 +78,10 @@ function Combobox({ value, onChange, children, className, style, disabled, place
         container={dentroDe}
         className="z-[70] w-[--radix-popover-trigger-width] min-w-[12rem] p-0"
         align="start"
-        onOpenAutoFocus={(e) => { if (!conBuscador) e.preventDefault(); }}
+        // En celular/iPad NO se pone el cursor en el buscador al abrir: eso
+        // sacaba el teclado y tapaba la lista aunque solo se quisiera elegir.
+        // Si hace falta buscar, se toca el buscador y ahí sale el teclado.
+        onOpenAutoFocus={(e) => { if (!conBuscador || window.matchMedia?.("(pointer: coarse)").matches) e.preventDefault(); }}
         onClick={(e) => e.stopPropagation()}
       >
         <Command>
