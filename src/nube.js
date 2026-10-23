@@ -645,6 +645,18 @@ export const actualizarPerfil = async (userId, cambios) => {
   if (error) throw error;
 };
 
+// El admin le pone una contraseña nueva a un usuario (función cambiar-contrasena,
+// que revisa en la nube que quien lo pide sea administrador).
+export const cambiarContrasena = async (userId, password) => {
+  const { data, error } = await supabase.functions.invoke("cambiar-contrasena", { body: { user_id: userId, password } });
+  if (error) {
+    let msg = error.message;
+    try { msg = (await error.context.json()).error || msg; } catch { /* sin detalle */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+};
+
 // ---------- Historial de movimientos ----------
 // Una tabla donde solo se AGREGA: quién hizo qué y cuándo (pedidos, pagos,
 // gastos, clientes). Nadie puede editar ni borrar una fila, ni el admin.

@@ -49,7 +49,7 @@ import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Cart
 import {
   nubeActiva, almacen, copiaLocal, pendientesLocales, suscribirAlmacen, probarConexion, esperarApuntes,
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
-  obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil,
+  obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil, cambiarContrasena,
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
@@ -9464,6 +9464,28 @@ function UsuariosPanel({ perfil, showToast }) {
   const [nuevo, setNuevo] = useState({ nombre: "", email: "", password: "" });
   const [creando, setCreando] = useState(false);
   const [errorUsr, setErrorUsr] = useState("");
+  // Contraseña nueva para alguien que ya no se acuerda de la suya (p. ej.
+  // cambió de celular). La escribe el admin y se la pasa a la persona.
+  const [claveDe, setClaveDe] = useState(null);
+  const [claveAbierta, setClaveAbierta] = useState(false);
+  const [claveNueva, setClaveNueva] = useState("");
+  const [guardandoClave, setGuardandoClave] = useState(false);
+  const [errorClave, setErrorClave] = useState("");
+  const guardarClave = async () => {
+    setErrorClave("");
+    if (claveNueva.length < 6) { setErrorClave("Debe tener al menos 6 caracteres."); return; }
+    setGuardandoClave(true);
+    try {
+      await cambiarContrasena(claveDe.user_id, claveNueva);
+      showToast(`Listo: ${claveDe.nombre || claveDe.email} ya puede entrar con la contraseña nueva`);
+      setClaveAbierta(false);
+      setClaveNueva("");
+    } catch (e) {
+      setErrorClave("No se pudo cambiar: " + (e.message || "error desconocido"));
+    } finally {
+      setGuardandoClave(false);
+    }
+  };
 
   const recargar = async () => {
     try { setUsuarios(await listarPerfiles()); } catch { setUsuarios([]); }
@@ -9518,6 +9540,9 @@ function UsuariosPanel({ perfil, showToast }) {
                 </div>
                 <div className="af-ink-soft text-sm">{u.email}</div>
               </div>
+              <Button variant="outline" size="sm" className="mr-2" onClick={() => { setClaveDe(u); setClaveAbierta(true); setClaveNueva(""); setErrorClave(""); }}>
+                Contraseña
+              </Button>
               {u.user_id !== perfil.user_id && u.rol !== "admin" && (
                 <Button
                   variant={u.activo ? "exito" : "secondary"}
@@ -9532,6 +9557,29 @@ function UsuariosPanel({ perfil, showToast }) {
         </div>
       )}
       </Seccion>
+
+      <DialogS open={claveAbierta} onOpenChange={setClaveAbierta}>
+        <DialogSContent>
+          <DialogSHeader>
+            <DialogSTitle>Contraseña nueva</DialogSTitle>
+            <DialogSDescription>
+              Para {claveDe?.nombre || claveDe?.email}. Escríbela y pásasela: la anterior deja de servir y con esta entra en su celular nuevo.
+            </DialogSDescription>
+          </DialogSHeader>
+          <Input
+            type="text"
+            autoComplete="off"
+            placeholder="Mínimo 6 caracteres"
+            value={claveNueva}
+            onChange={(e) => setClaveNueva(e.target.value)}
+          />
+          {errorClave && <div className="af-error">{errorClave}</div>}
+          <DialogSFooter>
+            <DialogSClose asChild><Button variant="secondary">Cancelar</Button></DialogSClose>
+            <Button onClick={guardarClave} disabled={guardandoClave}>{guardandoClave ? "Guardando…" : "Guardar contraseña"}</Button>
+          </DialogSFooter>
+        </DialogSContent>
+      </DialogS>
 
       <Seccion id="usuarios-alta" titulo="Dar de alta un usuario">
       <Card className="p-4">
