@@ -10,6 +10,11 @@ export default defineConfig({
   // (https://usuario.github.io/nombre-del-repo/) sin configurar nada más.
   base: './',
   build: {
+    // Código que entienda también Safari de iPad/iPhone un poco viejos. Sin
+    // esto Rolldown dejaba "static {}" (bloques estáticos de clase, de Radix),
+    // que solo entiende iPadOS/iOS 16.4 o más nuevo: en un aparato anterior la
+    // app ENTERA no arranca, sin ningún aviso.
+    target: ['es2020', 'safari15'],
     // Vite 8 arma los archivos con Rolldown. Se reparte con grupos y
     // prioridades: React va primero (prioridad más alta) para que ningún otro
     // archivo se lo lleve. Con la función de antes, React terminaba DENTRO
