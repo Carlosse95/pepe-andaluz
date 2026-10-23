@@ -690,6 +690,13 @@ export const marcarEnApp = async (endpoint, enApp) => {
   await supabase.rpc("marcar_en_app", { p_endpoint: endpoint, p_en_app: !!enApp });
 };
 
+// Bitácora de errores (tabla errores_app): lo que truena en un aparato queda
+// apuntado para revisarlo sin tener ese aparato en la mano. Si falla, nada.
+export const reportarError = async (fila) => {
+  if (!nubeActiva) return;
+  try { await supabase.from("errores_app").insert(fila); } catch { /* sin red o sin sesión */ }
+};
+
 // Pide a la nube que avise a los demás de estos movimientos (ya subidos).
 export const pedirAvisos = async (claves) => {
   if (!nubeActiva || !claves.length) return;

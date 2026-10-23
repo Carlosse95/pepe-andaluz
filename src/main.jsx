@@ -7,10 +7,12 @@ import './index.css'
 import { seguirVistaVisible } from './vistaVisible.js'
 import { cuidarTecladoFisico } from './tecladoFisico.js'
 import { aplicarTema, temaGuardado } from './tema.js'
+import { vigilarErrores } from './bitacora.js'
 
 // Antes de dibujar nada, para que no se vea un destello claro al abrir.
 aplicarTema(temaGuardado())
 
+vigilarErrores()
 seguirVistaVisible()
 cuidarTecladoFisico()
 

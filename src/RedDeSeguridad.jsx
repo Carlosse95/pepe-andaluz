@@ -5,6 +5,7 @@
 // Esto lo atrapa y muestra una salida. Los datos no se pierden: viven en la
 // nube, no en la pantalla.
 import React from "react";
+import { anotarError } from "./bitacora.js";
 
 export default class RedDeSeguridad extends React.Component {
   constructor(props) {
@@ -19,6 +20,7 @@ export default class RedDeSeguridad extends React.Component {
   componentDidCatch(error, info) {
     // Queda apuntado en la consola por si hay que revisarlo después.
     console.error("La app tronó al dibujar:", error, info?.componentStack);
+    anotarError("Pantalla: " + String(error?.message || error), info?.componentStack);
     // Y se guarda lo último, para poder preguntarle a Carlos qué decía sin
     // depender de que alcance a leerlo en la pantalla.
     try {

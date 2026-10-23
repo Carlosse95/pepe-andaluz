@@ -277,3 +277,20 @@ begin
 end; $$;
 revoke all on function public.marcar_en_app(text, boolean) from public, anon;
 grant execute on function public.marcar_en_app(text, boolean) to authenticated;
+
+-- Bitácora de errores de la app (oct 2026): lo que truena en un aparato queda
+-- apuntado para revisarlo sin tener ese aparato en la mano (src/bitacora.js).
+create table if not exists public.errores_app (
+  id bigint generated always as identity primary key,
+  creado_en timestamptz not null default now(),
+  usuario_id uuid default auth.uid(),
+  mensaje text,
+  donde text,
+  pantalla text,
+  agente text,
+  version text
+);
+alter table public.errores_app enable row level security;
+create policy "errores insertar" on public.errores_app for insert to authenticated with check (public.es_usuario_activo());
+create policy "errores leer admin" on public.errores_app for select to authenticated using (public.es_admin());
+alter table public.errores_app add constraint errores_largo check (length(coalesce(mensaje,'')) <= 500 and length(coalesce(donde,'')) <= 1500 and length(coalesce(agente,'')) <= 300);
