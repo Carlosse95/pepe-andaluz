@@ -76,6 +76,9 @@ function Combobox({ value, onChange, children, className, style, disabled, place
       </PopoverTrigger>
       <PopoverContent
         container={dentroDe}
+        // Siempre con aire contra la orilla de la pantalla (y la rayita del
+        // iPad/iPhone): si abajo no cabe, se abre hacia arriba.
+        collisionPadding={{ top: 16, bottom: 24, left: 12, right: 12 }}
         className="z-[70] w-[--radix-popover-trigger-width] min-w-[12rem] p-0"
         align="start"
         // En celular/iPad NO se pone el cursor en el buscador al abrir: eso
