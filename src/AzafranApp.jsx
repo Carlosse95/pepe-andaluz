@@ -5704,6 +5704,12 @@ const infoDeTienda = (tienda) => {
   );
 };
 
+// El nombre con que se guarda una tienda: si es una de las conocidas, su
+// nombre oficial ("Sam's club", "SAMS", "Sam's Club Mérida" → "Sam's"), para
+// que la misma tienda no aparezca dos veces en filtros y reportes.
+const nombreDeTienda = (tienda) =>
+  (normalizarNombreGasto(tienda || "").replace(/[^a-z0-9]/g, "").length >= 3 && infoDeTienda(tienda)?.nombre) || conMayusculaInicial(tienda);
+
 // El folio del ticket va TODO junto, sin espacios.
 //
 // La lectura automática de la foto los mete cuando el número viene partido en
@@ -7171,7 +7177,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
       id: uid(),
       fecha: nuevoGasto.fecha,
       ambito: nuevoGasto.ambito || "negocio",
-      tienda: conMayusculaInicial(nuevoGasto.tienda),
+      tienda: nombreDeTienda(nuevoGasto.tienda),
       categoria: nuevoGasto.categoria,
       descripcion: conMayusculaInicial(nuevoGasto.descripcion),
       monto: parseFloat(nuevoGasto.monto),
@@ -7333,7 +7339,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
     onGuardarGastos(
       gastos.map((g) =>
         g.id === gastoEditando.id
-          ? { ...g, fecha: gastoEditando.fecha, ambito: gastoEditando.ambito || ambitoDe(g), tienda: conMayusculaInicial(gastoEditando.tienda), categoria: gastoEditando.categoria, descripcion: conMayusculaInicial(gastoEditando.descripcion), monto: parseFloat(gastoEditando.monto) }
+          ? { ...g, fecha: gastoEditando.fecha, ambito: gastoEditando.ambito || ambitoDe(g), tienda: nombreDeTienda(gastoEditando.tienda), categoria: gastoEditando.categoria, descripcion: conMayusculaInicial(gastoEditando.descripcion), monto: parseFloat(gastoEditando.monto) }
           : g
       )
     );
@@ -7654,7 +7660,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
       if (leido) {
         setNuevoGasto((prev) => ({
           ...prev,
-          tienda: leido.tienda || prev.tienda,
+          tienda: (leido.tienda && nombreDeTienda(leido.tienda)) || prev.tienda,
           fecha: leido.fecha || prev.fecha,
           monto: leido.total > 0 ? leido.total : prev.monto,
           categoria: categoriaDeTienda(leido.tienda) || prev.categoria,
