@@ -9157,8 +9157,46 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
                   <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2 pt-1">
                     <div className="af-gasto-detalle-monto">−{money(g.monto)}</div>
                     {g.tienda && g.descripcion && <p className="text-sm text-muted-foreground">{g.descripcion}</p>}
+                    {/* Para facturar, aquí mismo: folio para copiar, la liga del
+                        portal de esa tienda y los datos fiscales de un toque.
+                        Antes solo vivían en la ventana de la foto, y con la hoja
+                        encima esa ventana ya no se podía usar. */}
+                    {estadoFacturaDe(g) === "pendiente" && (
+                      <div className="af-ticket-datos">
+                        {g.folio ? (
+                          <>
+                            <span className="af-mini-label">Folio del ticket</span>
+                            <code>{g.folio}</code>
+                            {g.folio2 && (<><span className="af-mini-label">Segundo número</span><code>{g.folio2}</code></>)}
+                            <button className={cn(badgeVariants({ variant: "neutral" }))} onClick={() => copiarTexto(g.folio, "Folio copiado")}>
+                              <Copy size={12} /> Copiar folio
+                            </button>
+                          </>
+                        ) : (
+                          <span className="af-ink-soft text-xs">{infoDeTienda(g.tienda)?.pide || "Busca el folio en la foto del ticket."}</span>
+                        )}
+                        {infoDeTienda(g.tienda) && (
+                          <a className={cn(badgeVariants({ variant: "plain" }), "af-chip-portal")} href={infoDeTienda(g.tienda).portal} target="_blank" rel="noopener noreferrer">
+                            Abrir portal para facturar
+                          </a>
+                        )}
+                        {datosFiscales().length > 0 ? (
+                          datosFiscales().map((d) => (
+                            <button key={d.etiqueta} className={cn(badgeVariants({ variant: "neutral" }), "af-chip-fiscal")} title={`Copiar ${d.valor}`} onClick={() => copiarTexto(d.valor, `${d.etiqueta} copiado`)}>
+                              <ClipboardPaste size={12} />
+                              <span className="af-chip-fiscal-et">{d.etiqueta}</span>
+                              <span className="af-chip-fiscal-val">{d.valor}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <span className="af-ink-soft text-xs">Captura tus datos en Ajustes → Datos.</span>
+                        )}
+                      </div>
+                    )}
                     {g.ticket && (
-                      <Button variant="outline" onClick={() => abrirTicket(g)}><Receipt /> Ver la foto del ticket</Button>
+                      // Primero se cierra la hoja: la foto encima de ella no se
+                      // podía tocar.
+                      <Button variant="outline" onClick={() => cerrarY(() => abrirTicket(g))}><Receipt /> Ver la foto del ticket</Button>
                     )}
                     <div className="af-gasto-detalle-campos">
                       <Label>Tipo</Label>
@@ -9181,7 +9219,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
                       <Combobox compacto value={estadoFacturaDe(g)} disabled={!puedeEditarGastos} onChange={(e) => cambiarEstadoFactura(g, e.target.value)}>
                         {ESTADOS_FACTURA.map((e) => (<option key={e.id} value={e.id}>{e.label}</option>))}
                       </Combobox>
-                      {(g.folio || g.folio2) && (<><Label>Folio</Label><span className="text-sm tabular-nums">{[g.folio, g.folio2].filter(Boolean).join(" · ")}</span></>)}
+                      {(g.folio || g.folio2) && estadoFacturaDe(g) !== "pendiente" && (<><Label>Folio</Label><span className="text-sm tabular-nums">{[g.folio, g.folio2].filter(Boolean).join(" · ")}</span></>)}
                     </div>
                   </div>
                   <DrawerFooter>
