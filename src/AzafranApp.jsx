@@ -744,6 +744,7 @@ const siguienteFolio = (lista) => lista.reduce((max, x) => Math.max(max, x.folio
 // último absorbe los centavos para que la suma dé exacto) y la fecha de cada
 // pago (mismo día; si el mes es más corto, su último día).
 const OPCIONES_MESES = [3, 6, 9, 12, 18, 24];
+const MAX_MESES = 60;
 const partirEnMeses = (total, n) => {
   const cada = Math.floor((total / n) * 100) / 100;
   return Array.from({ length: n }, (_, i) => (i < n - 1 ? cada : Math.round((total - cada * (n - 1)) * 100) / 100));
@@ -3186,33 +3187,54 @@ function PerfilDialog({ abierto, onCerrar, nombre, email, foto, onGuardar }) {
   );
 }
 
+// Mensaje para recordarle al cliente que devuelva la paellera.
+const mensajeRecordarPaellera = (item) => {
+  const nombre = ((item.clienteNombre || "").trim().split(/\s+/)[0]) || "";
+  const saludo = `¡Hola${nombre ? " " + nombre : ""}! Le escribimos de Pepe El Andaluz 🥘`;
+  return `${saludo}. Le recordamos que tiene pendiente devolver la paellera de su pedido del ${fmtDateHuman(item.fecha).toLowerCase()}. Puede traerla cuando le quede bien. ¡Muchas gracias!`;
+};
+
 function PaelleraRow({ item, onMarcarDevuelta }) {
   // Se pide confirmar antes de marcarla devuelta: un toque de más aquí
   // (pantalla chica, dedos rápidos) y ya no hay forma fácil de deshacerlo.
   const [confirmando, setConfirmando] = useState(false);
+  // A dónde ir por ella: la ubicación del pedido, si no la dirección del
+  // pedido, y si tampoco, la que tenga guardada el cliente.
+  const ubic = [item.ubicacion, item.ubicacionCliente].find((u) => (u || "").trim());
+  const dir = [item.direccion, item.direccionCliente].find((d) => (d || "").trim());
+  const destino = ubic ? enlaceDeUbicacion(ubic) : dir ? `https://maps.google.com/?q=${encodeURIComponent(dir.trim())}` : null;
   return (
     <Card className="af-paellera-row p-3 mb-2">
-      <div>
+      <div className="min-w-0">
         <div className="af-cliente-nombre">{item.clienteNombre} <span className="af-ink-soft text-sm">· {item.paellaNombre}</span></div>
         <div className="af-fecha-sub">{fmtDateHuman(item.fecha)} · {item.hora}</div>
-        {item.vamosPorElla && (() => {
-          const destino = item.ubicacion
-            ? enlaceDeUbicacion(item.ubicacion)
-            : (item.direccion || "").trim()
-              ? `https://maps.google.com/?q=${encodeURIComponent(item.direccion.trim())}`
-              : null;
-          return destino ? (
-            <a href={destino} target="_blank" rel="noopener noreferrer" className={cn(badgeVariants({ variant: "marca" }), "mt-1")} onClick={(e) => e.stopPropagation()}>
-              <MapPin size={12} /> Vamos por ella · Ver mapa
-            </a>
-          ) : (
-            <Chip variant="marca" className="mt-1"><Truck size={12} /> Vamos por ella</Chip>
-          );
-        })()}
+        {item.vamosPorElla && (
+          <Chip variant="marca" className="mt-1"><Truck size={12} /> Vamos por ella</Chip>
+        )}
       </div>
-      <Button variant="exito" size="sm" onClick={() => setConfirmando(true)}>
-        <CircleCheck size={14} /> Devuelta
-      </Button>
+      <div className="af-paellera-acciones">
+        {/* Si pagó para que vayamos por ella, la ubicación ya la tenemos (es
+            a donde se llevó): solo se abre. Si no, se le recuerda que la
+            traiga, con el mensaje ya escrito en WhatsApp. */}
+        {item.vamosPorElla ? (
+          destino && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={destino} target="_blank" rel="noopener noreferrer">
+                <MapPin size={14} /> Abrir ubicación
+              </a>
+            </Button>
+          )
+        ) : (
+          item.telefono && (
+            <Button variant="outline" size="sm" onClick={() => abrirWhatsApp(item.telefono, mensajeRecordarPaellera(item))}>
+              <MessageCircle size={14} /> Recordar
+            </Button>
+          )
+        )}
+        <Button variant="exito" size="sm" onClick={() => setConfirmando(true)}>
+          <CircleCheck size={14} /> Devuelta
+        </Button>
+      </div>
       {confirmando && (
         <AlertDialog open onOpenChange={(abierto) => { if (!abierto) setConfirmando(false); }}>
           <AlertDialogContent>
@@ -3369,7 +3391,18 @@ function ProduccionDelDiaBox({ pedidosDelDia, config, abierto, onToggle, soloCon
 /*  Vista: Hoy (Dashboard)                                                */
 /* ---------------------------------------------------------------------- */
 
-function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia, onSaldarPedido, showToast }) {
+// Teléfono y ubicación guardada del cliente, para recordarle la paellera o
+// ir por ella aunque el pedido no los traiga.
+const datosClientePaellera = (p, clientes) => {
+  const c = (clientes || []).find((x) => x.id === p.clienteId);
+  return {
+    telefono: p.clienteTelefono || c?.telefono || "",
+    ubicacionCliente: c?.ubicacion || "",
+    direccionCliente: c?.direccion || "",
+  };
+};
+
+function HoyView({ clientes, pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelta, onCambiarEstado, onEnviarAvisoWhatsApp, avisosPendientes, onNuevoPedido, onNuevoPresupuesto, onConfirmarTransferencia, onSaldarPedido, showToast }) {
   const [verEntregados, setVerEntregados] = useState(false);
   const [verPaelleras, setVerPaelleras] = useState(false);
   const [verProduccion, setVerProduccion] = useState(false);
@@ -3441,6 +3474,7 @@ function HoyView({ pedidosHoy, pedidos, config, nombre, onAbrir, onMarcarDevuelt
           // lista que se revisa para salir a recogerlas.
           vamosPorElla: !!p.recogerPaellera,
           ubicacion: p.ubicacion || "", direccion: p.direccion || "",
+          ...datosClientePaellera(p, clientes),
         });
       }
     });
@@ -4601,7 +4635,11 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
       if ((p.estado || "pendiente") !== "entregado") return;
       p.items.forEach((it) => {
         if (it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta) {
-          pendientesCliente.push({ pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre });
+          pendientesCliente.push({
+            pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre,
+            vamosPorElla: !!p.recogerPaellera, ubicacion: p.ubicacion || "", direccion: p.direccion || "",
+            telefono: p.clienteTelefono || detalle.telefono || "", ubicacionCliente: detalle.ubicacion || "", direccionCliente: detalle.direccion || "",
+          });
         }
       });
     });
@@ -7208,7 +7246,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
     // compra se parte en un gasto por mes, cada uno en su mes. Así los
     // reportes, las gráficas y el "gasté este mes" cuentan solo lo que de
     // verdad sale ese mes, sin tener que tocar ninguna cuenta.
-    const meses = esAdmin ? Number(nuevoGasto.meses) || 1 : 1;
+    const meses = esAdmin ? Math.max(1, Math.min(MAX_MESES, Math.round(Number(nuevoGasto.meses) || 1))) : 1;
     let resto = [];
     if (meses > 1) {
       const pagos = partirEnMeses(g.monto, meses);
@@ -8688,10 +8726,35 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
           {esAdmin && (
             <Field>
               <FieldLabel>¿A meses?</FieldLabel>
-              <Combobox value={String(nuevoGasto.meses || 1)} onChange={(e) => setNuevoGasto({ ...nuevoGasto, meses: Number(e.target.value) })}>
-                <option value="1">No, un solo pago</option>
-                {OPCIONES_MESES.map((m) => <option key={m} value={String(m)}>{m} meses</option>)}
-              </Combobox>
+              {/* Los plazos de cada banco son distintos (getBBVA da meses
+                  sueltos), así que además de los comunes se puede escribir el
+                  número exacto. */}
+              {nuevoGasto.mesesOtro ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    className="w-24"
+                    inputMode="numeric"
+                    autoFocus
+                    placeholder="Meses"
+                    value={nuevoGasto.meses > 1 ? String(nuevoGasto.meses) : ""}
+                    onChange={(e) => {
+                      const n = Math.min(MAX_MESES, parseInt(e.target.value.replace(/\D/g, ""), 10) || 0);
+                      setNuevoGasto({ ...nuevoGasto, meses: n });
+                    }}
+                  />
+                  <span className="text-sm text-muted-foreground">meses</span>
+                  <Button variant="link" size="auto" onClick={() => setNuevoGasto({ ...nuevoGasto, meses: 1, mesesOtro: false })}>Ver lista</Button>
+                </div>
+              ) : (
+                <Combobox value={String(nuevoGasto.meses || 1)} onChange={(e) => {
+                  if (e.target.value === "__otro__") setNuevoGasto({ ...nuevoGasto, meses: 0, mesesOtro: true });
+                  else setNuevoGasto({ ...nuevoGasto, meses: Number(e.target.value) });
+                }}>
+                  <option value="1">No, un solo pago</option>
+                  {OPCIONES_MESES.map((m) => <option key={m} value={String(m)}>{m} meses</option>)}
+                  <option value="__otro__">Otro número de meses…</option>
+                </Combobox>
+              )}
               {(nuevoGasto.meses || 1) > 1 && nuevoGasto.monto > 0 && (
                 <FieldDescription>
                   {nuevoGasto.meses} pagos de {money(partirEnMeses(parseFloat(nuevoGasto.monto), nuevoGasto.meses)[0])}, uno cada mes a partir de {fmtDateHuman(nuevoGasto.fecha)}.
@@ -8746,7 +8809,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
             />
           </Field>
 
-          <Button className="af-gasto-guardar w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto}>Agregar gasto</Button>
+          <Button className="af-gasto-guardar w-full" onClick={agregarGasto} disabled={!nuevoGasto.monto || (nuevoGasto.mesesOtro && !(nuevoGasto.meses > 1))}>Agregar gasto</Button>
                   </FieldGroup>
         </Card>
         )}
@@ -15847,7 +15910,7 @@ export default function App() {
         )}
 
         <div className="af-content">
-          {view === "hoy" && <HoyView pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
+          {view === "hoy" && <HoyView clientes={clientes} pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
           {view === "mensajes" && (
@@ -16819,7 +16882,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   .af-carrito-bar { display: none; }
 }
 
-.af-paellera-row { display: flex; align-items: center; justify-content: space-between; }
+.af-paellera-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.af-paellera-acciones { display: flex; gap: 8px; flex-shrink: 0; }
+@media (max-width: 480px) {
+  .af-paellera-row { flex-direction: column; align-items: stretch; }
+  .af-paellera-acciones > * { flex: 1; }
+}
 
 .af-price-suffix { font-size: var(--text-xs); color: var(--ink-soft); white-space: nowrap; }
 
