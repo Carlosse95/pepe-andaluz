@@ -740,6 +740,21 @@ const siguienteFolio = (lista) => lista.reduce((max, x) => Math.max(max, x.folio
 // El folio se escribe tal cual, sin ceros de relleno: el 260 es "#260", no
 // "#0260". Los ceros salían de rellenar siempre a cuatro cifras, y mientras
 // los folios sean de tres solo hacen ruido.
+// Compras a meses: en cuántos se puede partir, cuánto toca cada mes (el
+// último absorbe los centavos para que la suma dé exacto) y la fecha de cada
+// pago (mismo día; si el mes es más corto, su último día).
+const OPCIONES_MESES = [3, 6, 9, 12, 18, 24];
+const partirEnMeses = (total, n) => {
+  const cada = Math.floor((total / n) * 100) / 100;
+  return Array.from({ length: n }, (_, i) => (i < n - 1 ? cada : Math.round((total - cada * (n - 1)) * 100) / 100));
+};
+const sumarMeses = (fechaISO, n) => {
+  const [a, m, d] = fechaISO.split("-").map(Number);
+  const total = a * 12 + (m - 1) + n;
+  const anio = Math.floor(total / 12), mes = (total % 12) + 1;
+  const ultimo = new Date(anio, mes, 0).getDate();
+  return `${anio}-${String(mes).padStart(2, "0")}-${String(Math.min(d, ultimo)).padStart(2, "0")}`;
+};
 const fmtFolio = (n, prefijo = "") => (n ? `${prefijo}${n}` : "");
 
 // Muestra el teléfono legible: del formato de WhatsApp (5219991234567) saca
@@ -7144,8 +7159,8 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
 
   // `yaRevisados` son los gastos parecidos que se le enseñaron a Pepe en el
   // aviso de antes de guardar y que él dio por buenos ("sí es otro").
-  const guardarGastoNuevo = (g, yaRevisados) => {
-    onGuardarGastos([g, ...gastos]);
+  const guardarGastoNuevo = (g, yaRevisados, resto = []) => {
+    onGuardarGastos([g, ...resto, ...gastos]);
     // Esa decisión se apunta AQUÍ MISMO. Sin esto, la misma pareja volvía a
     // salir abajo en "Parecen apuntados dos veces" y había que descartarla por
     // segunda vez: dos preguntas idénticas para un solo gasto. Se apuntan
@@ -7162,7 +7177,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
     // el formulario se cerraba igual que si no hubiera pasado nada, y con dos
     // tickets seguidos uno se queda con la duda de cuál sí entró. (Si el
     // guardado en la nube falla, `persist` avisa aparte con su error.)
-    showToast(`Gasto guardado · ${money(g.monto)}`);
+    showToast(g.meses ? `Guardado a ${g.meses.de} meses · ${money(g.monto)} al mes` : `Gasto guardado · ${money(g.monto)}`);
     setNuevoGasto({ fecha: todayISO(), categoria: CATEGORIAS_GASTO[0], descripcion: "", monto: 0, tienda: "", ticket: null, folio: null, folio2: null, ambito: "negocio" });
     setVistaTicket(null);
     setErrorTicket(false);
@@ -7189,16 +7204,37 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
       folio2: limpiarFolio(nuevoGasto.folio2) || null,
       facturado: false,
     };
+    // Compras a meses sin intereses (solo el administrador ve la opción): la
+    // compra se parte en un gasto por mes, cada uno en su mes. Así los
+    // reportes, las gráficas y el "gasté este mes" cuentan solo lo que de
+    // verdad sale ese mes, sin tener que tocar ninguna cuenta.
+    const meses = esAdmin ? Number(nuevoGasto.meses) || 1 : 1;
+    let resto = [];
+    if (meses > 1) {
+      const pagos = partirEnMeses(g.monto, meses);
+      const grupo = uid();
+      const conPago = (x, i) => ({ ...x, meses: { grupo, pago: i + 1, de: meses, total: g.monto } });
+      // El ticket y la factura van en el primer pago: es una sola compra y se
+      // factura una sola vez. Los demás no deben salir como "por facturar".
+      resto = pagos.slice(1).map((monto, i) => conPago({ ...g, id: uid(), fecha: sumarMeses(g.fecha, i + 1), monto, ticket: null, folio: null, folio2: null, sinFactura: true }, i + 1));
+      Object.assign(g, conPago({ ...g, monto: pagos[0] }, 0));
+    }
     // Antes de guardar se avisa si ya hay uno igual o muy parecido: es fácil
     // apuntar dos veces el mismo gasto, sobre todo si lo capturan dos personas.
     const parecidos = gastos.filter((viejo) => seParecenGastos(g, viejo));
     if (parecidos.length) {
-      setPosibleDuplicado({ nuevo: g, parecidos });
+      setPosibleDuplicado({ nuevo: g, parecidos, resto });
       return;
     }
-    guardarGastoNuevo(g);
+    guardarGastoNuevo(g, undefined, resto);
   };
   const eliminarGasto = (id) => onGuardarGastos(gastos.filter((g) => g.id !== id), [id]);
+  // Los pagos de una misma compra a meses.
+  const pagosDeCompra = (g) => (g?.meses?.grupo ? gastos.filter((x) => x.meses?.grupo === g.meses.grupo) : []);
+  const eliminarCompraAMeses = (g) => {
+    const ids = pagosDeCompra(g).map((x) => x.id);
+    onGuardarGastos(gastos.filter((x) => !ids.includes(x.id)), ids);
+  };
 
   // Ya se facturó: sale de la lista de pendientes. La foto del ticket SE
   // QUEDA — antes se borraba para no pagar por guardarla, pero es el único
@@ -8648,6 +8684,21 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
             <FieldLabel>Fecha</FieldLabel>
             <DatePicker value={nuevoGasto.fecha} onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })} />
           </Field>
+          {/* Solo el administrador: a los demás una opción más los confunde. */}
+          {esAdmin && (
+            <Field>
+              <FieldLabel>¿A meses?</FieldLabel>
+              <Combobox value={String(nuevoGasto.meses || 1)} onChange={(e) => setNuevoGasto({ ...nuevoGasto, meses: Number(e.target.value) })}>
+                <option value="1">No, un solo pago</option>
+                {OPCIONES_MESES.map((m) => <option key={m} value={String(m)}>{m} meses</option>)}
+              </Combobox>
+              {(nuevoGasto.meses || 1) > 1 && nuevoGasto.monto > 0 && (
+                <FieldDescription>
+                  {nuevoGasto.meses} pagos de {money(partirEnMeses(parseFloat(nuevoGasto.monto), nuevoGasto.meses)[0])}, uno cada mes a partir de {fmtDateHuman(nuevoGasto.fecha)}.
+                </FieldDescription>
+              )}
+            </Field>
+          )}
           <Field>
             <FieldLabel>Categoría</FieldLabel>
             <Combobox
@@ -8804,7 +8855,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
                         {g.ticket && <Receipt className="size-3.5 shrink-0 text-muted-foreground" />}
                       </ItemTitle>
                       <ItemDescription className="line-clamp-1">
-                        {g.categoria} · {fmtDiaCorto(g.fecha)}
+                        {g.categoria} · {fmtDiaCorto(g.fecha)}{g.meses && ` · Pago ${g.meses.pago}/${g.meses.de}`}
                       </ItemDescription>
                     </ItemContent>
                     <ItemActions className="flex-col items-end gap-0.5">
@@ -9163,6 +9214,11 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
                   <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2 pt-1">
                     <div className="af-gasto-detalle-monto">−{money(g.monto)}</div>
                     {g.tienda && g.descripcion && <p className="text-sm text-muted-foreground">{g.descripcion}</p>}
+                    {g.meses && (
+                      <p className="text-sm text-muted-foreground">
+                        Pago {g.meses.pago} de {g.meses.de} · compra de {money(g.meses.total)} a {g.meses.de} meses
+                      </p>
+                    )}
                     {/* Para facturar, aquí mismo: folio para copiar, la liga del
                         portal de esa tienda y los datos fiscales de un toque.
                         Antes solo vivían en la ventana de la foto, y con la hoja
@@ -9252,11 +9308,17 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
                 <AlertDialogDescription>
                   <strong className="text-foreground">{confirmarBorrarGasto.tienda || confirmarBorrarGasto.descripcion || confirmarBorrarGasto.categoria}</strong>
                   {" · "}{money(confirmarBorrarGasto.monto)} · {fmtDateHuman(confirmarBorrarGasto.fecha)}. Se quita de tus cuentas y no se puede deshacer.
+                  {confirmarBorrarGasto.meses && pagosDeCompra(confirmarBorrarGasto).length > 1 && (
+                    <> Es el pago {confirmarBorrarGasto.meses.pago} de {confirmarBorrarGasto.meses.de} de una compra a meses.</>
+                  )}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Mejor no</AlertDialogCancel>
-                <AlertDialogAction variant="destructive" onClick={() => { eliminarGasto(confirmarBorrarGasto.id); setConfirmarBorrarGasto(null); showToast("Gasto borrado"); }}>Sí, bórralo</AlertDialogAction>
+                {confirmarBorrarGasto.meses && pagosDeCompra(confirmarBorrarGasto).length > 1 && (
+                  <AlertDialogAction variant="destructive" onClick={() => { const n = pagosDeCompra(confirmarBorrarGasto).length; eliminarCompraAMeses(confirmarBorrarGasto); setConfirmarBorrarGasto(null); showToast(`Borrados los ${n} pagos`); }}>Borrar todos los pagos</AlertDialogAction>
+                )}
+                <AlertDialogAction variant="destructive" onClick={() => { eliminarGasto(confirmarBorrarGasto.id); setConfirmarBorrarGasto(null); showToast("Gasto borrado"); }}>{confirmarBorrarGasto.meses ? "Solo este pago" : "Sí, bórralo"}</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -9415,7 +9477,7 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
               </div>
               <AlertDialogFooter>
                 <AlertDialogCancel>Ya estaba</AlertDialogCancel>
-                <AlertDialogAction onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo, posibleDuplicado.parecidos)}>Es otro, guárdalo</AlertDialogAction>
+                <AlertDialogAction onClick={() => guardarGastoNuevo(posibleDuplicado.nuevo, posibleDuplicado.parecidos, posibleDuplicado.resto)}>Es otro, guárdalo</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
