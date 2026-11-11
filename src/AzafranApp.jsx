@@ -3206,8 +3206,13 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
   return (
     <Card className="af-paellera-row p-3 mb-2">
       <div className="min-w-0">
-        <div className="af-cliente-nombre">{item.clienteNombre} <span className="af-ink-soft text-sm">· {item.paellaNombre}</span></div>
-        <div className="af-fecha-sub">{fmtDateHuman(item.fecha)} · {item.hora}</div>
+        {/* Solo lo que sirve para perseguirla: quién, de qué tamaño es (para
+            saber cuál falta en la cocina) y desde cuándo la tiene. */}
+        <div className="af-cliente-nombre">{item.clienteNombre}</div>
+        <div className="af-fecha-sub">
+          {item.kg > 0 && <strong className="font-semibold text-foreground">Paellera de {item.kg} kg</strong>}
+          {item.kg > 0 && " · "}desde el {fmtDiaCorto(item.fecha)}
+        </div>
         {item.vamosPorElla && (
           <Chip variant="marca" className="mt-1"><Truck size={12} /> Vamos por ella</Chip>
         )}
@@ -3242,7 +3247,7 @@ function PaelleraRow({ item, onMarcarDevuelta }) {
               <AlertDialogMedia><ChefHat /></AlertDialogMedia>
               <AlertDialogTitle>¿Marcar paellera devuelta?</AlertDialogTitle>
               <AlertDialogDescription>
-                {item.clienteNombre} · {item.paellaNombre}<br />{fmtDateHuman(item.fecha)} · {item.hora}
+                {item.clienteNombre}{item.kg > 0 ? ` · paellera de ${item.kg} kg` : ""}<br />Desde el {fmtDiaCorto(item.fecha)}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -3469,7 +3474,7 @@ function HoyView({ clientes, pedidosHoy, pedidos, config, nombre, onAbrir, onMar
     p.items.forEach((it) => {
       if (it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta) {
         pendientesPaellera.push({
-          pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre,
+          pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre, kg: it.kg,
           // Si se cobró ir por ella, aquí se ve y con la liga al mapa: es la
           // lista que se revisa para salir a recogerlas.
           vamosPorElla: !!p.recogerPaellera,
@@ -4636,7 +4641,7 @@ function ClientesView({ clientes, pedidos, config, onAddCliente, onImportarClien
       p.items.forEach((it) => {
         if (it.tipo === "paella" && it.enPaellera && !it.paelleraDevuelta) {
           pendientesCliente.push({
-            pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre,
+            pedidoId: p.id, itemId: it.id, clienteNombre: p.clienteNombre, fecha: p.fecha, hora: p.hora, paellaNombre: it.paellaNombre, kg: it.kg,
             vamosPorElla: !!p.recogerPaellera, ubicacion: p.ubicacion || "", direccion: p.direccion || "",
             telefono: p.clienteTelefono || detalle.telefono || "", ubicacionCliente: detalle.ubicacion || "", direccionCliente: detalle.direccion || "",
           });
