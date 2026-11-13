@@ -188,7 +188,9 @@ const Sidebar = React.forwardRef((
             <SheetTitle>Menú</SheetTitle>
             <SheetDescription>Secciones de la app.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          {/* Abajo deja libre la zona de la rayita del iPhone: sin esto el
+              usuario quedaba pegado a la orilla, medio comido por la pantalla. */}
+          <div className="flex h-full w-full flex-col pb-[calc(env(safe-area-inset-bottom)+12px)]">{children}</div>
         </SheetContent>
       </Sheet>
     );
