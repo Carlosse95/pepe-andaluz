@@ -2,10 +2,11 @@ import { Toaster as Sonner } from "sonner";
 import { CircleCheck, Info, TriangleAlert, OctagonX, Loader2 } from "lucide-react";
 
 // Toaster de shadcn/ui (Sonner) con el estilo MAIA: los colores y la esquina
-// salen del tema de la app. La app no tiene modo oscuro, así que va en claro.
-const Toaster = ({ style, ...props }) => (
+// salen del tema de la app. En modo oscuro se pone en oscuro (antes iba
+// siempre en claro y los avisos salían blancos encima de la app oscura).
+const Toaster = ({ style, oscuro = false, ...props }) => (
   <Sonner
-    theme="light"
+    theme={oscuro ? "dark" : "light"}
     className="toaster group"
     icons={{
       success: <CircleCheck className="size-4" />,

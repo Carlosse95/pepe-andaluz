@@ -150,3 +150,11 @@ body {
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 body { font-family: var(--fuente-app); letter-spacing: -0.011em; }
 h1, h2, h3, .af-header-title-plain, .af-header-title, [data-slot="card-title"], .text-2xl, .text-3xl { letter-spacing: -0.022em; }
+
+/* En modo oscuro, los bordes que no dicen su color (el del menú de la
+   izquierda, las hojas que se deslizan) tomaban el gris claro de fábrica de
+   Tailwind y se veían como una raya brillante. Aquí toman el del tema. Va en
+   "base", así cualquier color puesto a propósito con una clase sigue ganando. */
+@layer base {
+  .dark *, .dark ::before, .dark ::after { border-color: hsl(var(--border)); }
+}

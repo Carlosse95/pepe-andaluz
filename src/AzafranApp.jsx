@@ -538,7 +538,11 @@ const calcExtraSubtotal = (cantidad, precio) => cantidad * precio;
 const UNIDADES_MENU = ["pieza", "kg", "litro", "ración", "bolsa", "frasco", "charola", "orden"];
 
 // ¿Este platillo se vende por kilo? Sin importar cómo se haya escrito.
-const esPorKg = (x) => String((x && x.unidad) || "").trim().toLowerCase() === "kg";
+// Un platillo que ya dice "Medio kilo" en el nombre se vende por pieza (un
+// paquete de medio kilo), aunque en el menú esté como "kg": si no, el mensaje
+// salía "Bacalao Medio kilo — 1 kg", que no es lo que se lleva el cliente.
+const esMedioKilo = (x) => /medio\s*kilo|1\/2\s*k|½/i.test(String((x && (x.nombre || x.paellaNombre)) || ""));
+const esPorKg = (x) => String((x && x.unidad) || "").trim().toLowerCase() === "kg" && !esMedioKilo(x);
 
 // Desde 3 kg la paella va en paellera. Se pone sola al pasar de menos de 3 a 3
 // o más (y se quita al bajar de 3); entre medio se respeta lo que se marque a
@@ -5380,7 +5384,7 @@ function BannerIOS({ titulo, cuerpo, alTocar, cerrar }) {
         alTocar?.();
         cerrar();
       }}
-      className="mx-auto flex w-full max-w-[380px] cursor-pointer select-none items-start gap-3 rounded-[22px] bg-white/85 px-4 py-3 text-left shadow-[0_10px_30px_rgba(33,44,89,0.18)] ring-1 ring-black/5 backdrop-blur-xl"
+      className="mx-auto flex w-full max-w-[380px] cursor-pointer select-none items-start gap-3 rounded-[22px] bg-white/85 px-4 py-3 text-left shadow-[0_10px_30px_rgba(33,44,89,0.18)] ring-1 ring-black/5 backdrop-blur-xl dark:bg-[hsl(230_27%_17%/0.92)] dark:shadow-[0_10px_30px_rgba(0,0,0,0.5)] dark:ring-white/10"
     >
       <img src={ICONO_APP} alt="" className="mt-0.5 size-9 shrink-0 rounded-[9px]" />
       <div className="min-w-0 flex-1">
@@ -12094,7 +12098,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                         <div className="min-w-0" style={{ flex: 1, cursor: "pointer" }} onClick={() => agregarAlCarrito(p)}>
                           <div className="af-item-nombre">{p.nombre}</div>
                           <div className="af-ink-soft text-sm">
-                            {enCarrito ? money(subtotalDe(p, enCarrito.cantidad)) : (esPorKg(p) ? "Precio por kg" : p.unidad)}
+                            {enCarrito ? money(subtotalDe(p, enCarrito.cantidad)) : (esPorKg(p) ? "Precio por kg" : esMedioKilo(p) ? "pieza" : p.unidad)}
                             {cuenta && (
                               <span className={"af-quedan" + (restan < 0 ? " sin" : "")}>
                                 {restan < 0
@@ -12177,7 +12181,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                     <div key={producto.id} className="af-carrito-row">
                       <div className="min-w-0" style={{ flex: 1 }}>
                         <div className="af-item-nombre">{producto.nombre}</div>
-                        <div className="af-ink-soft text-sm">{cantidad} {esPorKg(producto) ? "kg" : producto.unidad}</div>
+                        <div className="af-ink-soft text-sm">{cantidad} {esPorKg(producto) ? "kg" : esMedioKilo(producto) ? (cantidad === 1 ? "pieza" : "piezas") : producto.unidad}</div>
                         {producto.tipo === "paella" && (config.extrasPaella || []).length > 0 && (
                           <div className="af-extra-wrap">
                             <Button variant="link" size="auto" className="af-extra-btn"
@@ -16014,6 +16018,7 @@ export default function App() {
           offset={{ top: "calc(env(safe-area-inset-top) + 12px)" }}
           mobileOffset={{ top: "calc(env(safe-area-inset-top) + 8px)", left: "8px", right: "8px" }}
           swipeDirections={["top"]}
+          oscuro={tema === "oscuro"}
           style={{ "--width": "380px" }}
         />
         <AlertaFranjaModal alerta={alertaFranja} onCerrar={() => setAlertaFranja(null)} />

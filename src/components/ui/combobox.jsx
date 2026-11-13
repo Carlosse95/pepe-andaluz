@@ -31,6 +31,14 @@ function opcionesDe(children) {
   return lista;
 }
 
+// Cuánto de la parte de abajo de la pantalla está tapado (teclado, barra de
+// Safari en el iPhone): la diferencia entre la ventana y lo que de verdad se ve.
+const tapadoAbajo = () => {
+  if (typeof window === "undefined" || !window.visualViewport) return 0;
+  const vv = window.visualViewport;
+  return Math.max(0, Math.round(window.innerHeight - (vv.height + vv.offsetTop)));
+};
+
 function Combobox({ value, onChange, children, className, style, disabled, placeholder = "Elegir…", buscar, compacto = false, title, id }) {
   const [abierto, setAbierto] = React.useState(false);
   const opciones = opcionesDe(children);
@@ -78,7 +86,9 @@ function Combobox({ value, onChange, children, className, style, disabled, place
         container={dentroDe}
         // Siempre con aire contra la orilla de la pantalla (y la rayita del
         // iPad/iPhone): si abajo no cabe, se abre hacia arriba.
-        collisionPadding={{ top: 16, bottom: 24, left: 12, right: 12 }}
+        // Abajo se suma lo que tape la barra de Safari o el teclado: el
+        // navegador cuenta esa franja como pantalla libre y no lo es.
+        collisionPadding={{ top: 16, bottom: 24 + tapadoAbajo(), left: 12, right: 12 }}
         className="z-[70] w-[--radix-popover-trigger-width] min-w-[12rem] p-0"
         align="start"
         // En celular/iPad NO se pone el cursor en el buscador al abrir: eso
@@ -89,7 +99,13 @@ function Combobox({ value, onChange, children, className, style, disabled, place
       >
         <Command>
           {conBuscador && <CommandInput data-teclear placeholder="Buscar…" className="h-9" />}
-          <CommandList>
+          {/* La lista nunca pasa del espacio libre en la pantalla: en un
+              iPhone con la barra de Safari no cabía ni arriba ni abajo y se
+              salía por arriba, escondida bajo el encabezado. Ahora se encoge
+              y se desplaza por dentro. */}
+          <CommandList className={conBuscador
+            ? "max-h-[min(300px,calc(var(--radix-popover-content-available-height)-44px))]"
+            : "max-h-[min(300px,var(--radix-popover-content-available-height))]"}>
             <CommandEmpty>No hay coincidencias.</CommandEmpty>
             <CommandGroup>
               {opciones.map((o, i) => (
