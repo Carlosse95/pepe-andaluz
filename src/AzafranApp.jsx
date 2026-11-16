@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -2623,6 +2623,58 @@ function MensajesView({ conversaciones, onAbrir, abierta, mensajes, cargandoChat
 // Sustituye al <datalist> del navegador: en Safari de iPhone y iPad ese
 // desplegable falla seguido — a veces sale vacío y no deja elegir nada.
 // Este se dibuja con HTML normal, así que se comporta igual en todos lados.
+// Lista que se despliega debajo de un campo y que nunca queda cortada.
+// Antes se cortaba: las tarjetas recortan lo que se sale de su orilla (para
+// las esquinas redondas) y, si el campo estaba al final de la tarjeta, de la
+// lista solo se veían dos renglones. Ahora, mientras está abierta:
+//  - la tarjeta que la contiene deja que se salga;
+//  - mide el espacio libre contando el teclado del iPhone (visualViewport) y,
+//    si abajo no cabe, se abre hacia arriba, con el alto justo.
+// Su "ancla" es el elemento que la contiene (el campo o el botón).
+function MenuFlotante({ className = "", alto = 216, children, ...props }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState({ arriba: false, maxAlto: alto });
+  useLayoutEffect(() => {
+    const lista = ref.current;
+    const ancla = lista && lista.parentElement;
+    if (!ancla) return undefined;
+    const destapadas = [];
+    for (let el = ancla.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (el.classList.contains("af-card")) { destapadas.push([el, el.style.overflow]); el.style.overflow = "visible"; }
+    }
+    const calcular = () => {
+      const r = ancla.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const limiteAbajo = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const limiteArriba = (vv ? vv.offsetTop : 0) + 60; // la barra de arriba
+      const abajo = limiteAbajo - r.bottom - 12;
+      const arribaLibre = r.top - limiteArriba - 12;
+      const usarArriba = abajo < Math.min(alto, 160) && arribaLibre > abajo;
+      const espacio = usarArriba ? arribaLibre : abajo;
+      const maxAlto = Math.max(96, Math.min(alto, Math.floor(espacio)));
+      setPos((p) => (p.arriba === usarArriba && p.maxAlto === maxAlto ? p : { arriba: usarArriba, maxAlto }));
+    };
+    calcular();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", calcular);
+    vv?.addEventListener("scroll", calcular);
+    window.addEventListener("resize", calcular);
+    window.addEventListener("scroll", calcular, true);
+    return () => {
+      destapadas.forEach(([el, antes]) => { el.style.overflow = antes; });
+      vv?.removeEventListener("resize", calcular);
+      vv?.removeEventListener("scroll", calcular);
+      window.removeEventListener("resize", calcular);
+      window.removeEventListener("scroll", calcular, true);
+    };
+  }, [alto]);
+  return (
+    <div ref={ref} className={className + (pos.arriba ? " arriba" : "")} style={{ maxHeight: pos.maxAlto, overflowY: "auto" }} {...props}>
+      {children}
+    </div>
+  );
+}
+
 function CampoConSugerencias({ value, onChange, sugerencias = [], className = "af-input", placeholder, onBlur }) {
   const [abierto, setAbierto] = useState(false);
   const [resaltado, setResaltado] = useState(-1);
@@ -2671,7 +2723,7 @@ function CampoConSugerencias({ value, onChange, sugerencias = [], className = "a
         }}
       />
       {abierto && opciones.length > 0 && (
-        <div className="af-sug-lista">
+        <MenuFlotante className="af-sug-lista" alto={216}>
           {opciones.map((s, i) => (
             <button
               key={s}
@@ -2684,7 +2736,7 @@ function CampoConSugerencias({ value, onChange, sugerencias = [], className = "a
               {s}
             </button>
           ))}
-        </div>
+        </MenuFlotante>
       )}
     </div>
   );
@@ -7710,6 +7762,40 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
     guardarReceta(fila, { ...fila.receta, ingredientes: fila.receta.ingredientes.filter((i) => i.id !== ingId) });
   const guardarRendimiento = (fila, valor) => guardarReceta(fila, { ...fila.receta, rendimiento: valor });
 
+  // --- Cuándo se vende y a quién (pestaña Ventas) ---
+  // Un solo recorrido de los pedidos entregados del año, guardado: Reportes se
+  // redibuja con cada tecla de los formularios y esto no cambia con ellas.
+  const { ventasDelAnio, porDiaSemana, diaFuerte, clientesDelAnio, repiten, ticketPromedio } = useMemo(() => {
+    const ventas = pedidos.filter((p) => p.fecha.startsWith(anio + "-") && esVentaHecha(p));
+    const dias = DIAS_CORTOS.map((dia) => ({ dia, valor: 0, pedidos: 0 }));
+    const NOMBRES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+    const porCliente = new Map();
+    let total = 0;
+    ventas.forEach((p) => {
+      const t = Number(p.total) || 0;
+      total += t;
+      const d = dias[diaSemana(p.fecha)];
+      d.valor += t;
+      d.pedidos += 1;
+      const clave = p.clienteId || "n:" + normNombre(p.clienteNombre || "");
+      const c = porCliente.get(clave) || { clave, nombre: p.clienteNombre || "Sin nombre", total: 0, pedidos: 0 };
+      c.total += t;
+      c.pedidos += 1;
+      porCliente.set(clave, c);
+    });
+    const lista = [...porCliente.values()].sort((a, b) => b.total - a.total);
+    const mejor = dias.reduce((m, d, i) => (d.valor > (m?.valor || 0) ? { ...d, nombre: NOMBRES[i] } : m), null);
+    return {
+      ventasDelAnio: ventas,
+      porDiaSemana: dias,
+      diaFuerte: mejor && total > 0 ? { ...mejor, pct: (mejor.valor / total) * 100 } : null,
+      clientesDelAnio: lista,
+      repiten: lista.filter((c) => c.pedidos > 1).length,
+      ticketPromedio: ventas.length ? total / ventas.length : 0,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidos, anio]);
+
   const delDia = pedidos.filter((p) => p.fecha === diaSel);
   const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
   const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
@@ -8555,6 +8641,40 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
           setMes={setMesVentas}
           mesesConVentas={MESES.map((_, i) => pedidos.some((p) => p.fecha.startsWith(`${anio}-${String(i + 1).padStart(2, "0")}`) && esVentaHecha(p)))}
         />
+      )}
+
+      {/* Cuándo y a quién se le vende: para saber qué días reforzar la cocina
+          (o la publicidad) y a qué clientes consentir. */}
+      {ventasDelAnio.length > 0 && (
+        <>
+          <GraficaBarras
+            titulo="Qué días se vende más"
+            descripcion={`Pedidos entregados en ${anio}, por día de la semana`}
+            datos={porDiaSemana}
+            x="dia"
+            series={[{ key: "valor", label: "Vendido", color: COLOR_AZUL }]}
+            tendencia={diaFuerte ? { texto: `El ${diaFuerte.nombre} es el día más fuerte: ${diaFuerte.pedidos} pedidos, ${Math.round(diaFuerte.pct)}% de lo vendido.`, sube: null } : null}
+          />
+
+          <Card className="mb-5 p-4">
+            <div className="text-base font-semibold text-foreground">Mejores clientes de {anio}</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              {clientesDelAnio.length} {clientesDelAnio.length === 1 ? "cliente compró" : "clientes compraron"} este año
+              {clientesDelAnio.length > 0 && ` · ${Math.round((repiten / clientesDelAnio.length) * 100)}% repitió`}
+              {` · pedido promedio ${money(ticketPromedio)}`}
+            </div>
+            <div className="mt-3 divide-y divide-border">
+              {clientesDelAnio.slice(0, 10).map((c, i) => (
+                <div key={c.clave} className="flex items-center gap-3 py-2 text-sm">
+                  <span className="w-5 shrink-0 text-right font-semibold tabular-nums text-muted-foreground">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">{c.nombre}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{c.pedidos} {c.pedidos === 1 ? "pedido" : "pedidos"}</span>
+                  <span className="w-24 shrink-0 text-right font-semibold tabular-nums">{money(c.total)}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
       )}
       </div>
       )}
@@ -9846,7 +9966,43 @@ const GRUPOS_INV = [
   { id: "paelleras", label: "Paelleras" },
 ];
 
-function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
+// Paelleras: cuántas andan prestadas (pedidos entregados sin devolver) y si
+// alcanzan para los pedidos que vienen. El número del inventario dice cuántas
+// se TIENEN, pero las que están en casa de un cliente no sirven para cocinar
+// el sábado. Usa la misma regla de tamaños que "Paelleras necesarias".
+const DIAS_VISTA_PAELLERAS = 14;
+const estadoDePaelleras = (pedidos, paelleras) => {
+  const hoy = todayISO();
+  const tope = moverFechaISO(hoy, DIAS_VISTA_PAELLERAS);
+  const porTier = {}; // id -> { prestadas, quien: [nombres], pico, diaPico }
+  const de = (id) => (porTier[id] = porTier[id] || { prestadas: 0, quien: [], pico: 0, diaPico: null });
+  const porDia = {};
+  (pedidos || []).forEach((p) => {
+    const entregado = (p.estado || "pendiente") === "entregado";
+    if (entregado) {
+      (p.items || []).forEach((it) => {
+        if (it.tipo !== "paella" || !it.enPaellera || it.paelleraDevuelta) return;
+        const t = (paelleras || []).find((x) => enRango(it.kg, x.rangoMin, x.rangoMax));
+        if (!t) return;
+        const d = de(t.id);
+        d.prestadas += 1;
+        const nombre = ((p.clienteNombre || "").trim().split(/\s+/)[0]) || "cliente";
+        if (!d.quien.includes(nombre)) d.quien.push(nombre);
+      });
+    } else if (p.fecha >= hoy && p.fecha <= tope) {
+      (porDia[p.fecha] = porDia[p.fecha] || []).push(p);
+    }
+  });
+  Object.entries(porDia).forEach(([fecha, lista]) => {
+    Object.entries(paellerasDelDia(lista, paelleras)).forEach(([id, n]) => {
+      const d = de(id);
+      if (n > d.pico || (n === d.pico && fecha < (d.diaPico || "9"))) { d.pico = n; d.diaPico = fecha; }
+    });
+  });
+  return porTier;
+};
+
+function InventarioExistencias({ config, pedidos, onGuardarConfig, onEditar }) {
   const [filtro, setFiltro] = useState("todo");
   const [busca, setBusca] = useState("");
   const [copiado, setCopiado] = useState(false);
@@ -9854,6 +10010,16 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
   const items = itemsDeInventario(config);
   const faltan = items.filter((it) => estadoInv(it) !== "bien");
   const q = normNombre(busca);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paellerasInfo = useMemo(() => estadoDePaelleras(pedidos, config?.paelleras), [pedidos, config?.paelleras]);
+  // Paelleras que no van a alcanzar algún día de las próximas dos semanas.
+  const paellerasCortas = (config?.paelleras || [])
+    .map((t) => {
+      const info = paellerasInfo[t.id];
+      const libres = (Number(t.stock) || 0) - (info?.prestadas || 0);
+      return info && info.pico > libres ? { t, info, libres } : null;
+    })
+    .filter(Boolean);
   // Qué filas se ven y en qué orden (lo que falta primero) se decide UNA vez:
   // al abrir, al cambiar el filtro o la búsqueda. Mientras se pica + o −, la
   // lista se queda quieta; antes, al pasar algo a "Bien" la fila brincaba de
@@ -9896,10 +10062,18 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
   const sumar = (it, n) => fijar(it, hayAhora(it) + n);
 
   // Lista para mandar por WhatsApp o pegar en notas.
-  const listaDeCompras = () => {
-    const texto = ["Lista de compras — Pepe El Andaluz", ""]
-      .concat(faltan.map((it) => `• ${it.nombre}: hay ${redondeaInv(it.hay)} ${it.unidad(it.hay)}${it.minimo ? ` (avisa en ${redondeaInv(it.minimo)})` : ""}`))
+  // Cuánto conviene traer: lo que falta para llegar al doble del mínimo (el
+  // mismo tope con el que se llena la barrita). Sin mínimo no se sugiere nada.
+  const sugerido = (it) => (it.minimo ? Math.max(0, Math.ceil(it.minimo * 2 - it.hay)) : 0);
+  const textoDeCompras = () =>
+    ["Lista de compras — Pepe El Andaluz", ""]
+      .concat(faltan.map((it) => {
+        const n = sugerido(it);
+        return `• ${it.nombre}: ${n ? `${it.verbo} ${n} ${it.unidad(n)} ` : ""}(hay ${redondeaInv(it.hay)})`;
+      }))
       .join("\n");
+  const listaDeCompras = () => {
+    const texto = textoDeCompras();
     try {
       navigator.clipboard.writeText(texto);
       setCopiado(true);
@@ -9927,9 +10101,33 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
       </div>
 
       {faltan.length > 0 && (
-        <Button variant="secondary" className="mb-4 w-full" onClick={listaDeCompras}>
-          {copiado ? <><CircleCheck size={16} /> Lista copiada</> : <><Copy size={16} /> Copiar lista de compras</>}
-        </Button>
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <Button variant="secondary" onClick={listaDeCompras}>
+            {copiado ? <><CircleCheck size={16} /> Lista copiada</> : <><Copy size={16} /> Copiar lista</>}
+          </Button>
+          {/* Para mandársela a quien va a la tienda, con cuánto traer de cada cosa. */}
+          <Button variant="secondary" onClick={() => abrirWhatsApp("", textoDeCompras())}>
+            <MessageCircle size={16} /> Mandar por WhatsApp
+          </Button>
+        </div>
+      )}
+
+      {/* Paelleras que no van a alcanzar: se avisa con días de anticipación,
+          cuando todavía se puede ir por las que andan prestadas. */}
+      {paellerasCortas.length > 0 && (
+        <Card className="mb-4 p-4 ring-aviso/60">
+          <div className="flex items-center gap-2 text-sm font-semibold text-aviso-fuerte">
+            <TriangleAlert size={16} /> Paelleras que no van a alcanzar
+          </div>
+          <ul className="mt-2 space-y-1 text-sm text-foreground">
+            {paellerasCortas.map(({ t, info, libres }) => (
+              <li key={t.id}>
+                <strong>{nombrePaellera(t)}</strong>: el {fmtDiaCorto(info.diaPico)} se necesitan {info.pico} y hay {Math.max(libres, 0)} {plural(Math.max(libres, 0), "libre")}
+                {info.prestadas > 0 && ` (${info.prestadas} ${info.prestadas === 1 ? "prestada" : "prestadas"}: ${info.quien.join(", ")})`}.
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       <div className="af-buscador-gastos mb-3">
@@ -9963,21 +10161,36 @@ function InventarioExistencias({ config, onGuardarConfig, onEditar }) {
           >
             <Card className="divide-y divide-border">
               {filas.map((it) => {
-                const e = estadoInv(it);
+                // En paelleras la barrita enseña las LIBRES: tener 2 pero las
+                // dos prestadas no es estar "Bien".
+                const prestadasFila = it.lista === "paelleras" ? paellerasInfo[it.id]?.prestadas || 0 : 0;
+                const libresFila = Math.max(it.hay - prestadasFila, 0);
+                const e = it.lista === "paelleras" && it.hay > 0 && prestadasFila > 0 && libresFila === 0 ? "poco" : estadoInv(it);
                 const tope = it.minimo ? it.minimo * 2 : Math.max(it.hay, 1);
-                const lleno = Math.max(0, Math.min(1, it.hay / tope));
+                const lleno = Math.max(0, Math.min(1, (it.lista === "paelleras" ? libresFila : it.hay) / tope));
                 return (
                   <div key={it.lista + it.id} className="flex items-center gap-3 p-3">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onEditar(it.id)} title="Editar">
                       <span className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium text-foreground">{it.nombre}</span>
-                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold", ESTILO[e].chip)}>{ESTILO[e].texto(it)}</span>
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold", ESTILO[e].chip)}>{it.lista === "paelleras" && e === "poco" ? "Todas prestadas" : ESTILO[e].texto(it)}</span>
                       </span>
                       <span className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <span className={cn("block h-full rounded-full", ESTILO[e].barra)} style={{ width: `${lleno * 100}%` }} />
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {it.minimo ? `Avisa en ${redondeaInv(it.minimo)} ${it.unidad(it.minimo)}` : "Sin aviso"}
+                        {it.lista === "paelleras"
+                          ? (() => {
+                              const info = paellerasInfo[it.id];
+                              const prestadas = info?.prestadas || 0;
+                              const libres = Math.max(it.hay - prestadas, 0);
+                              return prestadas
+                                ? `${prestadas} ${prestadas === 1 ? "prestada" : "prestadas"} (${info.quien.join(", ")}) · ${libres} ${plural(libres, "libre")}`
+                                : "Todas en casa";
+                            })()
+                          : it.minimo
+                            ? `Avisa en ${redondeaInv(it.minimo)} ${it.unidad(it.minimo)}${e !== "bien" && sugerido(it) ? ` · ${it.verbo} ${sugerido(it)}` : ""}`
+                            : "Sin aviso"}
                       </span>
                     </button>
                     <div className="flex shrink-0 items-center gap-1">
@@ -11023,6 +11236,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
       {tab === "inventario" && modoInv === "existencias" && (
         <InventarioExistencias
           config={config}
+          pedidos={datosRespaldo?.pedidos}
           onGuardarConfig={onGuardarConfig}
           onEditar={(id) => { setSoloInv(id); setIngAbierto(id); setModoInv("configurar"); window.scrollTo({ top: 0 }); }}
         />
@@ -12191,7 +12405,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                             {extrasAbiertoEn === producto.id && (
                               <>
                                 <div className="af-clickaway" onClick={() => setExtrasAbiertoEn(null)} />
-                                <div className="af-extra-menu af-combo-wrap">
+                                <MenuFlotante className="af-extra-menu af-combo-wrap" alto={320}>
                                   {(config.extrasPaella || []).map((exCat) => {
                                     const ex = { ...exCat, precio: precioVigente(exCat, fechaDelPedido) };
                                     const puestos = (extras || []).find((e) => e.extraId === ex.id)?.cantidad || 0;
@@ -12208,7 +12422,7 @@ function ItemPickerModal({ config, onGuardarConfig, onAdd, onClose, fechaDelPedi
                                     );
                                   })}
                                   <button className="af-extra-menu-listo" onClick={() => setExtrasAbiertoEn(null)}>Listo</button>
-                                </div>
+                                </MenuFlotante>
                               </>
                             )}
                           </div>
@@ -13650,6 +13864,12 @@ export default function App() {
     window.location.replace(window.location.pathname + "?v=" + Date.now());
   }, [hayNuevaVersion, view]);
 
+  // Mientras se ve la franja de "versión nueva" (fija arriba), los avisos
+  // bajan lo que mide la franja para no taparla.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--empuje-avisos", hayNuevaVersion ? "48px" : "0px");
+  }, [hayNuevaVersion]);
+
   const [alertaFranja, setAlertaFranja] = useState(null); // { total, hora } o null
   const [avisoModal, setAvisoModal] = useState(null); // { pedido, tipo } o null
   const [cobroModal, setCobroModal] = useState(null); // { pedido, faltante } o null
@@ -13690,8 +13910,10 @@ export default function App() {
   // picar otra vez. Solo informan, así que el toque los atraviesa
   // (af-aviso-pasa). Los avisos de otro aparato sí se pueden tocar.
   const showToast = (msg, tipo = "ok") => {
-    if (tipo === "error") toast.error(msg, { className: "af-aviso-pasa" });
-    else toast.success(msg, { className: "af-aviso-pasa" });
+    // id = el texto: si sale el mismo aviso varias veces seguidas, se
+    // reemplaza en lugar de apilarse uno encima de otro.
+    if (tipo === "error") toast.error(msg, { className: "af-aviso-pasa", id: "err:" + msg });
+    else toast.success(msg, { className: "af-aviso-pasa", id: "ok:" + msg });
   };
 
 
@@ -16013,10 +16235,16 @@ export default function App() {
 
         {/* En celular la franja va de orilla a orilla y el aviso se centra en
             ella; arriba respeta la zona del reloj y la cámara del iPhone. */}
+        {/* Varios avisos a la vez: uno debajo de otro (expand), máximo 3, en
+            vez de encimados. Si está la franja de "versión nueva", bajan
+            debajo de ella (--empuje-avisos) y no le caen encima. */}
         <Toaster
           position="top-center"
-          offset={{ top: "calc(env(safe-area-inset-top) + 12px)" }}
-          mobileOffset={{ top: "calc(env(safe-area-inset-top) + 8px)", left: "8px", right: "8px" }}
+          expand
+          visibleToasts={3}
+          gap={8}
+          offset={{ top: "calc(env(safe-area-inset-top) + 12px + var(--empuje-avisos, 0px))" }}
+          mobileOffset={{ top: "calc(env(safe-area-inset-top) + 8px + var(--empuje-avisos, 0px))", left: "8px", right: "8px" }}
           swipeDirections={["top"]}
           oscuro={tema === "oscuro"}
           style={{ "--width": "380px" }}
@@ -16420,6 +16648,8 @@ const AZAFRAN_CSS = `
 /* ---- Sugerencias al escribir (sustituye al datalist, que falla en Safari) ---- */
 .af-sug-wrap { position: relative; flex: 1; min-width: 0; }
 .af-sug-lista { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); max-height: 216px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+.af-sug-lista.arriba { top: auto; bottom: calc(100% + 4px); box-shadow: 0 -8px 24px rgba(0,0,0,0.12); }
+.af-extra-menu.arriba { top: auto; bottom: 100%; }
 .af-sug-item { display: block; width: 100%; text-align: left; padding: 8px 12px; background: none; border: none; color: var(--ink); font-size: var(--text-sm); }
 .af-sug-item.activo { background: color-mix(in srgb, var(--wine) 10%, transparent); }
 
@@ -17163,6 +17393,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 /* Al llegar desde el "+": que el formulario no quede debajo de la barra de arriba. */
 .af-form-gasto { scroll-margin-top: 80px; }
 .af-aviso-pasa, .af-aviso-pasa * { pointer-events: none !important; }
+/* Mientras escribes en un campo (teclado abierto) el botón "+" se esconde:
+   si no, tapaba el campo cuando quedaba abajo de la pantalla. */
+body:has(input:focus, textarea:focus) .af-fab { opacity: 0; pointer-events: none; transform: scale(0.8); }
+.af-fab { transition: opacity .15s ease, transform .15s ease; }
 .af-fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 40; width: 56px; height: 56px; border-radius: 999px; }
 /* "Liquid glass" de Apple hecho con CSS: vidrio translúcido que desenfoca y
    satura lo de atrás, orilla clara, brillo arriba y sombra suave. Las
