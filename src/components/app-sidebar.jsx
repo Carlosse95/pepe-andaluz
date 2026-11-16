@@ -38,8 +38,13 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
       collapsible="icon"
       flotante
       ref={barra}
-      onMouseEnter={() => { if (!isMobile) setOpen(true); }}
-      onMouseLeave={() => { if (!isMobile && !menuAbierto) setOpen(false); }}
+      // Solo con mouse o trackpad (pointerType "mouse"). Con el dedo, el
+      // iPhone toma el toque como "pasar encima": la barra se abría, la
+      // pantalla cambiaba y el iPhone cancelaba el clic, así que en el
+      // iPhone Duo abierto picar un ícono no cambiaba de sección. Con el
+      // dedo ahora el toque va directo a la sección.
+      onPointerEnter={(e) => { if (!isMobile && e.pointerType === "mouse") setOpen(true); }}
+      onPointerLeave={(e) => { if (!isMobile && e.pointerType === "mouse" && !menuAbierto) setOpen(false); }}
       {...props}
     >
       <SidebarHeader>
