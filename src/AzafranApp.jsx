@@ -2299,6 +2299,32 @@ function Stepper({ value, onChange, min = 1, step = 1 }) {
 
 // Campo para la ubicación: se puede escribir/pegar a mano, o con el botón
 // se toma directo del portapapeles (para cuando copian el link desde WhatsApp).
+// Direcciones que ya conocemos de un cliente: la de su ficha y las de sus
+// pedidos a domicilio anteriores (de la más reciente a la más vieja), sin
+// repetir. Antes solo se usaba la de la ficha, y casi nadie la tenía: la
+// ubicación se guardaba en el pedido, así que al volver a pedir salía vacía.
+function direccionesDelCliente(cliente, pedidos, excluirId) {
+  if (!cliente) return [];
+  const vistas = new Set();
+  const lista = [];
+  const agregar = (ubicacion, direccion) => {
+    const u = (ubicacion || "").trim(), d = (direccion || "").trim();
+    if (!u && !d) return;
+    const clave = (u || d).toLowerCase();
+    if (vistas.has(clave)) return;
+    // La misma dirección escrita pero sin link no es otra: ya está arriba.
+    if (!u && lista.some((x) => x.direccion.toLowerCase() === d.toLowerCase())) return;
+    vistas.add(clave);
+    lista.push({ ubicacion: u, direccion: d });
+  };
+  (pedidos || [])
+    .filter((x) => x.clienteId === cliente.id && x.id !== excluirId && ((x.ubicacion || "").trim() || (x.direccion || "").trim()))
+    .sort((a, b) => ((b.fecha || "") + (b.hora || "")).localeCompare((a.fecha || "") + (a.hora || "")))
+    .forEach((x) => agregar(x.ubicacion, x.direccion));
+  agregar(cliente.ubicacion, cliente.direccion);
+  return lista.slice(0, 4);
+}
+
 function UbicacionField({ value, onChange, placeholder }) {
   const pegar = async () => {
     try {
@@ -12875,7 +12901,7 @@ const nombreArchivoPDF = (form, tipoDoc) => {
   return `${tipoDoc === "recibo" ? "Recibo" : "Presupuesto"}-${limpio}-${form.fecha}.pdf`;
 };
 
-function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
+function NuevoPedidoView({ config, clientes, pedidos = [], form, setForm, onAddCliente, onGuardarConfig, onGuardar, onEliminar, onConvertir, onDuplicar, error, modo = "pedido" }) {
   const [busqueda, setBusqueda] = useState("");
   const buscarClienteRef = useRef(null);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
@@ -12897,18 +12923,34 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
   ).slice(0, 8);
 
   const seleccionarCliente = (c) => {
-    setForm((prev) => ({
-      ...prev,
-      clienteId: c.id,
-      clienteNombre: c.nombre,
-      clienteTelefono: c.telefono || "",
-      clienteDireccion: c.direccion || "",
-      clienteUbicacion: c.ubicacion || "",
-      direccion: prev.direccion || c.direccion || "",
-      ubicacion: prev.ubicacion || c.ubicacion || "",
-    }));
+    const conocida = direccionesDelCliente(c, pedidos, form.id)[0] || {};
+    setForm((prev) => {
+      const yaTiene = (prev.ubicacion || "").trim() || (prev.direccion || "").trim();
+      return {
+        ...prev,
+        clienteId: c.id,
+        clienteNombre: c.nombre,
+        clienteTelefono: c.telefono || "",
+        clienteDireccion: c.direccion || "",
+        clienteUbicacion: c.ubicacion || "",
+        direccion: yaTiene ? prev.direccion : conocida.direccion || "",
+        ubicacion: yaTiene ? prev.ubicacion : conocida.ubicacion || "",
+      };
+    });
     setBusqueda("");
     setMostrarClientes(false);
+  };
+
+  const clienteDelForm = form.clienteId ? clientes.find((c) => c.id === form.clienteId) : null;
+  const direccionesGuardadas = useMemo(
+    () => direccionesDelCliente(clienteDelForm, pedidos, form.id),
+    [clienteDelForm, pedidos, form.id],
+  );
+
+  // Si se pasa a domicilio y no hay dirección escrita, se pone la última conocida.
+  const llenarConocida = (p) => {
+    if ((p.ubicacion || "").trim() || (p.direccion || "").trim() || !direccionesGuardadas[0]) return {};
+    return { ubicacion: direccionesGuardadas[0].ubicacion, direccion: direccionesGuardadas[0].direccion };
   };
 
   const [confirmDupPedido, setConfirmDupPedido] = useState(false);
@@ -13470,13 +13512,13 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
           </Toggle>
           <Toggle
             variant="segmento" className="h-auto flex-col gap-1 !whitespace-normal text-center leading-tight px-2 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && !form.recogerPaellera}
-            onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: false }))}
+            onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: false, ...llenarConocida(p) }))}
           >
             <Truck size={16} className="shrink-0" /> A domicilio
           </Toggle>
           <Toggle
             variant="segmento" className="h-auto flex-col gap-1 !whitespace-normal text-center leading-tight px-2 py-2 !text-xs sm:flex-row sm:gap-1.5 sm:!text-sm" pressed={form.entrega && form.recogerPaellera}
-            onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: true, costoRecoleccion: p.envio }))}
+            onClick={() => setForm((p) => ({ ...p, entrega: true, recogerPaellera: true, costoRecoleccion: p.envio, ...llenarConocida(p) }))}
           >
             <ChefHat size={16} className="shrink-0" /> Llevar y recoger
           </Toggle>
@@ -13528,6 +13570,27 @@ function NuevoPedidoView({ config, clientes, form, setForm, onAddCliente, onGuar
             )}
 
             <div className="af-mini-label mt-2">Ubicación</div>
+            {/* Las que ya conocemos de este cliente (de su ficha o de pedidos
+                anteriores): un toque y se llenan ubicación y referencias. */}
+            {direccionesGuardadas.length > 0 && (
+              <div className="af-dir-guardadas">
+                {direccionesGuardadas.map((d, i) => {
+                  const activa = (form.ubicacion || "").trim() === d.ubicacion && (form.direccion || "").trim() === d.direccion;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className={"af-dir-chip" + (activa ? " activa" : "")}
+                      onClick={() => setForm((p) => ({ ...p, ubicacion: d.ubicacion, direccion: d.direccion }))}
+                      title={[d.direccion, d.ubicacion].filter(Boolean).join(" · ")}
+                    >
+                      <MapPin size={13} className="shrink-0" />
+                      <span className="truncate">{d.direccion || (i === 0 ? "La del último pedido" : "Ubicación guardada " + (i + 1))}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <UbicacionField value={form.ubicacion} onChange={(v) => setForm((p) => ({ ...p, ubicacion: v }))} />
             <div className="af-mini-label mt-2">Referencias (opcional)</div>
             <Input
@@ -16205,6 +16268,7 @@ export default function App() {
             <NuevoPedidoView
               config={config}
               clientes={clientes}
+              pedidos={pedidos}
               form={form}
               setForm={setForm}
               onAddCliente={addCliente}
@@ -16931,6 +16995,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-cliente-chip { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px; }
 
 .af-ubic-row { display: flex; align-items: center; gap: 8px; }
+.af-dir-guardadas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.af-dir-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 10px; border-radius: 999px;
+  border: 1px solid var(--border, #e2dccf); background: var(--card, #fff); color: inherit; font-size: 13px; cursor: pointer; }
+.af-dir-chip.activa { border-color: var(--primary, #1A4B76); box-shadow: 0 0 0 1px var(--primary, #1A4B76) inset; font-weight: 600; }
 .af-ubic-row .af-input { flex: 1; }
 .af-paste-btn { flex-shrink: 0; width: 42px; height: 42px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); color: var(--wine); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 
