@@ -16995,8 +16995,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-cliente-chip { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px; }
 
 .af-ubic-row { display: flex; align-items: center; gap: 8px; }
-.af-dir-guardadas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.af-dir-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 10px; border-radius: 999px;
+.af-dir-guardadas { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.af-dir-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 12px; border-radius: 999px;
   border: 1px solid var(--border, #e2dccf); background: var(--card, #fff); color: inherit; font-size: 13px; cursor: pointer; }
 .af-dir-chip.activa { border-color: var(--primary, #1A4B76); box-shadow: 0 0 0 1px var(--primary, #1A4B76) inset; font-weight: 600; }
 .af-ubic-row .af-input { flex: 1; }
