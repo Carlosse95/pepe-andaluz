@@ -2325,6 +2325,21 @@ function direccionesDelCliente(cliente, pedidos, excluirId) {
   return lista.slice(0, 4);
 }
 
+// Switch de cada producto en Ajustes: si sale o no en la página web
+// (pepeandaluz.com). La página lee el menú en vivo (función menu-publico), así
+// que al guardar se ve allá en menos de un minuto. Sirve para lo que no se
+// ofrece al público o es de temporada (chiles en nogada). En la app el
+// producto sigue igual: se puede usar en pedidos aunque esté apagado aquí.
+function SeVeEnWeb({ producto, onCambiar }) {
+  const visible = !producto.ocultoWeb;
+  return (
+    <label className="af-se-ve-web">
+      <Switch checked={visible} onCheckedChange={(v) => onCambiar(v ? undefined : true)} />
+      <span>{visible ? "Se ve en la página web" : "No sale en la página web"}</span>
+    </label>
+  );
+}
+
 function UbicacionField({ value, onChange, placeholder }) {
   const pegar = async () => {
     try {
@@ -10520,6 +10535,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             />
             <span className="af-price-suffix">$/kg</span>
           </div>
+          <SeVeEnWeb producto={it} onCambiar={(oculto) => setDraft({ ...draft, paellas: draft.paellas.map((x, xi) => (xi === i ? { ...x, ocultoWeb: oculto } : x)) })} />
         </div>
       );
     }
@@ -10559,6 +10575,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
             />
             <span className="af-price-suffix">$ por porción</span>
           </div>
+          <SeVeEnWeb producto={it} onCambiar={(oculto) => setDraft({ ...draft, extrasPaella: draft.extrasPaella.map((x, xi) => (xi === i ? { ...x, ocultoWeb: oculto } : x)) })} />
         </div>
       );
     }
@@ -10628,6 +10645,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
           />
           <span className="af-price-suffix">$</span>
         </div>
+        <SeVeEnWeb producto={ex} onCambiar={(oculto) => setDraft({ ...draft, extras: draft.extras.map((x, xi) => (xi === i ? { ...x, ocultoWeb: oculto } : x)) })} />
         {/* Solo sirve para los que se venden en paquete. Se llamaba
             "piezas por orden" a secas y no se entendía: parecía que
             había que llenarlo siempre, y que de ahí salía el descuento
@@ -11232,6 +11250,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
                             onKeyDown={(e) => { if (e.key === "Enter") setPlatilloAbierto(it.id); }}
                           >
                             <span className="af-ing-row-nombre">{it.nombre || "Sin nombre"}</span>
+                            {it.ocultoWeb && <span className="af-no-web" title="No sale en la página web">No sale en la web</span>}
                             <span className="af-ing-row-meta">{g.metaDe(it)}</span>
                             <CircleChevronRight size={15} className="af-mes-flecha" />
                           </div>
@@ -16995,6 +17014,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .af-cliente-chip { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px; }
 
 .af-ubic-row { display: flex; align-items: center; gap: 8px; }
+.af-no-web { font-size: 11px; padding: 0 8px; border-radius: 999px; background: var(--muted, #eee); color: var(--muted-foreground, #666); white-space: nowrap; }
+.af-se-ve-web { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; cursor: pointer; }
 .af-dir-guardadas { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .af-dir-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 12px; border-radius: 999px;
   border: 1px solid var(--border, #e2dccf); background: var(--card, #fff); color: inherit; font-size: 13px; cursor: pointer; }
