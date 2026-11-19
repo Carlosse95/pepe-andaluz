@@ -14,7 +14,7 @@ import {
   SidebarRail, useSidebar,
 } from "@/components/ui/sidebar";
 
-// Barra lateral de Pepe El Andaluz (base: sidebar-07 de shadcn/ui).
+// Barra lateral de Pepe Andaluz (base: sidebar-07 de shadcn/ui).
 // Se encoge a solo íconos en iPad/compu y en celular sale como cajón.
 export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrarSesion, tema, onCambiarTema, ...props }) {
   const { isMobile, setOpenMobile, setOpen } = useSidebar();
@@ -50,7 +50,7 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" tooltip="Pepe El Andaluz" aria-label="Pepe El Andaluz — ir a Hoy" onClick={ir(() => onIr("hoy"))} className="h-auto justify-center py-2 hover:bg-transparent active:bg-transparent group-data-[collapsible=icon]:!p-0">
+            <SidebarMenuButton size="lg" tooltip="Pepe Andaluz" aria-label="Pepe Andaluz — ir a Hoy" onClick={ir(() => onIr("hoy"))} className="h-auto justify-center py-2 hover:bg-transparent active:bg-transparent group-data-[collapsible=icon]:!p-0">
               <div className="af-logo-mark af-logo-barra shrink-0" />
             </SidebarMenuButton>
           </SidebarMenuItem>

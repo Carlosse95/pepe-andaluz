@@ -1,4 +1,4 @@
-// Trabajador en segundo plano de Pepe El Andaluz. SOLO recibe y enseña los
+// Trabajador en segundo plano de Pepe Andaluz. SOLO recibe y enseña los
 // avisos (Web Push); no guarda nada en caché ni intercepta descargas, para no
 // estorbar a cómo se actualiza la app.
 
@@ -8,7 +8,7 @@ self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener("push", (e) => {
   let aviso = {};
   try { aviso = e.data ? e.data.json() : {}; } catch { aviso = { body: e.data && e.data.text() }; }
-  const titulo = aviso.title || "Pepe El Andaluz";
+  const titulo = aviso.title || "Pepe Andaluz";
   e.waitUntil(
     self.registration.showNotification(titulo, {
       body: aviso.body || "",

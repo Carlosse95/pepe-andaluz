@@ -8,53 +8,61 @@
    ------------------------------------------------------------------ */
 @layer base {
   :root {
-    /* Paleta de marca (HSL). */
-    --higo: 228 46% 24%;      /* Higo negro  #212C59 */
-    --lavanda: 225 100% 86%;  /* Azul lavanda #B8CAFF */
-    --oro: 40 58% 43%;        /* Oro oliva   #AF842E */
-    --azafran: 58 96% 43%;    /* Azafrán     #D9D204 */
-    --pimenton: 11 100% 61%;  /* Pimentón    #FF5D37 */
+    /* Paleta de marca Pepe Andaluz (HSL), la misma de pepeandaluz.com.
+       Los nombres viejos (higo, lavanda, azafrán, pimentón, oro) se
+       conservan porque toda la app los usa; ahora apuntan a la marca nueva. */
+    --higo: 208 64% 28%;      /* Azul       #1A4B76 (color principal) */
+    --lavanda: 42 30% 90%;    /* Crema fuerte #EBE6DB (franjas y barra lateral) */
+    --oro: 47 54% 48%;        /* Dorado     #BB9E38 */
+    --azafran: 47 54% 48%;    /* Dorado     #BB9E38 */
+    --pimenton: 0 62% 40%;    /* Rojo       #A52727 (globitos y alertas) */
+    --crema: 42 32% 94%;      /* Crema      #F4F1EA (fondo de la página web) */
+    --rojo: 0 62% 34%;        /* Rojo       #8B2121 */
+    --verde: 123 23% 30%;     /* Verde      #3B5E3D */
+    --tinta: 211 27% 17%;     /* Tinta      #1F2A36 (texto) */
 
-    /* Colores con nombre de shadcn, armados con la paleta de marca.
-       Fondo casi blanco con un toque lavanda; texto en higo; lo principal en
-       higo; lo secundario y los resaltados en lavanda; error en pimentón. */
-    --background: 230 100% 99%;
-    --foreground: var(--higo);
+    /* Colores con nombre de shadcn, armados con la marca: fondo crema como la
+       página, tarjetas blancas, texto en tinta, lo principal en azul. */
+    --background: 42 32% 95%;
+    --foreground: var(--tinta);
     --card: 0 0% 100%;
-    --card-foreground: var(--higo);
+    --card-foreground: var(--tinta);
     --popover: 0 0% 100%;
-    --popover-foreground: var(--higo);
+    --popover-foreground: var(--tinta);
     --primary: var(--higo);
-    --primary-foreground: 0 0% 100%;
-    --secondary: 225 100% 93%;          /* lavanda clara */
-    --secondary-foreground: var(--higo);
-    --muted: 228 60% 96%;
-    --muted-foreground: 228 20% 45%;
-    --accent: 225 100% 93%;             /* lavanda clara: lo elegido y el paso del mouse */
-    --accent-foreground: var(--higo);
-    --destructive: 11 85% 52%;          /* pimentón con contraste para letra blanca */
+    --primary-foreground: 42 32% 96%;
+    --secondary: 208 38% 92%;           /* azul muy clarito */
+    --secondary-foreground: 208 64% 24%;
+    --muted: 42 26% 91%;
+    --muted-foreground: 213 9% 40%;
+    --accent: 208 38% 92%;              /* lo elegido y el paso del mouse */
+    --accent-foreground: 208 64% 24%;
+    --destructive: 0 62% 40%;
     --destructive-foreground: 0 0% 100%;
-    --border: 228 45% 90%;
-    --input: 228 40% 86%;
+    --border: 41 25% 85%;
+    --input: 41 20% 79%;
     --ring: var(--higo);
 
-    /* Colores de estado (la paleta de marca no trae verde, y "pagado" se
-       tiene que leer de un vistazo). Cada uno con su versión fuerte para
-       letra sobre fondo claro. */
-    --exito: 156 69% 36%;
-    --exito-fuerte: 156 70% 26%;
+    /* Colores de estado, de la misma marca: verde (pagado), dorado (aviso),
+       rojo (error). Cada uno con su versión fuerte para letra sobre claro. */
+    --exito: 123 26% 34%;
+    --exito-fuerte: 123 28% 24%;
     --aviso: var(--oro);
-    --aviso-fuerte: 40 62% 30%;
-    --error: 11 85% 52%;
-    --error-fuerte: 11 80% 40%;
-    --info: 229 47% 49%;
+    --aviso-fuerte: 45 62% 29%;
+    --error: 0 62% 42%;
+    --error-fuerte: 0 62% 32%;
+    --info: 208 50% 40%;
 
     /* Letra al estilo de apple.com: SF Pro (la del sistema en iPhone, iPad
        y Mac; no se descarga nada). Donde no existe (Windows, Android) cae en
        Inter, la más parecida. Los títulos usan la misma familia: el sistema
        elige solo la versión "Display" en tamaños grandes. */
-    --fuente-app: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Inter, "Segoe UI", system-ui, sans-serif;
+    --fuente-app: "Instrument Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Inter, "Segoe UI", system-ui, sans-serif;
+    /* "fuente-titulos" la usan cifras y etiquetas en negritas: va con la
+       letra normal. La de la página (Instrument Serif, un solo grosor) es
+       "fuente-serif" y solo va en títulos grandes. */
     --fuente-titulos: var(--fuente-app);
+    --fuente-serif: "Instrument Serif", Georgia, serif;
 
     /* Escala de letra: 8 tamaños para toda la app (antes había 25). */
     --text-2xs: 0.6875rem;  /* 11px: etiquetas de la barra de abajo, globitos */
@@ -74,15 +82,14 @@
     --radius-lg: 1rem;      /* 16px: tarjetas y menús */
     --radius-xl: 2rem;      /* 32px: ventanas */
     --radius-full: 9999px;
-    /* Barra lateral (sidebar de shadcn) en colores de marca: lavanda con
-       higo negro; lo elegido en higo con letra blanca. */
+    /* Barra lateral en crema fuerte con letra azul; lo elegido en azul. */
     --sidebar-background: var(--lavanda);
     --sidebar-foreground: var(--higo);
     --sidebar-primary: var(--higo);
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 225 100% 92%;
+    --sidebar-primary-foreground: 42 32% 96%;
+    --sidebar-accent: 42 28% 85%;
     --sidebar-accent-foreground: var(--higo);
-    --sidebar-border: 225 55% 78%;
+    --sidebar-border: 41 25% 80%;
     --sidebar-ring: var(--higo);
   }
 }
@@ -93,41 +100,41 @@
    app pinta "fondo principal + letra blanca" y así nada se pierde. */
 @layer base {
   .dark {
-    --background: 230 30% 9%;
-    --foreground: 225 100% 94%;
-    --card: 230 27% 13%;
-    --card-foreground: 225 100% 94%;
-    --popover: 230 27% 15%;
-    --popover-foreground: 225 100% 94%;
-    --primary: 226 62% 60%;
+    --background: 211 30% 9%;
+    --foreground: 42 30% 92%;
+    --card: 211 26% 13%;
+    --card-foreground: 42 30% 92%;
+    --popover: 211 26% 15%;
+    --popover-foreground: 42 30% 92%;
+    --primary: 208 52% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 230 25% 20%;
-    --secondary-foreground: 225 100% 94%;
-    --muted: 230 24% 17%;
-    --muted-foreground: 228 22% 70%;
-    --accent: 229 32% 18%;
-    --accent-foreground: 225 100% 94%;
-    --destructive: 11 90% 58%;
+    --secondary: 211 24% 20%;
+    --secondary-foreground: 42 30% 92%;
+    --muted: 211 22% 17%;
+    --muted-foreground: 42 10% 68%;
+    --accent: 211 26% 19%;
+    --accent-foreground: 42 30% 92%;
+    --destructive: 0 68% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 230 22% 23%;
-    --input: 230 22% 30%;
-    --ring: 225 100% 80%;
-    --exito: 156 60% 40%;
-    --exito-fuerte: 156 55% 60%;
-    --aviso-fuerte: 40 70% 62%;
-    --error-fuerte: 11 90% 68%;
-    --info: 226 70% 66%;
-    --sidebar-background: 230 30% 12%;
-    --sidebar-foreground: 225 100% 92%;
-    --sidebar-primary: 226 62% 60%;
+    --border: 211 20% 23%;
+    --input: 211 20% 30%;
+    --ring: 208 60% 70%;
+    --exito: 123 28% 45%;
+    --exito-fuerte: 123 32% 64%;
+    --aviso-fuerte: 47 62% 62%;
+    --error-fuerte: 0 75% 70%;
+    --info: 208 55% 62%;
+    --sidebar-background: 211 30% 12%;
+    --sidebar-foreground: 42 30% 90%;
+    --sidebar-primary: 208 52% 52%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 230 25% 20%;
-    --sidebar-accent-foreground: 225 100% 94%;
-    --sidebar-border: 230 22% 20%;
-    --sidebar-ring: 225 100% 80%;
+    --sidebar-accent: 211 24% 20%;
+    --sidebar-accent-foreground: 42 30% 92%;
+    --sidebar-border: 211 20% 20%;
+    --sidebar-ring: 208 60% 70%;
   }
 }
-html.dark, html.dark body { background: hsl(230 30% 9%); }
+html.dark, html.dark body { background: hsl(211 30% 9%); }
 
 /* El cuerpo CRECE con el contenido (min-height), no mide exactamente la
    pantalla. Con height:100% todo el contenido quedaba "desbordado" fuera del
@@ -148,8 +155,14 @@ body {
 /* Detalles tipográficos de Apple: letra suavizada y el espacio entre letras
    un poquito cerrado (más en títulos), como en apple.com. */
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
-body { font-family: var(--fuente-app); letter-spacing: -0.011em; }
-h1, h2, h3, .af-header-title-plain, .af-header-title, [data-slot="card-title"], .text-2xl, .text-3xl { letter-spacing: -0.022em; }
+body { font-family: var(--fuente-app); letter-spacing: -0.005em; }
+h1, h2, h3, [data-slot="card-title"], .text-2xl, .text-3xl { letter-spacing: -0.015em; }
+/* Títulos de pantalla con la letra de la página: Instrument Serif solo
+   tiene un grosor, así que va grande y sin negritas. */
+.af-header-title-plain, .af-header-title, .af-header-title-desktop, .af-greeting, .af-saludo-inicio-titulo { font-family: var(--fuente-serif) !important; font-weight: 400 !important; letter-spacing: -0.01em; line-height: 1.1; }
+.af-header-title-plain, .af-header-title, .af-header-title-desktop { font-size: 1.75rem !important; }
+.af-greeting { font-size: 2.25rem !important; }
+.af-saludo-inicio-titulo { font-size: clamp(36px, 8vw, 54px) !important; }
 
 /* En modo oscuro, los bordes que no dicen su color (el del menú de la
    izquierda, las hojas que se deslizan) tomaban el gris claro de fábrica de

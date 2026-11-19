@@ -137,7 +137,7 @@ export {
   AlertDialogCancel,
 }
 
-// Confirmación con el aspecto de las ventanas de Pepe El Andaluz (ícono,
+// Confirmación con el aspecto de las ventanas de Pepe Andaluz (ícono,
 // título, texto y botones apilados). A diferencia de una ventana normal NO
 // se cierra tocando afuera: hay que elegir (Escape cuenta como "Cancelar").
 // Se monta dentro de .af-app para tomar sus colores y medidas.

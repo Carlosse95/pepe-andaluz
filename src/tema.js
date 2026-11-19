@@ -2,7 +2,7 @@
 // y se pone como clase "dark" en <html>, que es como shadcn/ui y Tailwind
 // cambian sus colores.
 const CLAVE = "tema";
-const BARRA = { claro: "#B8CAFF", oscuro: "#141826" };
+const BARRA = { claro: "#EBE6DB", oscuro: "#111A23" };
 
 export function temaGuardado() {
   try {

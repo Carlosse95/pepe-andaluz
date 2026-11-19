@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     if (secreto !== llaves.secreto_prueba) return responder({ error: "Secreto incorrecto" }, 403);
     const { data: subs } = await admin.from("push_suscripciones").select("*");
     const r = await enviar((subs || []) as Sus[], {
-      title: "Pepe El Andaluz", body: String(cuerpo.texto || "Aviso de prueba"), tag: "prueba", url: llaves.contacto,
+      title: "Pepe Andaluz", body: String(cuerpo.texto || "Aviso de prueba"), tag: "prueba", url: llaves.contacto,
     });
     return responder({ enviados: r });
   }
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
   if (cuerpo.prueba_propia) {
     const { data: mias } = await admin.from("push_suscripciones").select("*").eq("user_id", yo.id);
     const r = await enviar((mias || []) as Sus[], {
-      title: "Pepe El Andaluz", body: "Así te van a llegar los avisos de pedidos y pagos.", tag: "prueba", url: llaves.contacto,
+      title: "Pepe Andaluz", body: "Así te van a llegar los avisos de pedidos y pagos.", tag: "prueba", url: llaves.contacto,
     });
     return responder({ enviados: r });
   }
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
   const quien = movs[0].usuario_nombre || "Alguien";
   const aviso =
     movs.length === 1
-      ? { title: "Pepe El Andaluz", body: `${quien} ${minuscula(movs[0].texto)}`, tag: "pedido-" + (movs[0].ref_id || "x"), url: llaves.contacto }
+      ? { title: "Pepe Andaluz", body: `${quien} ${minuscula(movs[0].texto)}`, tag: "pedido-" + (movs[0].ref_id || "x"), url: llaves.contacto }
       : {
           title: `${quien} hizo ${movs.length} cambios`,
           body: movs.slice(0, 3).map((m) => m.texto).join(" · ") + (movs.length > 3 ? "…" : ""),
