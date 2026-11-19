@@ -16019,6 +16019,8 @@ export default function App() {
       // antes se perdía en cada guardado, así que el aviso de "este mensaje ya
       // se le mandó" se reiniciaba solo y dejaba de frenar los repetidos.
       ...(anteriorPedido && anteriorPedido.avisosEnviados ? { avisosEnviados: anteriorPedido.avisosEnviados } : {}),
+      // De dónde vino (p. ej. "web"): antes se perdía al editar.
+      ...(anteriorPedido && anteriorPedido.origen ? { origen: anteriorPedido.origen } : {}),
       ...(anteriorPedido && anteriorPedido.avisoPagoMonto !== undefined ? { avisoPagoMonto: anteriorPedido.avisoPagoMonto } : {}),
       // Si este pedido movió el almacén. Los de días pasados no, porque esa
       // comida ya se compró y se cocinó en su momento.
@@ -16084,6 +16086,14 @@ export default function App() {
       } else if (viejo) {
         /* nada: es historia, no hay a quién avisarle */
       } else if (esNuevo) {
+        setAvisoModal({ pedido: pedidoObj, tipo: "nuevo" });
+      } else if (
+        // Pedido de la página que todavía no recibe nada: al aceptarlo entra
+        // a la lista y se abre para editar, así que al guardarlo ya "no es
+        // nuevo" y no se ofrecía la confirmación (le pasó a un cliente real).
+        (pedidoObj.origen === "web" || String(pedidoObj.notas || "").startsWith("🌐")) &&
+        !Object.keys(pedidoObj.avisosEnviados || {}).length
+      ) {
         setAvisoModal({ pedido: pedidoObj, tipo: "nuevo" });
       } else if (anteriorPedido && anteriorPedido.estado !== "avisado" && pedidoObj.estado === "avisado") {
         setAvisoModal({ pedido: pedidoObj, tipo: "avisado" });
