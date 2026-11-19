@@ -463,9 +463,16 @@ export const marcarPedidoWeb = async (id, estado, userId) => {
     ? { estado, resuelto_at: null, resuelto_por: null }
     : { estado, resuelto_at: new Date().toISOString(), resuelto_por: userId || null };
   let q = supabase.from("pedidos_web").update(cambios).eq("id", id);
-  if (estado === "rechazado") q = q.eq("estado", "nuevo");
-  const { error } = await q;
+  // Rechazar: solo si nadie lo está aceptando ahora mismo. Uno que se quedó
+  // "aceptando" más de 2 min (aparato cerrado a la mitad) sí se puede.
+  if (estado === "rechazado") {
+    const hace2min = new Date(Date.now() - 120000).toISOString();
+    q = q.or(`estado.eq.nuevo,and(estado.eq.aceptando,resuelto_at.lt.${hace2min})`);
+  }
+  const { data, error } = await q.select("id");
   if (error) throw error;
+  // Devuelve si de verdad cambió (false = otro aparato ya lo había atendido).
+  return !!(data && data.length);
 };
 
 // Avisa al instante cuando llega uno (o cuando otro aparato lo resuelve).

@@ -15858,10 +15858,13 @@ export default function App() {
   };
   const rechazarPedidoWeb = async (fila) => {
     try {
-      await marcarPedidoWeb(fila.id, "rechazado", idDeUsuario(perfil));
+      const cambio = await marcarPedidoWeb(fila.id, "rechazado", idDeUsuario(perfil));
       setPedidoWebAbierto(null);
       setPedidosWeb((l) => l.filter((x) => x.id !== fila.id));
-      showToast("Pedido rechazado", "ok");
+      if (cambio === false) {
+        showToast("Este pedido ya lo estaba atendiendo otro aparato", "error");
+        refrescarPedidosWebRef.current?.();
+      } else showToast("Pedido rechazado", "ok");
     } catch {
       showToast("No se pudo rechazar. Revisa tu internet e intenta otra vez.", "error");
     }

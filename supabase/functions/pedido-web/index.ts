@@ -197,14 +197,16 @@ Deno.serve(async (req) => {
     return responder({ error: "No pudimos recibir tu pedido. Intenta otra vez o escríbenos por WhatsApp." }, 500);
   }
 
-  try {
-    await avisar(
-      `De la página: ${nombre} · ${fechaCorta(fecha, hora)} · ${pesos(total)}${aDomicilio ? " · a domicilio" : ""}`,
-      "web-" + fila.id,
-    );
-  } catch (e) {
-    console.error("No se pudo mandar el aviso:", String(e)); // el pedido ya quedó: el aviso no es crítico
-  }
+  // El aviso se manda en segundo plano: el cliente ve "pedido recibido" sin
+  // esperar a los celulares. El pedido ya quedó; el aviso no es crítico.
+  const envioAviso = avisar(
+    `De la página: ${nombre} · ${fechaCorta(fecha, hora)} · ${pesos(total)}${aDomicilio ? " · a domicilio" : ""}`,
+    "web-" + fila.id,
+  ).catch((e) => console.error("No se pudo mandar el aviso:", String(e)));
+  // deno-lint-ignore no-explicit-any
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt?.waitUntil) rt.waitUntil(envioAviso);
+  else await envioAviso;
 
   return responder({ ok: true, total });
 });
