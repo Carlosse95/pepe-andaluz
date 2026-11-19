@@ -5685,7 +5685,7 @@ const TIPOS_AVISABLES = ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "est
 
 // Lo que se le dice a cada quien según su aparato.
 const TEXTO_ESTADO_AVISOS = {
-  activos: "Activos: te llegan los pedidos y pagos que registren los demás, aunque la app esté cerrada.",
+  activos: "Activos: te llegan los pedidos nuevos (de la página y los que registren los demás), aunque la app esté cerrada.",
   apagados: "Apagados en este aparato.",
   bloqueados: "Este aparato tiene los avisos bloqueados. En iPhone/iPad: Ajustes → Notificaciones → Pepe Andaluz. En la compu: permite las notificaciones de esta página en el navegador.",
   instalar: "En iPhone y iPad los avisos solo funcionan con la app en la pantalla de inicio.",
@@ -5785,8 +5785,8 @@ function InvitacionAvisos({ showToast }) {
       <div className="flex items-start gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"><BellRing size={18} /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">Entérate de pedidos y pagos al momento</p>
-          <p className="text-xs text-muted-foreground">Te llega un aviso cuando alguien registra algo, aunque tengas la app cerrada.</p>
+          <p className="text-sm font-semibold text-foreground">Entérate de los pedidos nuevos al momento</p>
+          <p className="text-xs text-muted-foreground">Te llega un aviso cuando entra un pedido, aunque tengas la app cerrada.</p>
         </div>
         <Button variant="ghost" size="icon-sm" aria-label="Cerrar" onClick={cerrar}><CircleX size={16} /></Button>
       </div>
@@ -16845,7 +16845,7 @@ const AZAFRAN_CSS = `
 }
 
 .af-loading { align-items: center; justify-content: center; gap: 12px; }
-.af-logo-loading { width: 170px; translate: -6% 0; } /* un poco a la izquierda, igual que en la página (gusto de Carlos) */
+.af-logo-loading { width: 170px; translate: -9% 0; } /* un poco a la izquierda, igual que en la página (gusto de Carlos) */
 
 .af-logo-mark {
   background-color: hsl(var(--higo));

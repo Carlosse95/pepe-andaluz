@@ -19,9 +19,11 @@ import webpush from "npm:web-push@3.6.7";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-// De qué se avisa: lo de pedidos y pagos. Gastos y clientes nuevos se ven en
-// el Historial pero no ameritan sonar en el celular de todos.
-const AVISABLES = ["pedido-nuevo", "pedido-cambio", "pedido-borrado", "estado", "pago", "pago-quitado", "paellera-devuelta"];
+// De qué se avisa: SOLO pedidos nuevos (desde el 19 nov 2026, decisión de
+// Carlos). Cambios, pagos, entregados, etc. eran ~4 avisos por cada pedido
+// nuevo y hacían que se perdiera el importante. Todo eso sigue en el
+// Historial (la campana). Los pedidos de la página avisan aparte (pedido-web).
+const AVISABLES = ["pedido-nuevo"];
 
 const cors = {
   "access-control-allow-origin": "*",
@@ -92,7 +94,7 @@ Deno.serve(async (req) => {
   if (cuerpo.prueba_propia) {
     const { data: mias } = await admin.from("push_suscripciones").select("*").eq("user_id", yo.id);
     const r = await enviar((mias || []) as Sus[], {
-      title: "Pepe Andaluz", body: "Así te van a llegar los avisos de pedidos y pagos.", tag: "prueba", url: llaves.contacto,
+      title: "Pepe Andaluz", body: "Así te van a llegar los avisos de pedidos nuevos.", tag: "prueba", url: llaves.contacto,
     });
     return responder({ enviados: r });
   }
@@ -124,10 +126,10 @@ Deno.serve(async (req) => {
   const quien = movs[0].usuario_nombre || "Alguien";
   const aviso =
     movs.length === 1
-      ? { title: "Pepe Andaluz", body: `${quien} ${minuscula(movs[0].texto)}`, tag: "pedido-" + (movs[0].ref_id || "x"), url: llaves.contacto }
+      ? { title: "Nuevo pedido", body: `${quien} ${minuscula(movs[0].texto)}`, tag: "pedido-" + (movs[0].ref_id || "x"), url: llaves.contacto }
       : {
-          title: `${quien} hizo ${movs.length} cambios`,
-          body: movs.slice(0, 3).map((m) => m.texto).join(" · ") + (movs.length > 3 ? "…" : ""),
+          title: `${movs.length} pedidos nuevos`,
+          body: `${quien} agregó ` + movs.slice(0, 3).map((m) => m.texto.replace(/^Agregó el /, "")).join(" · ") + (movs.length > 3 ? "…" : ""),
           tag: "varios-" + Date.now(),
           url: llaves.contacto,
         };
