@@ -16452,7 +16452,10 @@ export default function App() {
             <div className="af-header-row">
               {/* Puntito en el menú si hay pedidos de la página por aceptar:
                   en el celular la lista de secciones va escondida ahí. */}
-              <span className="relative -ml-1 shrink-0">
+              {/* Solo en celular: en iPad y compu la barra de íconos ya está a
+                  la vista y se abre sola al pasar el mouse; este botón abría
+                  OTRO menú encima (Carlos, 19 nov 2026: "me sale doble menú"). */}
+              <span className="af-trigger-celular relative -ml-1 shrink-0">
                 <SidebarTrigger className="af-sidebar-trigger" />
                 {pedidosWeb.length > 0 && (
                   <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-pimenton px-1 text-2xs font-bold text-white">
@@ -17448,6 +17451,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   flex-shrink: 0; border: none; border-radius: var(--radius-full); padding: 8px 16px; font-weight: 700;
   background: white; color: hsl(var(--error)); cursor: pointer;
 }
+
+@media (min-width: 700px) { .af-trigger-celular { display: none; } }
 
 /* Pedido nuevo de la página: letrero que se queda arriba hasta aceptarlo o rechazarlo */
 .af-letrero-web {

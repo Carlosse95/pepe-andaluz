@@ -51,7 +51,10 @@ export function AppSidebar({ secciones, vista, onIr, usuario, onPerfil, onCerrar
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" tooltip="Pepe Andaluz" aria-label="Pepe Andaluz — ir a Hoy" onClick={ir(() => onIr("hoy"))} className="h-auto justify-center py-2 hover:bg-transparent active:bg-transparent group-data-[collapsible=icon]:!p-0">
-              <div className="af-logo-mark af-logo-barra shrink-0" />
+              {/* Abierta: el logo en cursiva. Angosta (solo íconos): el ícono de
+                  la app, porque la cursiva a 30 px no se leía. */}
+              <div className="af-logo-mark af-logo-barra shrink-0 group-data-[collapsible=icon]:hidden" />
+              <img src="./icono-180.png" alt="" className="hidden size-8 shrink-0 rounded-lg group-data-[collapsible=icon]:block" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
