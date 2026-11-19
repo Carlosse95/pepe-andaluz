@@ -198,10 +198,18 @@ abre el pedido para poner el envío y mandarle el resumen. Si falla, vuelve a
 `nuevo`. Uno que se quede en `aceptando` más de 2 min vuelve a salir (y se
 puede rechazar).
 
+Al aceptar, el pedido entra a la lista y se abre para editar; al guardarlo ya
+"no es nuevo", así que la confirmación se ofrece por la regla "pedido de la
+página (`origen: "web"` o nota que empieza con 🌐) sin `avisosEnviados`"
+(19 nov 2026: a un cliente real no se le ofreció). Horario: la página y la
+función solo aceptan 09:00–20:00 y no horas que ya pasaron hoy.
+
 **Probar de punta a punta sin despertar a nadie:** mandar a `pedido-web` el
 encabezado `x-secreto-prueba` (el de `push_llaves.secreto_prueba`) y
 `solo_usuario: <user_id>` en el cuerpo: el pedido entra de verdad, pero el
-aviso solo le llega a ese usuario. En los registros de la función queda
+aviso solo le llega a ese usuario (`solo_usuario: "nadie"` = sin aviso).
+**Sin el encabezado se manda el aviso a TODA la familia** (pasó el 19 nov
+2026 por un script de prueba mal hecho): revisar cada llamada antes de correrla. En los registros de la función queda
 "Aviso de pedido web: N enviados, M fallidos". El título del aviso usa
 `perfiles.nombre` (no el nombre personalizado del aparato): si está vacío,
 llega "Tienes un nuevo pedido" sin nombre.
