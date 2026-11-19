@@ -190,7 +190,7 @@ La página (`../menu-web`) manda el pedido a la Edge Function pública
 `config-productos` (de la página solo toma qué y cuánto), limita abusos (6 por
 conexión y 4 por teléfono por hora, campo trampa `empresa`), deja el pedido en
 la tabla-buzón `pedidos_web` y manda el aviso push a los aparatos del negocio.
-En la app sale el letrero `LetreroPedidosWeb` en cualquier pantalla; la ficha
+En la app tienen sección propia "Pedidos web" (`PedidosWebView`, segunda del menú, con numerito; reemplazó a "Mensajes", que era del bot pausado) y el letrero `LetreroPedidosWeb` en cualquier otra pantalla lleva ahí. Carlos pidió que NO se mezcle con la campana (historial). La ficha
 `FichaPedidoWeb` tiene Aceptar / WhatsApp / Rechazar. Aceptar = `apartarPedidoWeb`
 (estado `aceptando`, para que dos aparatos no lo dupliquen) → `incorporarFilas`
 (el mismo camino protegido del bot de WhatsApp, con folio) → `aceptado` → se

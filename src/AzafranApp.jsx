@@ -43,7 +43,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, Plus, LoaderCircle, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Globe, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, Plus, LoaderCircle, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -51,7 +51,7 @@ import {
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
   obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil, cambiarContrasena,
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
-  listarPedidosWeb, apartarPedidoWeb, marcarPedidoWeb, suscribirPedidosWeb,
+  listarPedidosWeb, listarPedidosWebRecientes, apartarPedidoWeb, marcarPedidoWeb, suscribirPedidosWeb,
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
   subirTicket, verTicket, leerTicket, subirRecibo,
@@ -2898,7 +2898,7 @@ function LetreroPedidosWeb({ filas, onAbrir }) {
   const f = filas[0];
   const p = f.pedido || {};
   return (
-    <button type="button" className="af-letrero-web" onClick={() => onAbrir(f.id)}>
+    <button type="button" className="af-letrero-web" onClick={onAbrir}>
       <span className="af-letrero-web-icono" aria-hidden="true"><BellRing size={18} /></span>
       <span className="flex min-w-0 flex-1 flex-col text-left">
         <strong className="truncate">
@@ -2910,6 +2910,58 @@ function LetreroPedidosWeb({ filas, onAbrir }) {
       </span>
       <span className="af-letrero-web-ver">Ver</span>
     </button>
+  );
+}
+
+// Sección propia "Pedidos web": lo que espera respuesta y lo atendido en la
+// semana. Aparte de la campana (que es el historial de todo) para que un
+// pedido de un cliente nunca se pierda entre los demás avisos.
+function PedidosWebView({ pendientes, recientes, onAbrir }) {
+  const fila = (f, atendido) => {
+    const p = f.pedido || {};
+    return (
+      <button
+        key={f.id}
+        type="button"
+        onClick={atendido ? undefined : () => onAbrir(f.id)}
+        disabled={atendido}
+        className={cn("flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left", !atendido && "cursor-pointer shadow-sm")}
+      >
+        <span className="flex min-w-0 flex-1 flex-col">
+          <strong className="truncate">{p.clienteNombre}</strong>
+          <span className="truncate text-sm text-muted-foreground">
+            {fmtDateHuman(p.fecha)} · {fmtHora12(p.hora)} · {p.entrega ? "A domicilio" : "Recoge"}
+          </span>
+          <span className="text-xs text-muted-foreground">Llegó {haceCuanto(new Date(f.creado_at).getTime())}</span>
+        </span>
+        <span className="flex shrink-0 flex-col items-end gap-1">
+          <span className="font-semibold tabular-nums">{money(p.total)}</span>
+          {atendido ? (
+            <Chip variant={f.estado === "aceptado" ? "exito" : "neutral"}>{f.estado === "aceptado" ? "Aceptado" : "Rechazado"}</Chip>
+          ) : (
+            <Chip variant="oro">Por aceptar</Chip>
+          )}
+        </span>
+      </button>
+    );
+  };
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Por aceptar</h2>
+        {pendientes.length ? pendientes.map((f) => fila(f, false)) : (
+          <p className="rounded-2xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            No hay pedidos nuevos de la página. Cuando llegue uno, te sale aquí y te llega el aviso al celular.
+          </p>
+        )}
+      </section>
+      {recientes.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Atendidos esta semana</h2>
+          {recientes.map((f) => fila(f, true))}
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -5323,7 +5375,6 @@ const conNavOcultas = (config, perfil, lista) => {
 // Ajustes no están: sin ellas no habría por dónde volver a encenderlas.
 const NAV_ESCONDIBLES = [
   { key: "agenda", label: "Agenda" },
-  { key: "mensajes", label: "Mensajes" },
   { key: "presupuestos", label: "Presupuestos" },
   { key: "deudas", label: "Me deben" },
   { key: "clientes", label: "Clientes" },
@@ -14132,6 +14183,7 @@ export default function App() {
   const [pedidosWeb, setPedidosWeb] = useState([]);
   const [pedidoWebAbierto, setPedidoWebAbierto] = useState(null);
   const [aceptandoWeb, setAceptandoWeb] = useState(false);
+  const [pedidosWebRecientes, setPedidosWebRecientes] = useState([]);
   const incorporarFilasRef = useRef(null);
   const refrescarPedidosWebRef = useRef(null);
   const [chatAbierto, setChatAbierto] = useState(null);
@@ -15708,6 +15760,12 @@ export default function App() {
 
   irAEditarRef.current = irAEditar;
 
+  const refrescarWebRecientes = () => listarPedidosWebRecientes().then(setPedidosWebRecientes).catch(() => {});
+  useEffect(() => {
+    if (view === "pedidos-web" && puedeUsarDatos) refrescarWebRecientes();
+    // eslint-disable-next-line
+  }, [view, pedidosWeb.length]);
+
   // Aceptar un pedido de la página: se aparta (para que otro aparato no lo
   // meta dos veces), entra a la lista con su número y se abre para poner el
   // envío y mandarle al cliente el resumen por WhatsApp.
@@ -16249,12 +16307,14 @@ export default function App() {
 
   const pedidosHoy = pedidos.filter((p) => esHoy(p.fecha));
 
-  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", deudas: "Me deben", reportes: "Reportes", menu: "Menú", inventario: "Inventario", historial: "Historial", ajustes: "Ajustes" };
+  const titulos = { hoy: "Hoy", agenda: "Agenda", clientes: "Clientes", buscar: "Buscar", presupuestos: "Presupuestos", "pedidos-web": "Pedidos web", deudas: "Me deben", reportes: "Reportes", menu: "Menú", inventario: "Inventario", historial: "Historial", ajustes: "Ajustes" };
 
   const navTodos = [
     { key: "hoy", icon: <House size={20} />, label: "Hoy" },
+    // Pedidos que hacen los clientes en la página: sección propia, con el
+    // numerito de los que esperan respuesta. No se puede esconder.
+    { key: "pedidos-web", icon: <Globe size={20} />, label: "Pedidos web", badge: pedidosWeb.length },
     { key: "agenda", icon: <CalendarDays size={20} />, label: "Agenda" },
-    { key: "mensajes", icon: <MessageCircle size={20} />, label: "Mensajes", badge: pendientesWhatsApp },
     { key: "presupuestos", icon: <FileText size={20} />, label: "Presupuestos" },
     { key: "deudas", icon: <Wallet size={20} />, label: "Me deben" },
     { key: "clientes", icon: <Users size={20} />, label: "Clientes" },
@@ -16367,7 +16427,7 @@ export default function App() {
       <SidebarInset className="af-main min-w-0">
         <LetreroNube pendientes={nubePendiente} onReintentar={reintentarPendientes} />
         <LetreroAtrasada atrasada={atrasada} onRecargar={() => recargarParaDestrabar(true)} />
-        {view !== "nuevo" && <LetreroPedidosWeb filas={pedidosWeb} onAbrir={setPedidoWebAbierto} />}
+        {view !== "nuevo" && view !== "pedidos-web" && <LetreroPedidosWeb filas={pedidosWeb} onAbrir={() => irAVista("pedidos-web")} />}
         <FichaPedidoWeb
           fila={pedidosWeb.find((f) => f.id === pedidoWebAbierto) || null}
           ocupado={aceptandoWeb}
@@ -16389,7 +16449,16 @@ export default function App() {
             </div>
           ) : (
             <div className="af-header-row">
-              <SidebarTrigger className="af-sidebar-trigger -ml-1 shrink-0" />
+              {/* Puntito en el menú si hay pedidos de la página por aceptar:
+                  en el celular la lista de secciones va escondida ahí. */}
+              <span className="relative -ml-1 shrink-0">
+                <SidebarTrigger className="af-sidebar-trigger" />
+                {pedidosWeb.length > 0 && (
+                  <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-pimenton px-1 text-2xs font-bold text-white">
+                    {pedidosWeb.length > 9 ? "9+" : pedidosWeb.length}
+                  </span>
+                )}
+              </span>
               <span className="af-header-title-plain">{titulos[view]}</span>
               <div className="flex items-center gap-1 ml-auto">
                 <Button variant="ghost" size="icon-sm" title="Buscar pedidos" aria-label="Buscar pedidos" onClick={() => irAVista("buscar")}>
@@ -16423,6 +16492,7 @@ export default function App() {
           {view === "hoy" && <HoyView clientes={clientes} pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
+          {view === "pedidos-web" && <PedidosWebView pendientes={pedidosWeb} recientes={pedidosWebRecientes} onAbrir={setPedidoWebAbierto} />}
           {view === "mensajes" && (
             <MensajesView
               conversaciones={conversaciones}

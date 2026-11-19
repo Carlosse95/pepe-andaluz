@@ -425,6 +425,21 @@ export const listarPedidosWeb = async () => {
   return data || [];
 };
 
+// Los ya atendidos de la última semana, para la lista de "Atendidos".
+export const listarPedidosWebRecientes = async () => {
+  if (!nubeActiva) return [];
+  const hace7dias = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("pedidos_web")
+    .select("id, pedido, estado, creado_at, resuelto_at")
+    .in("estado", ["aceptado", "rechazado"])
+    .gte("creado_at", hace7dias)
+    .order("resuelto_at", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return data || [];
+};
+
 // Lo aparta para este aparato antes de pasarlo a la lista: si dos aparatos
 // le dan "Aceptar" a la vez, solo a uno le regresa la fila; el otro recibe
 // null y no lo duplica.
