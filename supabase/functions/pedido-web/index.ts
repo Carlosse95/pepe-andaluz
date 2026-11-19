@@ -52,12 +52,15 @@ async function huella(t: string) {
   return Array.from(new Uint8Array(b)).map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
-async function avisar(titulo: string, cuerpo: string, tag: string) {
+// Aviso propio de los pedidos de la página, distinto a los de pagos y cambios:
+// a cada quien le llega con SU nombre ("Carlos, tienes un nuevo pedido").
+async function avisar(cuerpo: string, tag: string) {
   const { data: llaves } = await admin.from("push_llaves").select("*").eq("id", 1).maybeSingle();
   if (!llaves) return;
   webpush.setVapidDetails(llaves.contacto, llaves.publica, llaves.privada);
-  const { data: activos } = await admin.from("perfiles").select("user_id").eq("activo", true);
-  const ids = (activos || []).map((p) => p.user_id);
+  const { data: activos } = await admin.from("perfiles").select("user_id, nombre").eq("activo", true);
+  const nombreDe = new Map((activos || []).map((p) => [p.user_id, String(p.nombre || "").trim().split(/\s+/)[0]]));
+  const ids = [...nombreDe.keys()];
   if (!ids.length) return;
   const { data: subs } = await admin.from("push_suscripciones").select("*").in("user_id", ids);
   // Si la app está abierta y a la vista en ese aparato, ya le sale el aviso
@@ -65,10 +68,12 @@ async function avisar(titulo: string, cuerpo: string, tag: string) {
   const ahora = Date.now();
   const destino = (subs || []).filter((s) => !s.en_app_hasta || new Date(s.en_app_hasta).getTime() < ahora);
   await Promise.all(destino.map(async (s) => {
+    const nombre = nombreDe.get(s.user_id);
+    const titulo = `🛎 ${nombre ? nombre + ", tienes" : "Tienes"} un nuevo pedido`;
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        JSON.stringify({ title: titulo, body: cuerpo, tag, url: llaves.contacto }),
+        JSON.stringify({ title: titulo, body: cuerpo, tag, url: llaves.contacto, ir: "pedidos-web", fijo: true }),
         { TTL: 60 * 60 * 12, urgency: "high" },
       );
     } catch (e) {
@@ -194,8 +199,7 @@ Deno.serve(async (req) => {
 
   try {
     await avisar(
-      "🛎 Pedido nuevo de la página",
-      `${nombre} · ${fechaCorta(fecha, hora)} · ${pesos(total)}${aDomicilio ? " · a domicilio" : ""}`,
+      `De la página: ${nombre} · ${fechaCorta(fecha, hora)} · ${pesos(total)}${aDomicilio ? " · a domicilio" : ""}`,
       "web-" + fila.id,
     );
   } catch (e) {

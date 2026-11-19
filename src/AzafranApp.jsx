@@ -5633,6 +5633,37 @@ function BannerIOS({ titulo, cuerpo, alTocar, cerrar }) {
     </div>
   );
 }
+// Pedido nuevo de la página: aviso DISTINTO a todos los demás (azul, con el
+// nombre de quien está usando la app) y no se va solo: se queda hasta que lo
+// tocas (te lleva a Pedidos web) o lo deslizas hacia arriba. Así no se pierde
+// entre los avisos de pagos, gastos y cambios de todos los días.
+function BannerPedidoWeb({ titulo, cuerpo, alTocar, cerrar }) {
+  const inicio = useRef(null);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onPointerDown={(e) => { inicio.current = { x: e.clientX, y: e.clientY }; }}
+      onClick={(e) => {
+        const i = inicio.current;
+        if (i && (Math.abs(e.clientY - i.y) > 8 || Math.abs(e.clientX - i.x) > 8)) return;
+        alTocar?.();
+        cerrar();
+      }}
+      className="mx-auto flex w-full max-w-[380px] cursor-pointer select-none items-center gap-3 rounded-[22px] bg-primary px-4 py-3 text-left text-primary-foreground shadow-[0_12px_32px_rgba(26,75,118,0.35)]"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-azafran text-higo"><BellRing size={20} /></span>
+      <div className="min-w-0 flex-1">
+        <div className="text-base font-bold leading-snug">{titulo}</div>
+        {cuerpo && <div className="line-clamp-2 text-sm leading-snug opacity-90">{cuerpo}</div>}
+      </div>
+      <span className="shrink-0 rounded-full bg-white px-3 py-1 text-sm font-bold text-higo">Ver</span>
+    </div>
+  );
+}
+const avisoPedidoWeb = ({ id, titulo, cuerpo, alTocar }) =>
+  toast.custom((t) => <BannerPedidoWeb titulo={titulo} cuerpo={cuerpo} alTocar={alTocar} cerrar={() => toast.dismiss(t)} />, { id: "web-" + id, duration: Infinity });
+
 const avisoIOS = ({ titulo, cuerpo, alTocar }) =>
   toast.custom((id) => <BannerIOS titulo={titulo} cuerpo={cuerpo} alTocar={alTocar} cerrar={() => toast.dismiss(id)} />, { duration: 5000 });
 
@@ -14130,15 +14161,14 @@ export default function App() {
   const [cargandoSesion, setCargandoSesion] = useState(nubeActiva);
 
   // Avisos cortos (Toast de shadcn: Sonner).
-  // Los avisos de "listo" o de error bajan de arriba y quedaban ENCIMA del
-  // botón del menú y de la búsqueda: el toque caía en el aviso y había que
-  // picar otra vez. Solo informan, así que el toque los atraviesa
-  // (af-aviso-pasa). Los avisos de otro aparato sí se pueden tocar.
+  // Antes el toque los atravesaba para no estorbar al menú y a la búsqueda,
+  // pero así no se podían quitar deslizándolos (Carlos, 19 nov 2026). Ahora
+  // se quitan hacia arriba y se van solos más rápido (2.5 s; error, 5 s).
   const showToast = (msg, tipo = "ok") => {
     // id = el texto: si sale el mismo aviso varias veces seguidas, se
     // reemplaza en lugar de apilarse uno encima de otro.
-    if (tipo === "error") toast.error(msg, { className: "af-aviso-pasa", id: "err:" + msg });
-    else toast.success(msg, { className: "af-aviso-pasa", id: "ok:" + msg });
+    if (tipo === "error") toast.error(msg, { id: "err:" + msg, duration: 5000 });
+    else toast.success(msg, { id: "ok:" + msg, duration: 2500 });
   };
 
 
@@ -14187,6 +14217,18 @@ export default function App() {
   const [pedidosWebRecientes, setPedidosWebRecientes] = useState([]);
   const incorporarFilasRef = useRef(null);
   const refrescarPedidosWebRef = useRef(null);
+  const irAVistaRef = useRef(null);
+  // Tocar el aviso del celular de un pedido de la página abre "Pedidos web":
+  // ?ir=pedidos-web si la app estaba cerrada, o un mensaje del trabajador en
+  // segundo plano si ya estaba abierta.
+  useEffect(() => {
+    const ir = (destino) => { if (destino === "pedidos-web") setTimeout(() => irAVistaRef.current?.("pedidos-web"), 300); };
+    const q = new URLSearchParams(location.search).get("ir");
+    if (q) { ir(q); history.replaceState(null, "", location.pathname + location.hash); }
+    const alMensaje = (e) => ir(e.data && e.data.ir);
+    navigator.serviceWorker?.addEventListener("message", alMensaje);
+    return () => navigator.serviceWorker?.removeEventListener("message", alMensaje);
+  }, []);
   const [chatAbierto, setChatAbierto] = useState(null);
   const [mensajesChat, setMensajesChat] = useState([]);
   const [cargandoChat, setCargandoChat] = useState(false);
@@ -14533,10 +14575,22 @@ export default function App() {
       const nuevos = vistosWeb ? filas.filter((f) => !vistosWeb.has(f.id)) : [];
       vistosWeb = new Set([...(vistosWeb || []), ...filas.map((f) => f.id)]);
       setPedidosWeb(filas);
+      // Si ya no hay pendientes (otro aparato los atendió), el aviso se va.
+      if (!filas.length) toast.dismiss("web-aviso");
       if (nuevos.length) {
-        showToast(nuevos.length === 1
-          ? `🛎 Pedido nuevo de la página: ${nuevos[0].pedido?.clienteNombre || ""}`
-          : `🛎 Llegaron ${nuevos.length} pedidos de la página`, "ok");
+        // UN solo aviso (se actualiza si llegan más): con varios pedidos
+        // seguidos se apilaban y tapaban la pantalla.
+        const nombre = (yoRef.current.nombre || "").trim().split(/\s+/)[0];
+        const quien = nombre ? nombre + ", tienes" : "Tienes";
+        const p = (filas.length === 1 ? filas[0] : nuevos[nuevos.length - 1]).pedido || {};
+        avisoPedidoWeb({
+          id: "aviso",
+          titulo: filas.length === 1 ? `${quien} un nuevo pedido` : `${quien} ${filas.length} pedidos nuevos`,
+          cuerpo: filas.length === 1
+            ? `${p.clienteNombre || ""} · ${fmtDiaCorto(p.fecha)}, ${fmtHora12(p.hora)} · ${money(p.total)}`
+            : `El último: ${p.clienteNombre || ""} · ${money(p.total)}`,
+          alTocar: () => irAVistaRef.current?.("pedidos-web"),
+        });
         try { navigator.vibrate?.([200, 100, 200]); } catch { /* no todos vibran */ }
       }
     };
@@ -15611,6 +15665,7 @@ export default function App() {
     nav.scrollTo({ left: Math.max(0, centro) });
   }, [view]);
 
+  irAVistaRef.current = (v) => irAVista(v);
   const irAVista = (v) => {
     setError("");
     // Salir del formulario por la barra de arriba también cuenta como dejarlo:
@@ -17762,7 +17817,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
 .dark .af-aviso-cobro { color: hsl(var(--foreground)); }
 /* Al llegar desde el "+": que el formulario no quede debajo de la barra de arriba. */
 .af-form-gasto { scroll-margin-top: 80px; }
-.af-aviso-pasa, .af-aviso-pasa * { pointer-events: none !important; }
 /* Mientras escribes en un campo (teclado abierto) el botón "+" se esconde:
    si no, tapaba el campo cuando quedaba abajo de la pantalla. */
 body:has(input:focus, textarea:focus) .af-fab { opacity: 0; pointer-events: none; transform: scale(0.8); }

@@ -16,7 +16,9 @@ self.addEventListener("push", (e) => {
       badge: "icono-180.png",
       tag: aviso.tag || undefined,
       renotify: Boolean(aviso.tag),
-      data: { url: aviso.url || self.registration.scope },
+      // Pedidos de la página: en compu se queda hasta que lo atiendas.
+      requireInteraction: Boolean(aviso.fijo),
+      data: { url: aviso.url || self.registration.scope, ir: aviso.ir || null },
     })
   );
 });
@@ -24,13 +26,17 @@ self.addEventListener("push", (e) => {
 // Tocar el aviso abre la app (o la trae al frente si ya estaba abierta).
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || self.registration.scope;
+  const datos = e.notification.data || {};
+  const url = datos.url || self.registration.scope;
   e.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ventanas) => {
       for (const v of ventanas) {
-        if (v.url.startsWith(self.registration.scope) && "focus" in v) return v.focus();
+        if (v.url.startsWith(self.registration.scope) && "focus" in v) {
+          if (datos.ir) v.postMessage({ ir: datos.ir });
+          return v.focus();
+        }
       }
-      return self.clients.openWindow(url);
+      return self.clients.openWindow(datos.ir ? url + (url.includes("?") ? "&" : "?") + "ir=" + datos.ir : url);
     })
   );
 });
