@@ -40,12 +40,6 @@ const masDias = (iso: string, d: number) => {
   f.setUTCDate(f.getUTCDate() + d);
   return f.toISOString().slice(0, 10);
 };
-const fechaCorta = (iso: string, hora: string) => {
-  const f = new Date(iso + "T12:00:00Z");
-  const dia = f.toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-  const [h, m] = hora.split(":").map(Number);
-  return `${dia}, ${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-};
 
 async function huella(t: string) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("pepe-web:" + t));
@@ -71,7 +65,7 @@ async function avisar(cuerpo: string, tag: string, soloUsuario = "") {
   let bien = 0, mal = 0;
   await Promise.all(destino.map(async (s) => {
     const nombre = nombreDe.get(s.user_id);
-    const titulo = `🛎 ${nombre ? nombre + ", tienes" : "Tienes"} un nuevo pedido`;
+    const titulo = `${nombre ? nombre + ", tienes" : "Tienes"} un nuevo pedido`;
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -215,7 +209,8 @@ Deno.serve(async (req) => {
   // El aviso se manda en segundo plano: el cliente ve "pedido recibido" sin
   // esperar a los celulares. El pedido ya quedó; el aviso no es crítico.
   const envioAviso = avisar(
-    `De la página: ${nombre} · ${fechaCorta(fecha, hora)} · ${pesos(total)}${aDomicilio ? " · a domicilio" : ""}`,
+    // Corto: el iPhone ya agrega "from Pepe Andaluz". El resto se ve en la app.
+    `${nombre.split(" ").slice(0, 2).join(" ")} · ${pesos(total)}`,
     "web-" + fila.id,
     soloUsuario,
   ).catch((e) => console.error("No se pudo mandar el aviso:", String(e)));

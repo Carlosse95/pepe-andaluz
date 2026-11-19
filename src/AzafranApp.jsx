@@ -2982,6 +2982,22 @@ function FichaPedidoWeb({ fila, ocupado, onCerrar, onAceptar, onRechazar }) {
               <DrawerDescription>Pedido desde la página · {haceCuanto(new Date(f.creado_at).getTime())}</DrawerDescription>
             </DrawerHeader>
             <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2">
+              {/* Contacto a la vista: antes de aceptar o rechazar se le puede
+                  llamar o escribir para ofrecerle otra opción. */}
+              <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-xs text-muted-foreground">Contacto del cliente</span>
+                  <a className="whitespace-nowrap text-base font-semibold tabular-nums" href={`tel:${String(p.clienteTelefono || "").replace(/\D/g, "")}`}>{fmtTel(p.clienteTelefono)}</a>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`tel:${String(p.clienteTelefono || "").replace(/\D/g, "")}`}><Phone /> Llamar</a>
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => abrirWhatsApp(p.clienteTelefono, `¡Hola ${String(p.clienteNombre || "").split(" ")[0]}! Te escribimos de Pepe Andaluz por tu pedido de la página.`)}>
+                    <MessageCircle /> WhatsApp
+                  </Button>
+                </div>
+              </div>
               <div className="flex flex-col gap-1 text-sm">
                 <span>📅 {fmtDateHuman(p.fecha)} · {fmtHora12(p.hora)}</span>
                 <span>{p.entrega ? "🚚 A domicilio (falta poner el costo de envío)" : "🏠 Pasa a recogerlo"}</span>
@@ -2989,7 +3005,6 @@ function FichaPedidoWeb({ fila, ocupado, onCerrar, onAceptar, onRechazar }) {
                 {p.entrega && p.ubicacion && (
                   <a className="text-primary underline" href={/^https?:/i.test(p.ubicacion) ? p.ubicacion : `https://maps.google.com/?q=${p.ubicacion}`} target="_blank" rel="noopener noreferrer">Ver ubicación en el mapa</a>
                 )}
-                <span>📱 {p.clienteTelefono}</span>
               </div>
               <div className="flex flex-col divide-y divide-border rounded-xl border border-border">
                 {(p.items || []).map((it) => (
@@ -3015,9 +3030,6 @@ function FichaPedidoWeb({ fila, ocupado, onCerrar, onAceptar, onRechazar }) {
             <DrawerFooter>
               <Button disabled={ocupado} onClick={() => onAceptar(f)}>
                 <CircleCheck /> {ocupado ? "Aceptando…" : "Aceptar pedido"}
-              </Button>
-              <Button variant="outline" onClick={() => abrirWhatsApp(p.clienteTelefono, "")}>
-                <MessageCircle /> Escribirle por WhatsApp
               </Button>
               {confirmarRechazo ? (
                 <Button variant="destructive" disabled={ocupado} onClick={() => onRechazar(f)}>Sí, rechazar este pedido</Button>
@@ -16833,7 +16845,7 @@ const AZAFRAN_CSS = `
 }
 
 .af-loading { align-items: center; justify-content: center; gap: 12px; }
-.af-logo-loading { width: 170px; }
+.af-logo-loading { width: 170px; translate: -6% 0; } /* un poco a la izquierda, igual que en la página (gusto de Carlos) */
 
 .af-logo-mark {
   background-color: hsl(var(--higo));
