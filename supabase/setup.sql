@@ -172,6 +172,33 @@ begin
 exception when duplicate_object then null;
 end $$;
 
+-- ---------- Buzón de pedidos de la página (pepeandaluz.com) ----------
+-- La función pedido-web (pública, revisa precios contra config-productos)
+-- deja aquí cada pedido. En la app NO entran solos: sale un letrero arriba y
+-- alguien los acepta (pasan a almacen.pedidos con folio) o los rechaza.
+create table if not exists public.pedidos_web (
+  id           uuid primary key default gen_random_uuid(),
+  pedido       jsonb not null,
+  cliente      jsonb not null,
+  estado       text not null default 'nuevo' check (estado in ('nuevo','aceptando','aceptado','rechazado')),
+  ip_hash      text,
+  creado_at    timestamptz not null default now(),
+  resuelto_at  timestamptz,
+  resuelto_por uuid
+);
+create index if not exists pedidos_web_estado_idx on public.pedidos_web (estado, creado_at desc);
+create index if not exists pedidos_web_ip_idx on public.pedidos_web (ip_hash, creado_at desc);
+alter table public.pedidos_web enable row level security;
+drop policy if exists "pedidos web leer" on public.pedidos_web;
+drop policy if exists "pedidos web editar" on public.pedidos_web;
+create policy "pedidos web leer"   on public.pedidos_web for select using (public.es_usuario_activo());
+create policy "pedidos web editar" on public.pedidos_web for update using (public.es_usuario_activo()) with check (public.es_usuario_activo());
+do $$
+begin
+  alter publication supabase_realtime add table public.pedidos_web;
+exception when duplicate_object then null;
+end $$;
+
 -- ---------- Bandeja de entrada de WhatsApp ----------
 -- Para que Pepe conteste desde la app lo que el bot no debe contestar:
 -- el trato personal con él es lo que la gente busca del negocio.

@@ -406,6 +406,63 @@ export const suscribirPedidosWhatsApp = (callback) => {
   return () => supabase.removeChannel(canal);
 };
 
+/* ------------- Pedidos que llegan desde la página (pepeandaluz.com) ------------- */
+// La función `pedido-web` los deja en `pedidos_web` (nunca en `almacen`).
+// Aquí NO se pasan solos a la lista: alguien los acepta o rechaza en la app.
+
+// Los que esperan respuesta. Uno que se quedó "aceptando" más de 2 minutos
+// (el aparato se cerró a la mitad) vuelve a contar como nuevo.
+export const listarPedidosWeb = async () => {
+  if (!nubeActiva) return [];
+  const hace2min = new Date(Date.now() - 120000).toISOString();
+  const { data, error } = await supabase
+    .from("pedidos_web")
+    .select("id, pedido, cliente, estado, creado_at, resuelto_at")
+    .or(`estado.eq.nuevo,and(estado.eq.aceptando,resuelto_at.lt.${hace2min})`)
+    .order("creado_at", { ascending: true })
+    .limit(30);
+  if (error) throw error;
+  return data || [];
+};
+
+// Lo aparta para este aparato antes de pasarlo a la lista: si dos aparatos
+// le dan "Aceptar" a la vez, solo a uno le regresa la fila; el otro recibe
+// null y no lo duplica.
+export const apartarPedidoWeb = async (id) => {
+  if (!nubeActiva) return null;
+  const hace2min = new Date(Date.now() - 120000).toISOString();
+  const { data, error } = await supabase
+    .from("pedidos_web")
+    .update({ estado: "aceptando", resuelto_at: new Date().toISOString() })
+    .eq("id", id)
+    .or(`estado.eq.nuevo,and(estado.eq.aceptando,resuelto_at.lt.${hace2min})`)
+    .select("id, pedido, cliente");
+  if (error) throw error;
+  return (data && data[0]) || null;
+};
+
+// estado: "aceptado" | "rechazado" | "nuevo" (para devolverlo si no se pudo guardar).
+export const marcarPedidoWeb = async (id, estado, userId) => {
+  if (!nubeActiva) return;
+  const cambios = estado === "nuevo"
+    ? { estado, resuelto_at: null, resuelto_por: null }
+    : { estado, resuelto_at: new Date().toISOString(), resuelto_por: userId || null };
+  let q = supabase.from("pedidos_web").update(cambios).eq("id", id);
+  if (estado === "rechazado") q = q.eq("estado", "nuevo");
+  const { error } = await q;
+  if (error) throw error;
+};
+
+// Avisa al instante cuando llega uno (o cuando otro aparato lo resuelve).
+export const suscribirPedidosWeb = (callback) => {
+  if (!nubeActiva) return () => {};
+  const canal = supabase
+    .channel("pedidos-web")
+    .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_web" }, () => callback())
+    .subscribe();
+  return () => supabase.removeChannel(canal);
+};
+
 /* ------------- Bandeja de WhatsApp (conversaciones con clientes) ------------- */
 // El bot solo apunta pedidos rutinarios; lo demás lo contesta Pepe desde
 // aquí, porque el trato con él es lo que la gente busca del negocio.

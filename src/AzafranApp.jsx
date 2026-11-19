@@ -51,6 +51,7 @@ import {
   obtenerSesion, alCambiarSesion, iniciarSesion, cerrarSesion,
   obtenerMiPerfil, listarPerfiles, crearUsuario, actualizarPerfil, cambiarContrasena,
   reclamarPedidosWhatsApp, devolverPedidoWhatsApp, suscribirPedidosWhatsApp,
+  listarPedidosWeb, apartarPedidoWeb, marcarPedidoWeb, suscribirPedidosWeb,
   listarConversaciones, listarMensajes, enviarMensajeWhatsApp,
   marcarConversacionLeida, suscribirBandejaWhatsApp,
   subirTicket, verTicket, leerTicket, subirRecibo,
@@ -2889,6 +2890,96 @@ const NOMBRE_CLAVE = {
   pedidos: "pedidos", clientes: "clientes", "config-productos": "menú e inventario",
   presupuestos: "presupuestos", gastos: "gastos", "historico-mensual": "histórico", avatares: "perfil",
 };
+// Pedidos que hicieron los clientes en la página (pepeandaluz.com). No entran
+// solos a la lista: salen aquí arriba, en cualquier pantalla, hasta que
+// alguien los acepta o los rechaza.
+function LetreroPedidosWeb({ filas, onAbrir }) {
+  if (!filas.length) return null;
+  const f = filas[0];
+  const p = f.pedido || {};
+  return (
+    <button type="button" className="af-letrero-web" onClick={() => onAbrir(f.id)}>
+      <span className="af-letrero-web-icono" aria-hidden="true"><BellRing size={18} /></span>
+      <span className="flex min-w-0 flex-1 flex-col text-left">
+        <strong className="truncate">
+          {filas.length === 1 ? "Pedido nuevo de la página" : `${filas.length} pedidos nuevos de la página`}
+        </strong>
+        <span className="truncate text-sm opacity-90">
+          {p.clienteNombre} · {fmtDateHuman(p.fecha)} {fmtHora12(p.hora)} · {money(p.total)}
+        </span>
+      </span>
+      <span className="af-letrero-web-ver">Ver</span>
+    </button>
+  );
+}
+
+function FichaPedidoWeb({ fila, ocupado, onCerrar, onAceptar, onRechazar }) {
+  const [ultima, setUltima] = useState(fila);
+  const [confirmarRechazo, setConfirmarRechazo] = useState(false);
+  useEffect(() => { if (fila) { setUltima(fila); setConfirmarRechazo(false); } }, [fila]);
+  const f = fila || ultima;
+  const p = f?.pedido || {};
+  const nota = String(p.notas || "").split("\n").filter((l) => l && !l.startsWith("🌐")).join("\n");
+  return (
+    <Drawer open={!!fila} onOpenChange={(o) => { if (!o) onCerrar(); }}>
+      <DrawerContent>
+        {f && (
+          <div className="mx-auto flex min-h-0 w-full max-w-xl flex-col">
+            <DrawerHeader>
+              <DrawerTitle>{p.clienteNombre}</DrawerTitle>
+              <DrawerDescription>Pedido desde la página · {haceCuanto(new Date(f.creado_at).getTime())}</DrawerDescription>
+            </DrawerHeader>
+            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-2">
+              <div className="flex flex-col gap-1 text-sm">
+                <span>📅 {fmtDateHuman(p.fecha)} · {fmtHora12(p.hora)}</span>
+                <span>{p.entrega ? "🚚 A domicilio (falta poner el costo de envío)" : "🏠 Pasa a recogerlo"}</span>
+                {p.entrega && p.direccion && <span>📍 {p.direccion}</span>}
+                {p.entrega && p.ubicacion && (
+                  <a className="text-primary underline" href={/^https?:/i.test(p.ubicacion) ? p.ubicacion : `https://maps.google.com/?q=${p.ubicacion}`} target="_blank" rel="noopener noreferrer">Ver ubicación en el mapa</a>
+                )}
+                <span>📱 {p.clienteTelefono}</span>
+              </div>
+              <div className="flex flex-col divide-y divide-border rounded-xl border border-border">
+                {(p.items || []).map((it) => (
+                  <div key={it.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                    <span className="min-w-0">
+                      {it.tipo === "paella"
+                        ? `Paella ${it.paellaNombre} · ${fmtKg(it.kg)} (${fmtPersonas(it.kg)})`
+                        : `${it.nombre} · ${esPorKg(it) ? fmtKg(it.cantidad) : "× " + it.cantidad}`}
+                      {(it.extras || []).map((e) => (
+                        <span key={e.id} className="block text-muted-foreground">+ {e.nombre}</span>
+                      ))}
+                    </span>
+                    <span className="shrink-0 tabular-nums">{money(it.subtotal)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between px-3 py-2 text-sm font-semibold">
+                  <span>Total{p.entrega ? " (sin envío)" : ""}</span>
+                  <span className="tabular-nums">{money(p.total)}</span>
+                </div>
+              </div>
+              {nota && <p className="whitespace-pre-line text-sm text-muted-foreground">📝 {nota}</p>}
+            </div>
+            <DrawerFooter>
+              <Button disabled={ocupado} onClick={() => onAceptar(f)}>
+                <CircleCheck /> {ocupado ? "Aceptando…" : "Aceptar pedido"}
+              </Button>
+              <Button variant="outline" onClick={() => abrirWhatsApp(p.clienteTelefono, "")}>
+                <MessageCircle /> Escribirle por WhatsApp
+              </Button>
+              {confirmarRechazo ? (
+                <Button variant="destructive" disabled={ocupado} onClick={() => onRechazar(f)}>Sí, rechazar este pedido</Button>
+              ) : (
+                <Button variant="ghost" disabled={ocupado} onClick={() => setConfirmarRechazo(true)}>Rechazar</Button>
+              )}
+            </DrawerFooter>
+          </div>
+        )}
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 function LetreroNube({ pendientes, onReintentar }) {
   const [ahora, setAhora] = useState(Date.now());
   const [oculto, setOculto] = useState(0); // cuándo se ocultó (0 = visible)
@@ -14037,6 +14128,12 @@ export default function App() {
 
   /* ---------------- Bandeja de WhatsApp ---------------- */
   const [conversaciones, setConversaciones] = useState([]);
+  // Pedidos de la página que esperan que alguien los acepte.
+  const [pedidosWeb, setPedidosWeb] = useState([]);
+  const [pedidoWebAbierto, setPedidoWebAbierto] = useState(null);
+  const [aceptandoWeb, setAceptandoWeb] = useState(false);
+  const incorporarFilasRef = useRef(null);
+  const refrescarPedidosWebRef = useRef(null);
   const [chatAbierto, setChatAbierto] = useState(null);
   const [mensajesChat, setMensajesChat] = useState([]);
   const [cargandoChat, setCargandoChat] = useState(false);
@@ -14276,17 +14373,10 @@ export default function App() {
     // Pasa a la lista los pedidos que el bot de WhatsApp dejó en su buzón.
     // El bot no escribe la lista de pedidos directamente: tendría que
     // reescribirla completa y borraría los que la app aún no conocía.
-    const incorporarPedidosWhatsApp = async () => {
-      if (!nubeActiva || cancelado) return;
-      let reclamados = [];
-      try {
-        reclamados = await reclamarPedidosWhatsApp();
-      } catch {
-        return; // sin conexión: se reintenta en el siguiente ciclo
-      }
-      if (!reclamados.length || cancelado) return;
-
-      try {
+    // Pasa filas de un buzón (WhatsApp o la página) a clientes y pedidos.
+    // Regresa los pedidos que sí se agregaron. `conFolio`: se les pone su
+    // número antes de guardar, para poder decírselo al cliente enseguida.
+    const incorporarFilas = async (reclamados, { conFolio = false } = {}) => {
         // Se relee lo que hay en la nube AHORA (no lo que tenga esta pantalla
         // en memoria, que puede estar viejo) y se guarda CON CONDICIÓN: si
         // otro aparato guardó entre leer y escribir (bajar 4 MB tarda), se
@@ -14334,15 +14424,37 @@ export default function App() {
           return nuevos.length ? [...nuevos, ...clientesNube] : null;
         });
 
-        let cuantos = 0;
+        let guardados = [];
         await agregarProtegido("pedidos", (pedidosNube) => {
           const nuevos = reclamados
             .map((f) => f.pedido)
             .filter((pedido) => pedido && !pedidosNube.some((p) => p.id === pedido.id))
             .map((pedido) => (idCliente[pedido.id] ? { ...pedido, clienteId: idCliente[pedido.id] } : pedido));
-          cuantos = nuevos.length;
-          return nuevos.length ? [...nuevos, ...pedidosNube] : null;
+          guardados = nuevos;
+          if (!nuevos.length) return null;
+          let lista = [...nuevos, ...pedidosNube];
+          if (conFolio) {
+            lista = asignarFoliosPedidos(lista);
+            guardados = nuevos.map((n) => lista.find((x) => x.id === n.id) || n);
+          }
+          return lista;
         });
+        return guardados;
+    };
+    incorporarFilasRef.current = incorporarFilas;
+
+    const incorporarPedidosWhatsApp = async () => {
+      if (!nubeActiva || cancelado) return;
+      let reclamados = [];
+      try {
+        reclamados = await reclamarPedidosWhatsApp();
+      } catch {
+        return; // sin conexión: se reintenta en el siguiente ciclo
+      }
+      if (!reclamados.length || cancelado) return;
+
+      try {
+        const cuantos = (await incorporarFilas(reclamados)).length;
         if (cuantos) {
           showToast(
             cuantos === 1 ? "Llegó un pedido nuevo por WhatsApp" : `Llegaron ${cuantos} pedidos por WhatsApp`,
@@ -14357,7 +14469,27 @@ export default function App() {
       }
     };
 
-    cargarTodo(true).then(recuperarPendientes).then(incorporarPedidosWhatsApp);
+    // Pedidos de la página por aceptar: se leen al abrir, al llegar uno
+    // (tiempo real), al volver a la app y cada minuto. Pesan casi nada.
+    let vistosWeb = null;
+    const refrescarPedidosWeb = async () => {
+      if (!nubeActiva || cancelado) return;
+      let filas;
+      try { filas = await listarPedidosWeb(); } catch { return; }
+      if (cancelado) return;
+      const nuevos = vistosWeb ? filas.filter((f) => !vistosWeb.has(f.id)) : [];
+      vistosWeb = new Set([...(vistosWeb || []), ...filas.map((f) => f.id)]);
+      setPedidosWeb(filas);
+      if (nuevos.length) {
+        showToast(nuevos.length === 1
+          ? `🛎 Pedido nuevo de la página: ${nuevos[0].pedido?.clienteNombre || ""}`
+          : `🛎 Llegaron ${nuevos.length} pedidos de la página`, "ok");
+        try { navigator.vibrate?.([200, 100, 200]); } catch { /* no todos vibran */ }
+      }
+    };
+    refrescarPedidosWebRef.current = refrescarPedidosWeb;
+
+    cargarTodo(true).then(recuperarPendientes).then(incorporarPedidosWhatsApp).then(refrescarPedidosWeb);
 
     // Tiempo real: si alguien más guarda desde otro dispositivo, llega un
     // aviso con SOLO el nombre de lo que cambió y se hace la misma revisión
@@ -14368,6 +14500,7 @@ export default function App() {
       if (horasVistas.current) revisarCambios();
     });
     const desuscribirWhatsApp = suscribirPedidosWhatsApp(incorporarPedidosWhatsApp);
+    const desuscribirWeb = suscribirPedidosWeb(refrescarPedidosWeb);
 
     // En celular (sobre todo iOS) la conexión en tiempo real se corta cuando
     // la app pasa a segundo plano o se bloquea la pantalla, y no se reconecta
@@ -14391,6 +14524,7 @@ export default function App() {
       if (horasVistas.current) revisarCambios();
       else cargarTodo(false);
       incorporarPedidosWhatsApp();
+      refrescarPedidosWeb();
     };
     document.addEventListener("visibilitychange", alVolverVisible);
 
@@ -14529,13 +14663,14 @@ export default function App() {
     // No hace falta cada 3s: son pedidos que el negocio atiende con horas
     // de anticipación, y así no se consultan de más.
     const intervaloWhatsApp = setInterval(() => {
-      if (document.visibilityState === "visible") incorporarPedidosWhatsApp();
+      if (document.visibilityState === "visible") { incorporarPedidosWhatsApp(); refrescarPedidosWeb(); }
     }, 60000);
 
     return () => {
       cancelado = true;
       desuscribir();
       desuscribirWhatsApp();
+      desuscribirWeb();
       document.removeEventListener("visibilitychange", alVolverVisible);
       clearInterval(intervalo);
       clearInterval(intervaloWhatsApp);
@@ -15573,6 +15708,51 @@ export default function App() {
 
   irAEditarRef.current = irAEditar;
 
+  // Aceptar un pedido de la página: se aparta (para que otro aparato no lo
+  // meta dos veces), entra a la lista con su número y se abre para poner el
+  // envío y mandarle al cliente el resumen por WhatsApp.
+  const aceptarPedidoWeb = async (fila) => {
+    if (aceptandoWeb) return;
+    setAceptandoWeb(true);
+    try {
+      const apartada = await apartarPedidoWeb(fila.id);
+      if (!apartada) {
+        showToast("Ese pedido ya lo atendió alguien más", "error");
+        setPedidoWebAbierto(null);
+        refrescarPedidosWebRef.current?.();
+        return;
+      }
+      let guardados;
+      try {
+        guardados = await incorporarFilasRef.current([apartada], { conFolio: true });
+      } catch (e) {
+        await marcarPedidoWeb(fila.id, "nuevo").catch(() => {});
+        throw e;
+      }
+      await marcarPedidoWeb(fila.id, "aceptado", idDeUsuario(perfil)).catch(() => {});
+      setPedidoWebAbierto(null);
+      setPedidosWeb((l) => l.filter((x) => x.id !== fila.id));
+      const p = (guardados && guardados[0]) || apartada.pedido;
+      showToast(`Pedido ${fmtFolio(p.folio, "#")} aceptado. Revisa el envío y mándale el resumen.`, "ok");
+      irAEditar(p);
+    } catch (e) {
+      console.error("No se pudo aceptar el pedido de la página", e);
+      showToast("No se pudo aceptar. Revisa tu internet e intenta otra vez.", "error");
+    } finally {
+      setAceptandoWeb(false);
+    }
+  };
+  const rechazarPedidoWeb = async (fila) => {
+    try {
+      await marcarPedidoWeb(fila.id, "rechazado", idDeUsuario(perfil));
+      setPedidoWebAbierto(null);
+      setPedidosWeb((l) => l.filter((x) => x.id !== fila.id));
+      showToast("Pedido rechazado", "ok");
+    } catch {
+      showToast("No se pudo rechazar. Revisa tu internet e intenta otra vez.", "error");
+    }
+  };
+
   const irAEditarPresupuesto = (presupuesto) => {
     setForm({
       pedidoId: presupuesto.id,
@@ -16187,6 +16367,14 @@ export default function App() {
       <SidebarInset className="af-main min-w-0">
         <LetreroNube pendientes={nubePendiente} onReintentar={reintentarPendientes} />
         <LetreroAtrasada atrasada={atrasada} onRecargar={() => recargarParaDestrabar(true)} />
+        {view !== "nuevo" && <LetreroPedidosWeb filas={pedidosWeb} onAbrir={setPedidoWebAbierto} />}
+        <FichaPedidoWeb
+          fila={pedidosWeb.find((f) => f.id === pedidoWebAbierto) || null}
+          ocupado={aceptandoWeb}
+          onCerrar={() => setPedidoWebAbierto(null)}
+          onAceptar={aceptarPedidoWeb}
+          onRechazar={rechazarPedidoWeb}
+        />
         <div className="af-header">
           {view === "nuevo" ? (
             <div className="af-header-back">
@@ -17189,6 +17377,23 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 
   flex-shrink: 0; border: none; border-radius: var(--radius-full); padding: 8px 16px; font-weight: 700;
   background: white; color: hsl(var(--error)); cursor: pointer;
 }
+
+/* Pedido nuevo de la página: letrero que se queda arriba hasta aceptarlo o rechazarlo */
+.af-letrero-web {
+  position: sticky; top: 0; z-index: 59; display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 16px; border: none; cursor: pointer; font-size: var(--text-base); line-height: 1.3;
+  background: hsl(var(--higo)); color: white; text-align: left;
+}
+.af-letrero-web-icono {
+  flex-shrink: 0; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-full);
+  background: hsl(var(--azafran)); color: hsl(var(--higo)); animation: af-campanita 1.6s ease-in-out infinite;
+}
+.af-letrero-web-ver {
+  flex-shrink: 0; border-radius: var(--radius-full); padding: 8px 16px; font-weight: 700; font-size: var(--text-sm);
+  background: white; color: hsl(var(--higo));
+}
+@keyframes af-campanita { 0%, 60%, 100% { transform: rotate(0); } 10%, 30% { transform: rotate(-14deg); } 20%, 40% { transform: rotate(14deg); } }
+@media (prefers-reduced-motion: reduce) { .af-letrero-web-icono { animation: none; } }
 
 /* Botones de acción del formulario (WhatsApp, duplicar) */
 .af-btn-wa { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 36px; background: hsl(var(--exito) / 0.12); color: hsl(var(--exito-fuerte)); font-weight: 600; border: none; border-radius: var(--radius-full); padding: 0 16px; font-size: var(--text-sm); cursor: pointer; }

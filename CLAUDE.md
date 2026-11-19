@@ -183,6 +183,20 @@ verificar: monkey-patch de `window.open` vía `javascript_tool`
 disparar la acción con un clic real (`computer`, no `form_input`, en botones
 reales). No reportar como roto solo porque no se abrió una pestaña.
 
+## Pedidos desde la página (pepeandaluz.com) — desde el 18 nov 2026
+
+La página (`../menu-web`) manda el pedido a la Edge Function pública
+`pedido-web` (verify_jwt false). Esa función vuelve a sacar los precios de
+`config-productos` (de la página solo toma qué y cuánto), limita abusos (6 por
+conexión y 4 por teléfono por hora, campo trampa `empresa`), deja el pedido en
+la tabla-buzón `pedidos_web` y manda el aviso push a los aparatos del negocio.
+En la app sale el letrero `LetreroPedidosWeb` en cualquier pantalla; la ficha
+`FichaPedidoWeb` tiene Aceptar / WhatsApp / Rechazar. Aceptar = `apartarPedidoWeb`
+(estado `aceptando`, para que dos aparatos no lo dupliquen) → `incorporarFilas`
+(el mismo camino protegido del bot de WhatsApp, con folio) → `aceptado` → se
+abre el pedido para poner el envío y mandarle el resumen. Si falla, vuelve a
+`nuevo`. Uno que se quede en `aceptando` más de 2 min vuelve a salir.
+
 ## Bot de WhatsApp con IA — pausado a propósito
 
 Código en `supabase/functions/whatsapp-webhook/index.ts`. Funciona completo
