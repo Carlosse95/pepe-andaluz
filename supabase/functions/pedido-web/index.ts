@@ -54,19 +54,21 @@ async function huella(t: string) {
 
 // Aviso propio de los pedidos de la página, distinto a los de pagos y cambios:
 // a cada quien le llega con SU nombre ("Carlos, tienes un nuevo pedido").
-async function avisar(cuerpo: string, tag: string) {
+async function avisar(cuerpo: string, tag: string, soloUsuario = "") {
   const { data: llaves } = await admin.from("push_llaves").select("*").eq("id", 1).maybeSingle();
   if (!llaves) return;
   webpush.setVapidDetails(llaves.contacto, llaves.publica, llaves.privada);
   const { data: activos } = await admin.from("perfiles").select("user_id, nombre").eq("activo", true);
   const nombreDe = new Map((activos || []).map((p) => [p.user_id, String(p.nombre || "").trim().split(/\s+/)[0]]));
-  const ids = [...nombreDe.keys()];
+  // En una prueba (con la clave secreta) solo le llega a quien la pidió.
+  const ids = [...nombreDe.keys()].filter((id) => !soloUsuario || id === soloUsuario);
   if (!ids.length) return;
   const { data: subs } = await admin.from("push_suscripciones").select("*").in("user_id", ids);
   // Si la app está abierta y a la vista en ese aparato, ya le sale el aviso
   // de adentro; no se le manda el de afuera para que no le lleguen dos.
   const ahora = Date.now();
   const destino = (subs || []).filter((s) => !s.en_app_hasta || new Date(s.en_app_hasta).getTime() < ahora);
+  let bien = 0, mal = 0;
   await Promise.all(destino.map(async (s) => {
     const nombre = nombreDe.get(s.user_id);
     const titulo = `🛎 ${nombre ? nombre + ", tienes" : "Tienes"} un nuevo pedido`;
@@ -76,11 +78,14 @@ async function avisar(cuerpo: string, tag: string) {
         JSON.stringify({ title: titulo, body: cuerpo, tag, url: llaves.contacto, ir: "pedidos-web", fijo: true }),
         { TTL: 60 * 60 * 12, urgency: "high" },
       );
+      bien++;
     } catch (e) {
+      mal++;
       const estado = (e as { statusCode?: number }).statusCode;
       if (estado === 404 || estado === 410) await admin.from("push_suscripciones").delete().eq("id", s.id);
     }
   }));
+  console.log(`Aviso de pedido web: ${bien} enviados, ${mal} fallidos, ${(subs || []).length - destino.length} con la app abierta`);
 }
 
 Deno.serve(async (req) => {
@@ -97,6 +102,16 @@ Deno.serve(async (req) => {
   }
   // Campo trampa: una persona nunca lo ve ni lo llena; un robot sí.
   if (texto(d.empresa, 100)) return responder({ ok: true });
+
+  // Prueba de punta a punta (solo con la clave de push_llaves): el pedido
+  // entra de verdad, pero el aviso solo le llega a `solo_usuario`.
+  let soloUsuario = "";
+  const secreto = req.headers.get("x-secreto-prueba");
+  if (secreto) {
+    const { data: ll } = await admin.from("push_llaves").select("secreto_prueba").eq("id", 1).maybeSingle();
+    if (!ll || secreto !== ll.secreto_prueba) return responder({ error: "Secreto incorrecto" }, 403);
+    soloUsuario = texto(d.solo_usuario, 60) || "nadie";
+  }
 
   // ---------- Datos del cliente ----------
   const nombre = texto(d.nombre, 80);
@@ -202,11 +217,12 @@ Deno.serve(async (req) => {
   const envioAviso = avisar(
     `De la página: ${nombre} · ${fechaCorta(fecha, hora)} · ${pesos(total)}${aDomicilio ? " · a domicilio" : ""}`,
     "web-" + fila.id,
+    soloUsuario,
   ).catch((e) => console.error("No se pudo mandar el aviso:", String(e)));
   // deno-lint-ignore no-explicit-any
   const rt = (globalThis as any).EdgeRuntime;
   if (rt?.waitUntil) rt.waitUntil(envioAviso);
   else await envioAviso;
 
-  return responder({ ok: true, total });
+  return responder(soloUsuario ? { ok: true, total, id: fila.id } : { ok: true, total });
 });

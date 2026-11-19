@@ -195,7 +195,16 @@ En la app tienen sección propia "Pedidos web" (`PedidosWebView`, segunda del me
 (estado `aceptando`, para que dos aparatos no lo dupliquen) → `incorporarFilas`
 (el mismo camino protegido del bot de WhatsApp, con folio) → `aceptado` → se
 abre el pedido para poner el envío y mandarle el resumen. Si falla, vuelve a
-`nuevo`. Uno que se quede en `aceptando` más de 2 min vuelve a salir.
+`nuevo`. Uno que se quede en `aceptando` más de 2 min vuelve a salir (y se
+puede rechazar).
+
+**Probar de punta a punta sin despertar a nadie:** mandar a `pedido-web` el
+encabezado `x-secreto-prueba` (el de `push_llaves.secreto_prueba`) y
+`solo_usuario: <user_id>` en el cuerpo: el pedido entra de verdad, pero el
+aviso solo le llega a ese usuario. En los registros de la función queda
+"Aviso de pedido web: N enviados, M fallidos". El título del aviso usa
+`perfiles.nombre` (no el nombre personalizado del aparato): si está vacío,
+llega "Tienes un nuevo pedido" sin nombre.
 
 ## Bot de WhatsApp con IA — pausado a propósito
 
