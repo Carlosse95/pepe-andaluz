@@ -35,6 +35,8 @@ const pesos = (n: number) => "$" + Math.round(n).toLocaleString("es-MX");
 
 // Hoy en Mérida (la nube vive en UTC).
 const hoyMerida = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Merida" }).format(new Date());
+// La hora de ahora en Mérida, "HH:MM".
+const horaMerida = () => new Intl.DateTimeFormat("en-GB", { timeZone: "America/Merida", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
 const masDias = (iso: string, d: number) => {
   const f = new Date(iso + "T12:00:00Z");
   f.setUTCDate(f.getUTCDate() + d);
@@ -122,6 +124,8 @@ Deno.serve(async (req) => {
     telefono.length !== 10 ? "Revisa tu WhatsApp: deben ser 10 dígitos." :
     !/^\d{4}-\d{2}-\d{2}$/.test(fecha) || fecha < hoy || fecha > masDias(hoy, 180) ? "Revisa el día del pedido." :
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora) ? "Revisa la hora del pedido." :
+    hora < "09:00" || hora > "20:00" ? "Trabajamos de 9:00 a. m. a 8:00 p. m.: elige una hora en ese horario." :
+    fecha === hoy && hora <= horaMerida() ? "Esa hora ya pasó: elige una más tarde u otro día." :
     aDomicilio && direccion.length < 10 ? "Escribe la dirección completa de entrega." :
     aDomicilio && ubicacion && !/^https?:\/\//i.test(ubicacion) && !/^-?\d{1,2}\.\d+,\s*-?\d{1,3}\.\d+$/.test(ubicacion) ? "Revisa la ubicación." : "";
   if (falta) return responder({ error: falta }, 400);
