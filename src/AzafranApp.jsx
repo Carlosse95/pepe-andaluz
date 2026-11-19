@@ -43,7 +43,7 @@ import { Input as InputS } from "@/components/ui/input-shadcn";
 import { Label as LabelS } from "@/components/ui/label-shadcn";
 import { NativeSelect as NativeSelectS, NativeSelectOption } from "@/components/ui/native-select-shadcn";
 import {
-  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Globe, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, Plus, LoaderCircle, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake,
+  CirclePlus, UtensilsCrossed, Package, History, BellRing, BellOff, Globe, Search, CalendarDays, Users, Settings, MapPin, Phone, CircleX, CircleArrowLeft, House, Truck, Store, ChefHat, CircleCheck, CircleMinus, Trash, ClipboardPaste, TrendingUp, CircleChevronLeft, CircleChevronRight, FileText, Download, CircleArrowRight, PackageSearch, MessageCircle, Copy, Wallet, Upload, TriangleAlert, TrendingDown, Receipt, StickyNote, SquarePen, Camera, Bell, CircleChevronUp, CircleChevronDown, ChevronDown, ArrowRight, BadgePercent, Gift, Check, ArrowUpDown, Banknote, CreditCard, Landmark, PartyPopper, Clock, X, Plus, LoaderCircle, ShoppingBasket, Zap, SlidersHorizontal, HeartHandshake, Star,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Sector, Label as EtiquetaPie } from "recharts";
 import {
@@ -96,6 +96,11 @@ const MENSAJES_DEFAULT = {
   // entrega no siempre tiene el número guardado en su teléfono, así que el
   // botón abre el chat directo sin tener que buscar el contacto.
   llegue: "¡Hola {nombre}! Ya llegué con su pedido {folio}, estoy afuera 🚚",
+  // Se manda con el botón "Pedir reseña" de los pedidos ya entregados.
+  resena:
+    "¡Hola {nombre}! ¿Qué tal estuvo su pedido? 🥘\n\n" +
+    "Si le gustó, nos ayudaría muchísimo con una reseña en Google, solo toma un minuto 🙏\n{resena}\n\n" +
+    "¡Gracias por su preferencia!",
   // Cuando el pedido cambia DESPUÉS de habérselo confirmado al cliente: se le
   // reenvía el resumen completo, ya actualizado, con este saludo en vez del de
   // pedido nuevo.
@@ -1000,6 +1005,13 @@ const mensajeLlegue = (pedido, mensajes) =>
 // menos cosas al cliente, no ponerle la cuenta en todos los mensajes.
 const mensajeEntregado = (pedido, mensajes) =>
   aplicarPlantillaMensaje(mensajes?.entregado || MENSAJES_DEFAULT.entregado, pedido);
+
+// Link para dejar reseña en Google (de la ficha del negocio, "Pedir opiniones").
+const RESENA_LINK_DEFAULT = "https://g.page/r/CRmwrQ44a3TmEBM/review";
+const mensajeResena = (pedido, mensajes, local) =>
+  aplicarPlantillaMensaje(mensajes?.resena || MENSAJES_DEFAULT.resena, pedido, {
+    resena: (local?.resena || "").trim() || RESENA_LINK_DEFAULT,
+  });
 
 // Mensaje que se manda cuando el cliente acaba de abonar: le confirma cuánto
 // pagó y qué le falta, o que ya no debe nada. A Pepe le gusta mandar el saldo
@@ -2518,6 +2530,25 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
           >
             <MessageCircle size={12} /> Ya llegué
           </a>
+        )}
+        {/* Pedir reseña en Google: solo en pedidos entregados de la última
+            semana (ya comieron y todavía se acuerdan) y con teléfono. Queda
+            apuntado para no pedírsela dos veces al mismo cliente. */}
+        {estado === "entregado" && pedido.clienteTelefono && onEnviarAvisoWhatsApp && pedido.fecha >= moverFechaISO(todayISO(), -7) && pedido.fecha <= todayISO() && (
+          (pedido.avisosEnviados || {}).resena ? (
+            <Chip variant="exito">
+              <Star size={12} /> Reseña pedida
+            </Chip>
+          ) : (
+            <button
+              type="button"
+              className={cn(badgeVariants({ variant: "oro" }))}
+              onClick={(e) => { e.stopPropagation(); onEnviarAvisoWhatsApp(pedido, "resena"); }}
+              title="Mandarle por WhatsApp el link para dejar una reseña en Google"
+            >
+              <Star size={12} /> Pedir reseña
+            </button>
+          )
         )}
       </div>
 
@@ -11221,6 +11252,16 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               
             </div>
             <div className="af-field">
+              <Label>Pedir reseña — botón "Pedir reseña"<Ayuda enLinea>
+                Sale en los pedidos entregados de la última semana. {"{resena}"} es el link de Google para dejar la reseña.
+              </Ayuda></Label>
+              <Textarea
+                rows={4}
+                value={(draft.mensajes || MENSAJES_DEFAULT).resena || MENSAJES_DEFAULT.resena}
+                onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), resena: e.target.value } })}
+              />
+            </div>
+            <div className="af-field">
               <Label>Al marcar Entregado</Label>
               <Textarea
                
@@ -15540,6 +15581,7 @@ export default function App() {
       else if (clase === "nuevo") mensaje = mensajeWhatsApp(pedido, "pedido", config.pago, config.mensajes, config.local);
       else if (clase === "cambio") mensaje = mensajeWhatsApp(pedido, "cambio", config.pago, config.mensajes, config.local);
       else if (clase === "entregado") mensaje = mensajeEntregado(pedido, config.mensajes);
+      else if (clase === "resena") mensaje = mensajeResena(pedido, config.mensajes, config.local);
       else mensaje = mensajeAvisado(pedido, config.mensajes, config.local, config.pago);
       abrirWhatsApp(pedido.clienteTelefono, mensaje);
       apuntarAvisoEnviado(pedido.id, clase);
