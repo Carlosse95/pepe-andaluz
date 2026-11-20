@@ -15069,9 +15069,24 @@ export default function App() {
         // La hora del choque es de ANTES de bajar el valor: nunca es más nueva
         // que él; si alguien guardó en medio, se vuelve a chocar y a juntar.
         baseNube.current[key] = { raw: enNube ? enNube.value : "null", hora: r.updatedAt };
-        // Se enseña ya lo junto (con el cambio del otro), salvo que detrás
-        // venga otra versión de este aparato: esa se junta sola.
+        // Se enseña ya lo junto (con el cambio del otro).
         if (sigueVigente()) aplicarClave(key, rawAGuardar);
+        else if (porSubir.current[key] !== undefined) {
+          // Detrás ya viene OTRA versión de este aparato, hecha sobre la misma
+          // lista vieja. Si se subiera tal cual, se compararía contra la nube
+          // nueva y lo que cambió el otro aparato parecería cambio de éste:
+          // se regresaba (20 nov 2026: Pepe puso un pedido en "Avisar", el
+          // iPad estaba atrasado, se marcaron dos cosas seguidas y el pedido
+          // volvió a "Pendiente"). Se le junta lo de la nube con la MISMA base
+          // vieja y también se enseña, para que lo que se haga después ya
+          // salga de la lista al día.
+          const masNueva = porSubir.current[key];
+          let rebasada = fusionarVersiones(valorBase, masNueva, junto, borrados);
+          if (key === "pedidos" && Array.isArray(rebasada)) rebasada = rebasada.map(recalcularPagado);
+          porSubir.current[key] = rebasada;
+          apuntarPendiente(key, rebasada);
+          aplicarClave(key, JSON.stringify(rebasada));
+        }
         console.warn(`"${key}" cambió en otro aparato; se juntaron los cambios.`);
       } catch (e) {
         if (++fallos > 2 || !sigueVigente()) throw e;

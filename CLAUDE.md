@@ -85,6 +85,12 @@ ese celular dejó de recibir cambios). Ahora:
 - Mientras una clave tiene algo sin subir, no se le aplica lo de la nube
   (se junta al subir). Al juntar, un pedido cambiado en dos aparatos se junta
   campo por campo (y los pagos por id); `recalcularPagado` cuadra el saldo.
+- **Si al chocar ya viene en fila OTRA versión de este aparato** (dos toques
+  seguidos con la lista atrasada), esa versión también se junta con lo de la
+  nube usando la misma base vieja, y se enseña (`subirUna`, rama del choque).
+  Antes se subía tal cual contra la base nueva y regresaba lo que había
+  cambiado el otro aparato (20 nov 2026: un pedido que Pepe puso en "Avisar"
+  volvió a "Pendiente").
 
 **4. Las fotos van en Supabase Storage, nunca en `almacen`.** Bucket privado
 `tickets`. En el registro solo se guarda la ruta. Meter imágenes en `almacen`
