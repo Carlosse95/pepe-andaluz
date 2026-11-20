@@ -191,12 +191,17 @@ La página (`../menu-web`) manda el pedido a la Edge Function pública
 conexión y 4 por teléfono por hora, campo trampa `empresa`), deja el pedido en
 la tabla-buzón `pedidos_web` y manda el aviso push a los aparatos del negocio.
 En la app tienen sección propia "Pedidos web" (`PedidosWebView`, segunda del menú, con numerito; reemplazó a "Mensajes", que era del bot pausado) y el letrero `LetreroPedidosWeb` en cualquier otra pantalla lleva ahí. Carlos pidió que NO se mezcle con la campana (historial). La ficha
-`FichaPedidoWeb` tiene Aceptar / WhatsApp / Rechazar. Aceptar = `apartarPedidoWeb`
-(estado `aceptando`, para que dos aparatos no lo dupliquen) → `incorporarFilas`
-(el mismo camino protegido del bot de WhatsApp, con folio) → `aceptado` → se
-abre el pedido para poner el envío y mandarle el resumen. Si falla, vuelve a
-`nuevo`. Uno que se quede en `aceptando` más de 2 min vuelve a salir (y se
-puede rechazar).
+`FichaPedidoWeb` tiene Llamar / WhatsApp, "Revisar y aceptar" y Rechazar.
+Revisar y aceptar (desde el 20 nov 2026) = `apartarPedidoWeb` (estado
+`aceptando`, para que dos aparatos no lo dupliquen) → `incorporarFilas(...,
+{ soloCliente: true })` (solo da de alta al cliente) → se abre el formulario
+como PEDIDO NUEVO ya lleno (`form.origen = "web"`, `form.webId = id de la
+fila`) para ajustarlo con el cliente. Al guardar entra a la lista con folio,
+se marca `aceptado` y se ofrece la confirmación ya con los cambios. Si se sale
+sin guardar (`webEnRevision` + efecto sobre `view`), vuelve a `nuevo` y se
+borra el borrador. Uno que se quede en `aceptando` más de 30 min vuelve a
+salir (y se puede rechazar). En "Atendidos" se muestra el pedido como quedó
+en la lista (busca por `webId` o por el id del pedido), no el de la página.
 
 Al aceptar, el pedido entra a la lista y se abre para editar; al guardarlo ya
 "no es nuevo", así que la confirmación se ofrece por la regla "pedido de la

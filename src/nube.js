@@ -410,11 +410,11 @@ export const suscribirPedidosWhatsApp = (callback) => {
 // La función `pedido-web` los deja en `pedidos_web` (nunca en `almacen`).
 // Aquí NO se pasan solos a la lista: alguien los acepta o rechaza en la app.
 
-// Los que esperan respuesta. Uno que se quedó "aceptando" más de 2 minutos
+// Los que esperan respuesta. Uno que se quedó "aceptando" más de 30 minutos
 // (el aparato se cerró a la mitad) vuelve a contar como nuevo.
 export const listarPedidosWeb = async () => {
   if (!nubeActiva) return [];
-  const hace2min = new Date(Date.now() - 120000).toISOString();
+  const hace2min = new Date(Date.now() - 30 * 60000).toISOString(); // 30 min: lo que tarda revisarlo con el cliente
   const { data, error } = await supabase
     .from("pedidos_web")
     .select("id, pedido, cliente, estado, creado_at, resuelto_at")
@@ -445,7 +445,7 @@ export const listarPedidosWebRecientes = async () => {
 // null y no lo duplica.
 export const apartarPedidoWeb = async (id) => {
   if (!nubeActiva) return null;
-  const hace2min = new Date(Date.now() - 120000).toISOString();
+  const hace2min = new Date(Date.now() - 30 * 60000).toISOString(); // 30 min: lo que tarda revisarlo con el cliente
   const { data, error } = await supabase
     .from("pedidos_web")
     .update({ estado: "aceptando", resuelto_at: new Date().toISOString() })
@@ -464,9 +464,9 @@ export const marcarPedidoWeb = async (id, estado, userId) => {
     : { estado, resuelto_at: new Date().toISOString(), resuelto_por: userId || null };
   let q = supabase.from("pedidos_web").update(cambios).eq("id", id);
   // Rechazar: solo si nadie lo está aceptando ahora mismo. Uno que se quedó
-  // "aceptando" más de 2 min (aparato cerrado a la mitad) sí se puede.
+  // "aceptando" más de 30 min (aparato cerrado a la mitad) sí se puede.
   if (estado === "rechazado") {
-    const hace2min = new Date(Date.now() - 120000).toISOString();
+    const hace2min = new Date(Date.now() - 30 * 60000).toISOString(); // 30 min: lo que tarda revisarlo con el cliente
     q = q.or(`estado.eq.nuevo,and(estado.eq.aceptando,resuelto_at.lt.${hace2min})`);
   }
   const { data, error } = await q.select("id");

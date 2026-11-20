@@ -2947,16 +2947,22 @@ function LetreroPedidosWeb({ filas, onAbrir }) {
 // Sección propia "Pedidos web": lo que espera respuesta y lo atendido en la
 // semana. Aparte de la campana (que es el historial de todo) para que un
 // pedido de un cliente nunca se pierda entre los demás avisos.
-function PedidosWebView({ pendientes, recientes, onAbrir }) {
+function PedidosWebView({ pendientes, recientes, onAbrir, pedidos = [], onAbrirPedido }) {
   const fila = (f, atendido) => {
-    const p = f.pedido || {};
+    // Ya aceptado: se enseña el pedido COMO QUEDÓ en la lista (si se le
+    // cambió algo, aquí sale el total nuevo, no el que mandó la página).
+    const enLista = atendido && f.estado === "aceptado"
+      ? pedidos.find((x) => x.webId === f.id || x.id === f.pedido?.id)
+      : null;
+    const p = enLista || f.pedido || {};
+    const abrir = atendido ? (enLista && onAbrirPedido ? () => onAbrirPedido(enLista) : undefined) : () => onAbrir(f.id);
     return (
       <button
         key={f.id}
         type="button"
-        onClick={atendido ? undefined : () => onAbrir(f.id)}
-        disabled={atendido}
-        className={cn("flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left", !atendido && "cursor-pointer shadow-sm")}
+        onClick={abrir}
+        disabled={!abrir}
+        className={cn("flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left", abrir && "cursor-pointer shadow-sm")}
       >
         <span className="flex min-w-0 flex-1 flex-col">
           <strong className="truncate">{p.clienteNombre}</strong>
@@ -2968,7 +2974,7 @@ function PedidosWebView({ pendientes, recientes, onAbrir }) {
         <span className="flex shrink-0 flex-col items-end gap-1">
           <span className="font-semibold tabular-nums">{money(p.total)}</span>
           {atendido ? (
-            <Chip variant={f.estado === "aceptado" ? "exito" : "neutral"}>{f.estado === "aceptado" ? "Aceptado" : "Rechazado"}</Chip>
+            <Chip variant={f.estado === "aceptado" ? "exito" : "neutral"}>{f.estado === "aceptado" ? `Aceptado${enLista?.folio ? " · " + fmtFolio(enLista.folio, "#") : ""}` : "Rechazado"}</Chip>
           ) : (
             <Chip variant="oro">Por aceptar</Chip>
           )}
@@ -3060,7 +3066,7 @@ function FichaPedidoWeb({ fila, ocupado, onCerrar, onAceptar, onRechazar }) {
             </div>
             <DrawerFooter>
               <Button disabled={ocupado} onClick={() => onAceptar(f)}>
-                <CircleCheck /> {ocupado ? "Aceptando…" : "Aceptar pedido"}
+                <CircleCheck /> {ocupado ? "Abriendo…" : "Revisar y aceptar"}
               </Button>
               {confirmarRechazo ? (
                 <Button variant="destructive" disabled={ocupado} onClick={() => onRechazar(f)}>Sí, rechazar este pedido</Button>
@@ -14524,7 +14530,7 @@ export default function App() {
     // Pasa filas de un buzón (WhatsApp o la página) a clientes y pedidos.
     // Regresa los pedidos que sí se agregaron. `conFolio`: se les pone su
     // número antes de guardar, para poder decírselo al cliente enseguida.
-    const incorporarFilas = async (reclamados, { conFolio = false } = {}) => {
+    const incorporarFilas = async (reclamados, { conFolio = false, soloCliente = false } = {}) => {
         // Se relee lo que hay en la nube AHORA (no lo que tenga esta pantalla
         // en memoria, que puede estar viejo) y se guarda CON CONDICIÓN: si
         // otro aparato guardó entre leer y escribir (bajar 4 MB tarda), se
@@ -14554,6 +14560,7 @@ export default function App() {
 
         // Primero los clientes (los pedidos apuntan a ellos).
         const idCliente = {}; // id del pedido -> id del cliente
+        const clienteDe = {}; // id del pedido -> cliente completo
         await agregarProtegido("clientes", (clientesNube) => {
           const nuevos = [];
           for (const fila of reclamados) {
@@ -14567,10 +14574,14 @@ export default function App() {
               cliente = fila.cliente;
               nuevos.push(cliente);
             }
-            if (cliente) idCliente[pedido.id] = cliente.id;
+            if (cliente) { idCliente[pedido.id] = cliente.id; clienteDe[pedido.id] = cliente; }
           }
           return nuevos.length ? [...nuevos, ...clientesNube] : null;
         });
+        // Para revisar un pedido de la página ANTES de aceptarlo solo hace
+        // falta que el cliente exista (el formulario lo pide); el pedido entra
+        // a la lista hasta que se guarda.
+        if (soloCliente) return reclamados.map((f) => clienteDe[f.pedido?.id] || null);
 
         let guardados = [];
         await agregarProtegido("pedidos", (pedidosNube) => {
@@ -15876,9 +15887,13 @@ export default function App() {
     // eslint-disable-next-line
   }, [view, pedidosWeb.length]);
 
-  // Aceptar un pedido de la página: se aparta (para que otro aparato no lo
-  // meta dos veces), entra a la lista con su número y se abre para poner el
-  // envío y mandarle al cliente el resumen por WhatsApp.
+  // Aceptar un pedido de la página = revisarlo. Se aparta (para que otro
+  // aparato no lo tome), se da de alta al cliente si es nuevo y se abre como
+  // PEDIDO NUEVO ya lleno: ahí se ajusta con el cliente (platillos, envío,
+  // hora). Entra a la lista con su folio hasta que se guarda, y al guardar se
+  // ofrece la confirmación por WhatsApp ya con los cambios. Si se sale sin
+  // guardar, el pedido regresa a "Por aceptar".
+  const webEnRevision = useRef(null);
   const aceptarPedidoWeb = async (fila) => {
     if (aceptandoWeb) return;
     setAceptandoWeb(true);
@@ -15890,26 +15905,72 @@ export default function App() {
         refrescarPedidosWebRef.current?.();
         return;
       }
-      let guardados;
+      let cliente;
       try {
-        guardados = await incorporarFilasRef.current([apartada], { conFolio: true });
+        [cliente] = await incorporarFilasRef.current([apartada], { soloCliente: true });
       } catch (e) {
         await marcarPedidoWeb(fila.id, "nuevo").catch(() => {});
         throw e;
       }
-      await marcarPedidoWeb(fila.id, "aceptado", idDeUsuario(perfil)).catch(() => {});
+      const p = apartada.pedido || {};
+      webEnRevision.current = { filaId: fila.id };
       setPedidoWebAbierto(null);
       setPedidosWeb((l) => l.filter((x) => x.id !== fila.id));
-      const p = (guardados && guardados[0]) || apartada.pedido;
-      showToast(`Pedido ${fmtFolio(p.folio, "#")} aceptado. Revisa el envío y mándale el resumen.`, "ok");
-      irAEditar(p);
+      setForm({
+        pedidoId: null,
+        folio: null,
+        clienteId: cliente?.id || p.clienteId,
+        clienteNombre: cliente?.nombre || p.clienteNombre,
+        clienteTelefono: p.clienteTelefono || cliente?.telefono || "",
+        clienteDireccion: p.direccion || "",
+        clienteUbicacion: p.ubicacion || "",
+        items: p.items || [],
+        fecha: p.fecha,
+        hora: p.hora,
+        entrega: !!p.entrega,
+        direccion: p.direccion || "",
+        ubicacion: p.ubicacion || "",
+        envio: "0",
+        recogerPaellera: false,
+        costoRecoleccion: "0",
+        descuentoEnvio: 0,
+        descuentoRecoleccion: 0,
+        mostrarPrecioNormal: false,
+        iva: false,
+        abonos: [],
+        estado: "pendiente",
+        notas: p.notas || "",
+        terminos: TERMINOS_DEFAULT,
+        createdAt: Date.now(),
+        origen: "web",
+        webId: fila.id,
+      });
+      setFormModo("pedido");
+      setFormOrigen("pedidos-web");
+      setError("");
+      setView("nuevo");
+      showToast("Revisa el pedido con el cliente. Al guardar entra a la lista y le mandas la confirmación.", "ok");
     } catch (e) {
-      console.error("No se pudo aceptar el pedido de la página", e);
-      showToast("No se pudo aceptar. Revisa tu internet e intenta otra vez.", "error");
+      console.error("No se pudo abrir el pedido de la página", e);
+      showToast("No se pudo abrir. Revisa tu internet e intenta otra vez.", "error");
     } finally {
       setAceptandoWeb(false);
     }
   };
+
+  // Si se sale del formulario sin guardar, el pedido de la página vuelve a
+  // "Por aceptar" para que no se quede apartado.
+  useEffect(() => {
+    if (view === "nuevo" || !webEnRevision.current) return;
+    const { filaId } = webEnRevision.current;
+    webEnRevision.current = null;
+    olvidarBorrador(); // que nadie lo recupere y duplique uno que ya aceptó otro aparato
+    marcarPedidoWeb(filaId, "nuevo")
+      .then(() => refrescarPedidosWebRef.current?.())
+      .catch(() => {});
+    // eslint-disable-next-line
+  }, [view]);
+
   const rechazarPedidoWeb = async (fila) => {
     try {
       const cambio = await marcarPedidoWeb(fila.id, "rechazado", idDeUsuario(perfil));
@@ -16061,8 +16122,10 @@ export default function App() {
       // antes se perdía en cada guardado, así que el aviso de "este mensaje ya
       // se le mandó" se reiniciaba solo y dejaba de frenar los repetidos.
       ...(anteriorPedido && anteriorPedido.avisosEnviados ? { avisosEnviados: anteriorPedido.avisosEnviados } : {}),
-      // De dónde vino (p. ej. "web"): antes se perdía al editar.
-      ...(anteriorPedido && anteriorPedido.origen ? { origen: anteriorPedido.origen } : {}),
+      // De dónde vino (p. ej. "web") y, si es de la página, cuál fila del
+      // buzón fue (para enseñar su total al día en "Pedidos web").
+      ...((form.origen || anteriorPedido?.origen) ? { origen: form.origen || anteriorPedido.origen } : {}),
+      ...((form.webId || anteriorPedido?.webId) ? { webId: form.webId || anteriorPedido.webId } : {}),
       ...(anteriorPedido && anteriorPedido.avisoPagoMonto !== undefined ? { avisoPagoMonto: anteriorPedido.avisoPagoMonto } : {}),
       // Si este pedido movió el almacén. Los de días pasados no, porque esa
       // comida ya se compró y se cocinó en su momento.
@@ -16098,6 +16161,13 @@ export default function App() {
 
     guardarPedidos(nuevaLista);
     olvidarBorrador();
+    if (esNuevo && form.webId) {
+      // Ya quedó en la lista: el pedido de la página se da por aceptado.
+      webEnRevision.current = null;
+      marcarPedidoWeb(form.webId, "aceptado", idDeUsuario(perfil))
+        .then(() => refrescarWebRecientes())
+        .catch(() => {});
+    }
     setView(formOrigen);
     setError("");
 
@@ -16618,7 +16688,7 @@ export default function App() {
           {view === "hoy" && <HoyView clientes={clientes} pedidosHoy={pedidosHoy} pedidos={pedidos} config={config} nombre={nombreUsuario} onAbrir={irAEditar} onMarcarDevuelta={marcarPaelleraDevuelta} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} onNuevoPedido={() => goToNuevoPedido()} onNuevoPresupuesto={() => goToNuevoPresupuesto()} showToast={showToast} onConfirmarTransferencia={confirmarTransferencia} onSaldarPedido={saldarPedido} />}
           {view === "agenda" && <AgendaView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} tab={agendaTab} onTab={setAgendaTab} diaEntregados={agendaDia} onDiaEntregados={setAgendaDia} />}
           {view === "buscar" && <BuscarView pedidos={pedidos} config={config} onAbrir={irAEditar} onCambiarEstado={cambiarEstadoPedido} onEnviarAvisoWhatsApp={enviarAvisoWhatsApp} avisosPendientes={avisosPendientes} />}
-          {view === "pedidos-web" && <PedidosWebView pendientes={pedidosWeb} recientes={pedidosWebRecientes} onAbrir={setPedidoWebAbierto} />}
+          {view === "pedidos-web" && <PedidosWebView pendientes={pedidosWeb} recientes={pedidosWebRecientes} onAbrir={setPedidoWebAbierto} pedidos={pedidos} onAbrirPedido={irAEditar} />}
           {view === "mensajes" && (
             <MensajesView
               conversaciones={conversaciones}
