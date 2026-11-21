@@ -160,11 +160,20 @@ Deno.serve(async (req) => {
       const kg = numero(it.kg);
       if (!p || kg < 1 || kg > 60 || (kg * 2) % 1 !== 0) return responder({ error: "Una paella del pedido ya no está disponible. Recarga la página." }, 409);
       const precioKg = numero(p.precioKg);
-      // Los extras de la paella van por kilo (+$X/kg en la página).
-      const extras = (Array.isArray(it.extras) ? (it.extras as P[]) : []).slice(0, 15).map((e) => {
+      // Extras: el cliente elige cuántos de cada uno (desde el 21 nov 2026).
+      // Una página vieja en caché no manda cantidad: entonces se cobra como
+      // antes, uno por kilo, que es lo que esa persona vio.
+      const extras: P[] = [];
+      for (const e of (Array.isArray(it.extras) ? (it.extras as P[]) : []).slice(0, 15)) {
         const x = buscar(extrasPaella, e.id);
-        return x ? { id: uid(), extraId: String(x.id), nombre: texto(x.nombre, 80), precio: numero(x.precio), cantidad: kg } : null;
-      }).filter(Boolean) as P[];
+        if (!x) continue; // extra que ya no está a la venta: se omite
+        const sinCantidad = e.cantidad === undefined || e.cantidad === null;
+        const pedidos = sinCantidad ? kg : numero(e.cantidad);
+        if (!sinCantidad && (pedidos < 1 || pedidos > 20 || pedidos % 1 !== 0)) {
+          return responder({ error: "Revisa la cantidad de los extras." }, 400);
+        }
+        extras.push({ id: uid(), extraId: String(x.id), nombre: texto(x.nombre, 80), precio: numero(x.precio), cantidad: pedidos });
+      }
       const sumaExtras = extras.reduce((a, e) => a + numero(e.precio) * numero(e.cantidad), 0);
       items.push({
         id: uid(), tipo: "paella", paellaId: String(p.id), paellaNombre: texto(p.nombre, 80),
