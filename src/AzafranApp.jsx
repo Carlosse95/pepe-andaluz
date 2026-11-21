@@ -7009,16 +7009,26 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
   (config?.paellas || []).forEach((p) => { nombreDeHoy["paella:" + p.id] = p.nombre; });
   (config?.extras || []).forEach((e) => { nombreDeHoy["extra:" + e.id] = e.nombre; });
 
+  // "Bacalao Medio kilo" y "Bacalao" son el mismo producto: en el reporte
+  // se juntan en uno solo ("Bacalao") y cada medio cuenta 0.5 kg. Antes salían
+  // separados y cada medio sumaba 1 kg (pidió Carlos el 21 nov 2026: "solo
+  // quiero saber cuánto bacalao vendimos").
+  const sinMedio = (n) => String(n || "").replace(/medio\s*kilo|1\/2\s*k(g|ilo)?|½/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const completoDe = {}; // nombre sin "medio kilo" -> id del producto de kilo completo
+  (config?.extras || []).forEach((e) => { if (!esMedioKilo(e)) completoDe[sinMedio(e.nombre)] = e.id; });
+
   const porProducto = {};
   pedidos.forEach((p) => {
     const [y] = p.fecha.split("-").map(Number);
     if (y !== anio || !esVentaHecha(p)) return;
     if (mesVentas !== "todo" && Number(p.fecha.slice(5, 7)) - 1 !== mesVentas) return;
     p.items.forEach((it) => {
-      const clave = it.tipo === "paella" ? "paella:" + it.paellaId : "extra:" + it.extraId;
-      const nombre = nombreDeHoy[clave] || (it.tipo === "paella" ? it.paellaNombre : it.nombre);
+      const medio = it.tipo !== "paella" && esMedioKilo(it);
+      const idCompleto = medio ? completoDe[sinMedio(it.nombre)] : null;
+      const clave = it.tipo === "paella" ? "paella:" + it.paellaId : "extra:" + (idCompleto || it.extraId);
+      const nombre = nombreDeHoy[clave] || (it.tipo === "paella" ? it.paellaNombre : (medio ? it.nombre.replace(/\s*medio\s*kilo/i, "") : it.nombre));
       if (!nombre) return;
-      const u = unidadDelItem(it);
+      const u = medio ? { cuanto: (parseFloat(it.cantidad) || 0) * 0.5, unidad: "kg" } : unidadDelItem(it);
       if (!porProducto[clave]) {
         porProducto[clave] = { clave, nombre, valor: 0, cuanto: 0, unidad: u.unidad, esPaella: it.tipo === "paella" };
       }
