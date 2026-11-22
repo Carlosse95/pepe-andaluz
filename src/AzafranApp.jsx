@@ -13365,6 +13365,25 @@ function NuevoPedidoView({ config, clientes, pedidos = [], form, setForm, onAddC
     setMostrarOtroMetodo(false);
     setMostrarAbono(false);
   };
+  // Si se toca "Guardar" con la cajita de cobro abierta y un monto escrito,
+  // ese cobro entra al guardar. Antes se perdía: el pedido se guardaba sin él
+  // y la app regresaba a la lista como si nada (le pasó a Pepe, 21 nov 2026).
+  // El guardado espera a que el cobro ya esté en el pedido (siguiente pintada).
+  const [guardarTrasCobro, setGuardarTrasCobro] = useState(false);
+  useEffect(() => {
+    if (!guardarTrasCobro) return;
+    setGuardarTrasCobro(false);
+    onGuardar();
+    // eslint-disable-next-line
+  }, [guardarTrasCobro]);
+  const guardar = () => {
+    if (modo === "pedido" && mostrarAbono && (parseFloat(abonoDraft.monto) || 0) > 0) {
+      agregarAbono();
+      setGuardarTrasCobro(true);
+      return;
+    }
+    onGuardar();
+  };
   const quitarAbono = (abonoId) => {
     setForm((prev) => ({ ...prev, abonos: (prev.abonos || []).filter((a) => a.id !== abonoId) }));
   };
@@ -14025,7 +14044,7 @@ function NuevoPedidoView({ config, clientes, pedidos = [], form, setForm, onAddC
               entregado o el saldo al día si se le abonó—, así que el botón
               solo servía para mandar por segunda vez algo que ya iba a salir.
               Ese era el botón que duplicaba los mensajes de los clientes. */}
-          <Button className="w-full mt-2" onClick={onGuardar}>
+          <Button className="w-full mt-2" onClick={guardar}>
             {editando ? "Guardar cambios" : "Guardar pedido"}
           </Button>
 
