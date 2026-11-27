@@ -97,9 +97,12 @@ const MENSAJES_DEFAULT = {
   // botón abre el chat directo sin tener que buscar el contacto.
   llegue: "¡Hola {nombre}! Ya llegué con su pedido {folio}, estoy afuera 🚚",
   // Se manda con el botón "Pedir reseña" de los pedidos ya entregados.
+  // Dice claro que es en GOOGLE: con el texto anterior la gente contestaba
+  // "excelente" ahí mismo en WhatsApp (Carlos, 27 nov 2026).
   resena:
     "¡Hola {nombre}! ¿Qué tal estuvo su pedido? 🥘\n\n" +
-    "Si le gustó, nos ayudaría muchísimo con una reseña en Google, solo toma un minuto 🙏\n{resena}\n\n" +
+    "Si le gustó, nos ayudaría muchísimo con una reseña en *Google* ⭐ (no aquí por WhatsApp 😄).\n" +
+    "Solo abra este link, elija las estrellas y escriba lo que quiera, toma un minuto 🙏\n{resena}\n\n" +
     "¡Gracias por su preferencia!",
   // Cuando el pedido cambia DESPUÉS de habérselo confirmado al cliente: se le
   // reenvía el resumen completo, ya actualizado, con este saludo en vez del de
@@ -1008,8 +1011,20 @@ const mensajeEntregado = (pedido, mensajes) =>
 
 // Link para dejar reseña en Google (de la ficha del negocio, "Pedir opiniones").
 const RESENA_LINK_DEFAULT = "https://g.page/r/CRmwrQ44a3TmEBM/review";
+// El texto anterior quedó guardado tal cual en Ajustes; si sigue igual, se
+// usa el nuevo. Si alguien lo cambió a mano, se respeta lo suyo.
+const RESENA_TEXTO_VIEJO =
+  "¡Hola {nombre}! ¿Qué tal estuvo su pedido? 🥘\n\n" +
+  "Si le gustó, nos ayudaría muchísimo con una reseña en Google, solo toma un minuto 🙏\n{resena}\n\n" +
+  "¡Gracias por su preferencia!";
+const plantillaResena = (mensajes) =>
+  !mensajes?.resena || mensajes.resena === RESENA_TEXTO_VIEJO ? MENSAJES_DEFAULT.resena : mensajes.resena;
+// No se pide reseña a quien solo compra croquetas de mayoreo: es un negocio
+// que revende, no un cliente que comió (Carlos, 27 nov 2026: Vero Mediterránea).
+const esSoloMayoreo = (pedido) =>
+  (pedido?.items || []).length > 0 && pedido.items.every((it) => /mayoreo/i.test(it.nombre || it.paellaNombre || ""));
 const mensajeResena = (pedido, mensajes, local) =>
-  aplicarPlantillaMensaje(mensajes?.resena || MENSAJES_DEFAULT.resena, pedido, {
+  aplicarPlantillaMensaje(plantillaResena(mensajes), pedido, {
     resena: (local?.resena || "").trim() || RESENA_LINK_DEFAULT,
   });
 
@@ -2538,7 +2553,7 @@ function OrderCard({ pedido, onClick, showFecha, onCambiarEstado, onEnviarAvisoW
         {/* Pedir reseña en Google: solo en pedidos entregados de la última
             semana (ya comieron y todavía se acuerdan) y con teléfono. Queda
             apuntado para no pedírsela dos veces al mismo cliente. */}
-        {estado === "entregado" && pedido.clienteTelefono && onEnviarAvisoWhatsApp && pedido.fecha >= moverFechaISO(todayISO(), -7) && pedido.fecha <= todayISO() && (
+        {estado === "entregado" && pedido.clienteTelefono && onEnviarAvisoWhatsApp && !esSoloMayoreo(pedido) && pedido.fecha >= moverFechaISO(todayISO(), -7) && pedido.fecha <= todayISO() && (
           (pedido.avisosEnviados || {}).resena ? (
             <Chip variant="exito">
               <Star size={12} /> Reseña pedida
@@ -3740,7 +3755,7 @@ function HoyView({ clientes, pedidosHoy, pedidos, config, nombre, onAbrir, onMar
   // 2026: "solo me deja de los pedidos entregados el mismo día"). Van en
   // renglones chicos y se quitan de la lista en cuanto se pide la reseña.
   const paraResena = (pedidos || [])
-    .filter((p) => (p.estado || "pendiente") === "entregado" && p.clienteTelefono && !(p.avisosEnviados || {}).resena)
+    .filter((p) => (p.estado || "pendiente") === "entregado" && p.clienteTelefono && !(p.avisosEnviados || {}).resena && !esSoloMayoreo(p))
     .filter((p) => p.fecha < todayISO() && p.fecha >= moverFechaISO(todayISO(), -7))
     .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : (b.hora || "").localeCompare(a.hora || "")));
   const entregadosSinPagar = (pedidos || [])
@@ -11328,7 +11343,7 @@ function AjustesView({ seccion = "ajustes", config, onGuardarConfig, datosRespal
               </Ayuda></Label>
               <Textarea
                 rows={4}
-                value={(draft.mensajes || MENSAJES_DEFAULT).resena || MENSAJES_DEFAULT.resena}
+                value={plantillaResena(draft.mensajes)}
                 onChange={(e) => setDraft({ ...draft, mensajes: { ...(draft.mensajes || MENSAJES_DEFAULT), resena: e.target.value } })}
               />
             </div>
