@@ -1318,7 +1318,7 @@ const productosDeConfig = (config, fecha) => [
 // Sin la forma de pago: esa va en el recuadro de los datos bancarios del PDF
 // ("Para apartar: 50% de anticipo…") y aquí salía repetida.
 const TERMINOS_DEFAULT =
-  "Este presupuesto tiene vigencia de 30 días.\n" +
+  "Este presupuesto tiene vigencia de 7 días.\n" +
   "Precios sujetos a disponibilidad de producto e ingredientes el día del evento.";
 
 // Dónde queda lo que se está escribiendo, por si el aparato recarga la app.
