@@ -2084,6 +2084,10 @@ const recalcularPagado = (p) => {
 };
 
 const sumaAbonos = (abonos) => (abonos || []).reduce((a, x) => a + (parseFloat(x.monto) || 0), 0);
+// Las transferencias que el cliente DICE que hizo pero que todavía no se ven
+// en el banco ("por confirmar"). En los reportes no cuentan como dinero hasta
+// que se toca "Ya cayó" (Carlos, 27 nov 2026).
+const sumaPorConfirmar = (abonos) => sumaAbonos((abonos || []).filter((a) => a.porConfirmar));
 
 /* ---------------------------------------------------------------------- */
 /*  Componentes pequeños de presentación                                  */
@@ -6905,7 +6909,9 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
   //    Un pedido apuntado para el sábado no es dinero — puede caerse. Pero si
   //    dejaron adelanto, ese adelanto ya está en la cuenta y sí cuenta. Por
   //    eso el ingreso de un mes es lo COBRADO, no lo apuntado.
-  const dineroCobrado = (p) => parseFloat(p?.pagado) || 0;
+  //    Una transferencia "por confirmar" todavía no está en la cuenta: no
+  //    cuenta hasta que se toca "Ya cayó".
+  const dineroCobrado = (p) => Math.max((parseFloat(p?.pagado) || 0) - sumaPorConfirmar(p?.abonos), 0);
   //
   // 2) LO QUE SE VENDIÓ (kilos, platillos, margen): los pedidos ENTREGADOS.
   //    Aquí el dinero no sirve de vara: si un cliente pagó la mitad no se
@@ -8072,14 +8078,17 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
   const delDia = pedidos.filter((p) => p.fecha === diaSel);
   const vendidoDia = delDia.reduce((a, p) => a + p.total, 0);
   const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
+  let porConfirmarDia = 0;
   delDia.forEach((p) => {
     (p.abonos || []).forEach((a) => {
+      // La transferencia por confirmar no es cobro todavía: va aparte.
+      if (a.porConfirmar) { porConfirmarDia += parseFloat(a.monto) || 0; return; }
       porMetodo[a.metodo || "efectivo"] = (porMetodo[a.metodo || "efectivo"] || 0) + (parseFloat(a.monto) || 0);
     });
   });
   const cobradoDia = porMetodo.efectivo + porMetodo.tarjeta + porMetodo.transferencia;
   // Si a un pedido le pagaron más de lo que costaba, la diferencia es propina.
-  const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - p.total, 0), 0);
+  const propinaDia = delDia.reduce((a, p) => a + Math.max(sumaAbonos(p.abonos) - sumaPorConfirmar(p.abonos) - p.total, 0), 0);
 
 
   // La foto del ticket: se sube a Storage y luego se lee para llenar el gasto.
@@ -8753,6 +8762,9 @@ function ReportesView({ pedirGasto = 0, pedidos, historico, onGuardarHistorico, 
                 <div className="af-tabla-row"><span><Banknote size={14} className="inline -mt-0.5 mr-1.5" />Efectivo</span><span>{money(porMetodo.efectivo)}</span></div>
                 <div className="af-tabla-row"><span><CreditCard size={14} className="inline -mt-0.5 mr-1.5" />Tarjeta</span><span>{money(porMetodo.tarjeta)}</span></div>
                 <div className="af-tabla-row"><span><Landmark size={14} className="inline -mt-0.5 mr-1.5" />Transferencia</span><span>{money(porMetodo.transferencia)}</span></div>
+                {porConfirmarDia > 0 && (
+                  <div className="af-tabla-row"><span><Landmark size={14} className="inline -mt-0.5 mr-1.5" />Transferencia por confirmar (no cuenta aún)</span><span>{money(porConfirmarDia)}</span></div>
+                )}
                 {propinaDia > 0 && (
                   <div className="af-tabla-row af-tabla-row-destacada"><span><PartyPopper size={14} className="inline -mt-0.5 mr-1.5" />Propinas</span><span>{money(propinaDia)}</span></div>
                 )}
