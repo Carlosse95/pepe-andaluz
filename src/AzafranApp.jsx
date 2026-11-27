@@ -3719,6 +3719,7 @@ function HoyView({ clientes, pedidosHoy, pedidos, config, nombre, onAbrir, onMar
   const [verCompras, setVerCompras] = useState(false);
   const [verPorConfirmar, setVerPorConfirmar] = useState(true);
   const [verSinPagar, setVerSinPagar] = useState(true);
+  const [verResenas, setVerResenas] = useState(false);
 
   // Transferencias apuntadas que todavía no se han visto en el banco. Se
   // buscan en todos los pedidos, no solo los de hoy: el dinero de un pedido
@@ -3733,6 +3734,15 @@ function HoyView({ clientes, pedidosHoy, pedidos, config, nombre, onAbrir, onMar
   // Comida que YA SE ENTREGÓ y todavía no se cobra completa. Es dinero de
   // verdad: salió el pedido y falta que entre. Se buscan en todos los
   // pedidos, no solo los de hoy — un adeudo de enero sigue siendo un adeudo.
+  // Pedir reseña a los entregados de días anteriores (la última semana). Los
+  // de hoy ya traen el botón en su tarjeta de "Entregados hoy"; los de antes
+  // solo salían en Agenda → Entregados, y ahí casi no se entra (Carlos, 27 nov
+  // 2026: "solo me deja de los pedidos entregados el mismo día"). Van en
+  // renglones chicos y se quitan de la lista en cuanto se pide la reseña.
+  const paraResena = (pedidos || [])
+    .filter((p) => (p.estado || "pendiente") === "entregado" && p.clienteTelefono && !(p.avisosEnviados || {}).resena)
+    .filter((p) => p.fecha < todayISO() && p.fecha >= moverFechaISO(todayISO(), -7))
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : (b.hora || "").localeCompare(a.hora || "")));
   const entregadosSinPagar = (pedidos || [])
     .filter((p) => (p.estado || "pendiente") === "entregado")
     .map((p) => ({ pedido: p, saldo: Math.round(((p.total || 0) - (p.pagado || 0)) * 100) / 100 }))
@@ -3856,7 +3866,7 @@ function HoyView({ clientes, pedidosHoy, pedidos, config, nombre, onAbrir, onMar
           cuenta encendida era siempre cierto; al quitarlo de aquí quedaban a
           merced de que hubiera pedidos ese día. Es dinero pendiente: no puede
           depender de eso. */}
-      {(hayPorComprar || porConfirmar.length > 0 || entregadosSinPagar.length > 0 || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
+      {(hayPorComprar || porConfirmar.length > 0 || entregadosSinPagar.length > 0 || paraResena.length > 0 || pedidosHoy.length > 0 || entregadosHoy.length > 0 || pedidosManiana.length > 0 || pendientesPaellera.length > 0) && (
         <div className="af-secundarios mt-5">
           <div className="af-section-title">Lo demás</div>
 
@@ -4001,6 +4011,39 @@ function HoyView({ clientes, pedidosHoy, pedidos, config, nombre, onAbrir, onMar
                   .sort((a, b) => a.hora.localeCompare(b.hora))
                   .map((p) => <OrderCard key={p.id} pedido={p} onClick={() => onAbrir(p)} onCambiarEstado={onCambiarEstado} onEnviarAvisoWhatsApp={onEnviarAvisoWhatsApp} avisoPendiente={avisosPendientes?.[p.id]} mensajes={config?.mensajes} />)}
               </div>
+            </PanelPlegable>
+          )}
+
+          {paraResena.length > 0 && onEnviarAvisoWhatsApp && (
+            <PanelPlegable
+              icono={<Star size={15} />}
+              titulo="Pedir reseña"
+              resumen={`${paraResena.length}`}
+              abierto={verResenas}
+              onToggle={() => setVerResenas((v) => !v)}
+            >
+              <Ayuda className="mb-2">
+                Entregados de la última semana a los que no se les ha pedido reseña.
+                Al tocar el botón se abre WhatsApp con el mensaje y el link de Google.
+              </Ayuda>
+              {paraResena.map((pedido) => (
+                <div key={pedido.id} className="af-confirmar-row">
+                  <button className="flex-1 min-w-0 af-fila-limpia" onClick={() => onAbrir && onAbrir(pedido)}>
+                    <div className="af-confirmar-nombre">{pedido.clienteNombre}</div>
+                    <div className="af-ink-soft text-sm">
+                      {fmtFolio(pedido.folio, "#")} · {fmtDateHuman(pedido.fecha)}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(badgeVariants({ variant: "oro" }))}
+                    onClick={() => onEnviarAvisoWhatsApp(pedido, "resena")}
+                    title="Mandarle por WhatsApp el link para dejar una reseña en Google"
+                  >
+                    <Star size={12} /> Pedir reseña
+                  </button>
+                </div>
+              ))}
             </PanelPlegable>
           )}
         </div>
