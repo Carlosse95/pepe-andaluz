@@ -68,10 +68,15 @@ async function avisar(cuerpo: string, tag: string, soloUsuario = "") {
   await Promise.all(destino.map(async (s) => {
     const nombre = nombreDe.get(s.user_id);
     const titulo = `${nombre ? nombre + ", tienes" : "Tienes"} un nuevo pedido`;
+    // "Fijo" (que no se quite solo) solo en compu. En iPhone/iPad los avisos
+    // de la página llegaban hasta abrir la app, 13 min tarde, y los de los
+    // pedidos de la familia —que no lo llevan— sí llegaban a tiempo
+    // (Carlos, 27 nov 2026).
+    const fijo = s.aparato === "Mac" || s.aparato === "Windows";
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        JSON.stringify({ title: titulo, body: cuerpo, tag, url: llaves.contacto, ir: "pedidos-web", fijo: true }),
+        JSON.stringify({ title: titulo, body: cuerpo, tag, url: llaves.contacto, ir: "pedidos-web", fijo }),
         { TTL: 60 * 60 * 12, urgency: "high" },
       );
       bien++;
